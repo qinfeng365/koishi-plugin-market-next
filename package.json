@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Manage your bots and plugins with console",
-  "version": "3.4.2",
+  "version": "3.4.3",
   "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
   "repository": {
     "type": "git",
@@ -103,6 +103,10 @@
     "zod": "^3.25.76"
   },
   "overrides": {
+    "@koishijs/client": {
+      "element-plus": "^2.14.1",
+      "vite": "^6.4.2"
+    },
     "@maikolib/vite-plugin-yaml": {
       "js-yaml": "^4.2.0"
     }

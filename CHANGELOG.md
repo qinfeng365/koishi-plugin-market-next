@@ -2,6 +2,13 @@
 
 本文件记录 `koishi-plugin-market-next` 已发布到 npm 的版本差异。
 
+## 3.4.3
+
+- 安全审计：通过 npm overrides 修复构建链路中的 `js-yaml` transitive 漏洞。
+- 安全审计：试探升级 `@koishijs/client` 构建链路使用的 `element-plus` 与 `vite`，移除对应中危 audit 项。
+- 完整 `npm audit` 从 20 个中危降到 14 个中危；高危与严重漏洞保持为 0。
+- 剩余中危来自 Koishi / Console 最新上游链路，未使用会降级 `@koishijs/console` 的 `audit fix --force`。
+
 ## 3.4.2
 
 - Debug 性能面板拆分首屏加载与后台刷新，避免缓存耗时和网络刷新耗时混在一起。

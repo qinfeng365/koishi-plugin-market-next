@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.2-blue)
+![Version](https://img.shields.io/badge/version-3.4.3-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -338,8 +338,8 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.2
-git push origin v3.4.2
+git tag v3.4.3
+git push origin v3.4.3
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
