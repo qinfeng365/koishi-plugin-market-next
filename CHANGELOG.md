@@ -2,6 +2,12 @@
 
 本文件记录 `koishi-plugin-market-next` 已发布到 npm 的版本差异。
 
+## 3.4.4
+
+- 安全审计：通过 npm override 将 `@koishijs/plugin-console` 链路中的 `uuid` 收敛到 `11.1.1` 以上。
+- 完整 `npm audit` 从 14 个中危降到 13 个中危；高危与严重漏洞保持为 0。
+- 剩余中危来自 Koishi / Cordis 的 `file-type` 上游链路，未使用会破坏兼容或降级 Console 的强制修复。
+
 ## 3.4.3
 
 - 安全审计：通过 npm overrides 修复构建链路中的 `js-yaml` transitive 漏洞。

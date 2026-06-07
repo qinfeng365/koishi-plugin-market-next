@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.3-blue)
+![Version](https://img.shields.io/badge/version-3.4.4-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -338,13 +338,13 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.3
-git push origin v3.4.3
+git tag v3.4.4
+git push origin v3.4.4
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
 
-当前安全策略是把高危 audit 作为发布门禁；中危来自 Koishi Console、Vite、Element Plus 等上游链路时不强行降级处理，避免为了 audit 破坏插件兼容性。
+当前安全策略是把高危 audit 作为发布门禁；中危来自 Koishi / Cordis 上游链路且修复路径会降级 Console 时，不强行处理，避免为了 audit 破坏插件兼容性。
 
 ## 发布包内容
 
@@ -357,6 +357,12 @@ git push origin v3.4.3
 同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
 
 ## 版本更新
+
+### 3.4.4
+
+- 安全审计：通过 npm override 将 `@koishijs/plugin-console` 链路中的 `uuid` 收敛到 `11.1.1` 以上。
+- 完整 `npm audit` 从 14 个中危降到 13 个中危；高危与严重漏洞保持为 0。
+- 剩余中危来自 Koishi / Cordis 的 `file-type` 上游链路，未使用会破坏兼容或降级 Console 的强制修复。
 
 ### 3.4.0
 
