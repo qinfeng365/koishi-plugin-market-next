@@ -72,6 +72,7 @@ const bottomSpacer = ref(0)
 let observer: IntersectionObserver
 let scrollParent: HTMLElement | Window
 let resizeObserver: ResizeObserver
+let observedList: HTMLElement | undefined
 let frame = 0
 
 const loadedPackages = computed(() => packages.value.slice(0, visible.value))
@@ -103,6 +104,7 @@ function resetVisible(scroll = true) {
   topSpacer.value = 0
   bottomSpacer.value = 0
   nextTick(() => {
+    bindList()
     measureLayout()
     updateObserver()
     updateVirtual()
@@ -114,6 +116,7 @@ watch(() => props.modelValue.join('\n'), () => resetVisible(), { deep: true })
 watch(() => packages.value.length, () => {
   visible.value = Math.min(Math.max(visible.value, batchSize.value), packages.value.length || batchSize.value)
   nextTick(() => {
+    bindList()
     measureLayout()
     updateObserver()
     updateVirtual()
@@ -121,7 +124,6 @@ watch(() => packages.value.length, () => {
 })
 
 onMounted(() => {
-  scrollParent = getScrollParent()
   observer = new IntersectionObserver((entries) => {
     if (entries.some(entry => entry.isIntersecting)) loadMore()
   }, { rootMargin: '240px 0px' })
@@ -129,8 +131,6 @@ onMounted(() => {
     measureLayout()
     scheduleVirtual()
   })
-  if (list.value) resizeObserver.observe(list.value)
-  addScrollListener()
   resetVisible(false)
 })
 
@@ -143,6 +143,17 @@ onUnmounted(() => {
 
 function getScrollParent() {
   return list.value?.closest('.el-scrollbar')?.querySelector('.el-scrollbar__wrap') as HTMLElement || window
+}
+
+function bindList() {
+  if (!list.value) return
+  if (observedList === list.value && scrollParent) return
+  removeScrollListener()
+  if (observedList) resizeObserver?.unobserve(observedList)
+  observedList = list.value
+  scrollParent = getScrollParent()
+  resizeObserver?.observe(observedList)
+  addScrollListener()
 }
 
 function addScrollListener() {
@@ -174,9 +185,10 @@ function updateVirtual() {
 
   const scrollTop = scrollParent instanceof Window ? window.scrollY : scrollParent.scrollTop
   const viewportHeight = scrollParent instanceof Window ? window.innerHeight : scrollParent.clientHeight
+  const listRect = list.value.getBoundingClientRect()
   const listTop = scrollParent instanceof Window
-    ? list.value.getBoundingClientRect().top + window.scrollY
-    : list.value.offsetTop
+    ? listRect.top + window.scrollY
+    : listRect.top - scrollParent.getBoundingClientRect().top + scrollParent.scrollTop
   const offset = Math.max(0, scrollTop - listTop)
   const totalRows = Math.ceil(loadedPackages.value.length / columns.value)
   const overscan = 3

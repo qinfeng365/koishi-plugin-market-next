@@ -31,6 +31,7 @@ class MarketProvider extends BaseMarketProvider {
   private disposed = false
   private serial = 0
   private forceRefresh = false
+  private indexMode: 'modern' | 'legacy' = 'modern'
   private cacheFile: string
   private cacheMeta?: Omit<CacheFile, 'result'>
   private backgroundTask?: Promise<void>
@@ -79,8 +80,11 @@ class MarketProvider extends BaseMarketProvider {
       this.log('debug', 'refresh requested: reset market task and refresh dependency data')
       refreshTask = this.ctx.installer.refresh(true).catch(error => this.ctx.logger('market').warn(error))
     }
-    await super.start(refresh)
-    this.forceRefresh = false
+    try {
+      await super.start(refresh)
+    } finally {
+      this.forceRefresh = false
+    }
     if (this.isStale(serial)) {
       this.log('debug', `skip market refresh result because provider is stale, serial=${serial}`)
       return
@@ -114,6 +118,7 @@ class MarketProvider extends BaseMarketProvider {
       this.cacheMeta = undefined
       this.log('info', `loaded market index from ${this.endpoint}: ${this.scanner.total}/${result.objects.length} objects, version=${this.scanner.version ?? 'legacy'}, elapsed=${Date.now() - start}ms`)
     } else {
+      this.indexMode = 'legacy'
       this.log('debug', `collect legacy registry index via scanner, registryEndpoint=${registry?.config.endpoint}`)
       await this.scanner.collect({ timeout })
       this.log('debug', `legacy scanner collect completed: total=${this.scanner.total}, version=${this.scanner.version ?? 'legacy'}, elapsed=${Date.now() - start}ms`)
@@ -170,7 +175,7 @@ class MarketProvider extends BaseMarketProvider {
       let lastError: any
 
       endpoints.forEach((endpoint, index) => {
-        this.fetchEndpoint(endpoint, index, endpoints.length, serial).then((data) => {
+        this.fetchEndpoint(endpoint, index, endpoints.length, serial, false).then((data) => {
           if (settled) {
             this.log('debug', `ignore slower market endpoint ${data.endpoint}, elapsed=${data.elapsed}ms`)
             return
@@ -198,7 +203,7 @@ class MarketProvider extends BaseMarketProvider {
       .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
   }
 
-  private async fetchEndpoint(endpoint: string, index: number, total: number, serial: number) {
+  private async fetchEndpoint(endpoint: string, index: number, total: number, serial: number, warnFailure = true) {
     if (this.isStale(serial)) throw new Error('market provider disposed')
     const start = Date.now()
     try {
@@ -217,7 +222,7 @@ class MarketProvider extends BaseMarketProvider {
       return { endpoint, result, elapsed }
     } catch (error) {
       if (this.isStale(serial)) throw new Error('market provider disposed')
-      this.log('warn', `failed to fetch market index from ${endpoint} in ${Date.now() - start}ms: ${formatError(error)}`)
+      this.log(warnFailure ? 'warn' : 'debug', `failed to fetch market index from ${endpoint} in ${Date.now() - start}ms: ${formatError(error)}`)
       throw error
     }
   }
@@ -243,7 +248,7 @@ class MarketProvider extends BaseMarketProvider {
       this.log('debug', `get market payload failed without cache, error=${formatError(this._error)}, elapsed=${Date.now() - start}ms`)
       return { data: {}, failed: 0, total: 0, progress: 0 }
     }
-    const payload = this.scanner.version ? {
+    const payload = this.indexMode === 'modern' ? {
       registry: this.endpoint || this.ctx.installer.endpoint,
       data: Object.fromEntries(this.scanner.objects.map(item => [item.package.name, item])),
       failed: 0,
@@ -278,6 +283,7 @@ class MarketProvider extends BaseMarketProvider {
       throw new Error(`invalid market index from ${endpoint}`)
     }
     this.endpoint = endpoint
+    this.indexMode = 'modern'
     this.scanner.objects = result.objects.filter(object => !object.ignored)
     this.scanner.total = this.scanner.objects.length
     this.scanner.version = result.version

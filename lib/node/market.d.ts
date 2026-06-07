@@ -16,6 +16,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private disposed;
     private serial;
     private forceRefresh;
+    private indexMode;
     private cacheFile;
     private cacheMeta?;
     private backgroundTask?;
