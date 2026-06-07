@@ -1,0 +1,96 @@
+{
+  "name": "koishi-plugin-market-next",
+  "description": "Manage your bots and plugins with console",
+  "version": "3.2.0",
+  "main": "lib/node/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node build.mjs",
+    "build:dts": "tsc -p tsconfig.json",
+    "build:js": "node build.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "node": "./lib/node/index.js",
+      "browser": "./lib/browser/index.mjs"
+    },
+    "./shared": {
+      "require": "./lib/shared/index.js",
+      "import": "./lib/shared/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "dist",
+    "src"
+  ],
+  "license": "AGPL-3.0",
+  "keywords": [
+    "bot",
+    "chatbot",
+    "koishi",
+    "plugin",
+    "market",
+    "manager",
+    "server"
+  ],
+  "koishi": {
+    "public": [
+      "dist"
+    ],
+    "description": {
+      "en": "Manage your plugins with console",
+      "zh": "使用控制台安装、卸载、更新你的插件"
+    },
+    "service": {
+      "optional": [
+        "console",
+        "chatluna"
+      ],
+      "implements": [
+        "installer"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@koishijs/plugin-console": "^5.30.11",
+    "koishi-plugin-chatluna": "^1.4.0-alpha.20",
+    "koishi": "^4.18.11"
+  },
+  "peerDependenciesMeta": {
+    "@koishijs/plugin-console": {
+      "optional": true
+    },
+    "koishi-plugin-chatluna": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@koishijs/client": "^5.30.11",
+    "@koishijs/plugin-config": "^2.8.6",
+    "@types/semver": "^7.5.8",
+    "@types/spark-md5": "^3.0.4",
+    "@types/which-pm-runs": "^1.0.2",
+    "esbuild": "^0.28.0",
+    "js-yaml": "^4.1.1",
+    "typescript": "^5.6.2",
+    "yml-register": "^1.2.5"
+  },
+  "dependencies": {
+    "@koishijs/components": "^1.5.22",
+    "@koishijs/console": "^5.30.11",
+    "@koishijs/registry": "^7.0.3",
+    "@langchain/core": "^0.3.80",
+    "cosmokit": "^1.8.1",
+    "execa": "^5.1.1",
+    "get-registry": "^1.2.0",
+    "ns-require": "^1.1.4",
+    "p-map": "^4.0.0",
+    "semver": "^7.6.3",
+    "spark-md5": "^3.0.2",
+    "which-pm-runs": "^1.1.0",
+    "zod": "^3.25.76"
+  }
+}

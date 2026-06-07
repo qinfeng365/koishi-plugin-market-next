@@ -1,0 +1,40 @@
+type:
+  sort: 排序
+  filter: 篩選
+  category: 分類
+badge:
+  installed: 已下載
+  verified: 官方認證
+  insecure: 不安全
+  preview: 開發中
+  newborn: 近期新增
+  portable: 快速體驗
+sort:
+  default: 綜合
+  rating: 依評分
+  download: 依下載量
+  created: 依創建時間
+  updated: 依更新時間
+category:
+  all: 所有外掛程式
+  other: 未分類
+  adapter: 適配器
+  storage: 儲存服務
+  extension: 擴展功能
+  console: 控制台
+  manage: 管理工具
+  preset: 行為預設
+  image: 圖片服務
+  media: 資訊服務
+  tool: 實用工具
+  ai: 人工智慧
+  meme: 趣味交互
+  game: 娛樂玩法
+  gametool: 遊戲輔助
+time:
+  just-now: 剛剛
+  minutes-ago: '{0} 分鐘前'
+  hours-ago: '{0} 小時前'
+  days-ago: '{0} 天前'
+search:
+  placeholder: 輸入想要查詢的外掛程式名

@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "declaration": true,
+    "jsx": "preserve",
+    "noEmit": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "strictBindCallApply": true,
+    "rootDir": ".",
+    "types": [
+      "@koishijs/client/global"
+    ]
+  },
+  "include": [
+    "."
+  ]
+}

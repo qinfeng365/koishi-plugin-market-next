@@ -1,0 +1,25 @@
+commands.plugin:
+  description: Plugin management
+commands.plugin.install:
+  description: Install Plugins
+  messages:
+    expect-name: 请输入插件名。
+    already-installed: 该插件已安装。
+    not-found: 未找到该插件。
+    success: Installation Successful!
+commands.plugin.uninstall:
+  description: Uninstall plugin
+  messages:
+    expect-name: 请输入插件名。
+    not-installed: 该插件未安装。
+    success: 卸载成功！
+commands.plugin.upgrade:
+  description: Upgrade Plugin
+  options:
+    self: Upgrade Koishi core
+  messages:
+    all-updated: 所有插件已是最新版本。
+    available: 有可用的依赖更新：
+    prompt: 输入「Y」升级全部依赖，输入「N」取消操作。
+    cancelled: Operation canceled.
+    success: Upgrade Successful!

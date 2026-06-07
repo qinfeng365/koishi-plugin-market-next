@@ -1,0 +1,9 @@
+registry:
+  $description: 外掛程式源設定
+  endpoint: 外掛程式的下載源。默認跟隨當前項目的 npm config。
+  timeout: 獲取外掛程式數據的超時時間。
+search:
+  $description: 搜尋設定
+  endpoint: 用於搜尋外掛程式市場的網址。默認使用 t4wefan 鏡像。
+  timeout: 搜尋外掛程式市場的超時時間。
+  proxyAgent: 用於搜尋外掛程式市場的代理。

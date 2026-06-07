@@ -1,0 +1,12 @@
+registry:
+  $description: 插件源设置
+  endpoint: 插件的下载源。默认跟随当前项目的 npm config。
+  timeout: 获取插件数据的超时时间。
+
+search:
+  $description: 搜索设置
+  endpoint: 用于搜索插件市场的网址。默认使用 t4wefan 镜像。
+  timeout: 搜索插件市场的超时时间。
+  proxyAgent: 用于搜索插件市场的代理。
+
+chatlunaTool: 启用 ChatLuna 插件市场查询工具。启用后，若当前 Koishi 同时安装了 ChatLuna，会注册只读工具 koishi_plugin_market_search。
