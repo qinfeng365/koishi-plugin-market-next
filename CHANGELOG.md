@@ -8,6 +8,7 @@
 - npm 发布 workflow 增加高危依赖审计门禁，继续使用 Trusted Publishing。
 - 升级 `@langchain/core` 到 1.x，移除 `langsmith` 旧版本带来的高危 audit 项。
 - ChatLuna Tool 依赖链随 LangChain 1.x 要求 Node.js 20 或更高版本。
+- 市场索引请求显式声明 `br,gzip,deflate` 压缩能力，debug 面板增加压缩方式、传输大小和压缩比例。
 - README 补充 CI、tag 发布、手动发布和高危 audit 策略说明。
 
 ## 3.4.0

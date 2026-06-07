@@ -15,6 +15,8 @@ export interface MarketPerformance {
     endpoint?: string;
     candidates?: number;
     size?: number;
+    wireSize?: number;
+    contentEncoding?: string;
     objects?: number;
     hash?: string;
     etag?: string;

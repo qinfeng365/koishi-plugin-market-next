@@ -124,7 +124,10 @@ const debugItems = computed(() => {
   if (!debug) return []
   return [
     ['对象数', formatNumber(debug.objects ?? store.market?.total)],
-    ['索引大小', formatSize(debug.size)],
+    ['解压大小', formatSize(debug.size)],
+    ['传输大小', formatSize(debug.wireSize)],
+    ['压缩方式', formatEncoding(debug.contentEncoding)],
+    ['压缩比例', formatCompressionRatio(debug.size, debug.wireSize)],
     ['候选源', formatNumber(debug.candidates)],
     ['Hash', debug.hash || '-'],
     ['ETag', debug.etag || '-'],
@@ -237,6 +240,16 @@ function formatSize(value?: number) {
   if (value > 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)}MB`
   if (value > 1024) return `${(value / 1024).toFixed(1)}KB`
   return `${value}B`
+}
+
+function formatEncoding(value?: string) {
+  return value || 'identity'
+}
+
+function formatCompressionRatio(decoded?: number, encoded?: number) {
+  if (!decoded || !encoded) return '-'
+  if (encoded >= decoded) return '未压缩'
+  return `${(decoded / encoded).toFixed(1)}x`
 }
 
 function formatNumber(value?: number) {

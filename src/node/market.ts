@@ -27,6 +27,8 @@ interface CacheFile {
   lastModified?: string
   hash?: string
   size?: number
+  wireSize?: number
+  contentEncoding?: string
   result: SearchResult
 }
 
@@ -40,6 +42,8 @@ interface EndpointResult {
   source: MarketSource
   timings: Dict<number>
   size?: number
+  wireSize?: number
+  contentEncoding?: string
   hash?: string
   etag?: string
   lastModified?: string
@@ -160,6 +164,8 @@ class MarketProvider extends BaseMarketProvider {
         endpoint: result.endpoint,
         candidates: result.candidates,
         size: result.size,
+        wireSize: result.wireSize,
+        contentEncoding: result.contentEncoding,
         objects: this.scanner.total,
         hash: shortHash(result.hash),
         etag: result.etag,
@@ -288,6 +294,8 @@ class MarketProvider extends BaseMarketProvider {
       lastModified: result.lastModified ?? (sameEndpoint ? this.conditionMeta?.lastModified : undefined),
       hash: result.hash ?? this.conditionMeta?.hash,
       size: result.size ?? this.conditionMeta?.size,
+      wireSize: result.wireSize ?? this.conditionMeta?.wireSize,
+      contentEncoding: result.contentEncoding ?? this.conditionMeta?.contentEncoding,
     }
   }
 
@@ -300,11 +308,15 @@ class MarketProvider extends BaseMarketProvider {
         endpoint,
       })
       const conditional = this.getConditionalHeaders(endpoint)
+      const headers = {
+        'accept-encoding': 'br,gzip,deflate',
+        ...conditional,
+      }
       const requestStart = Date.now()
-      this.log('debug', `fetch market index from ${endpoint} (${index + 1}/${total}), timeout=${this.config.timeout ?? 'default'}, proxy=${this.config.proxyAgent ? 'yes' : 'no'}, conditional=${Object.keys(conditional).length ? 'yes' : 'no'}`)
+      this.log('debug', `fetch market index from ${endpoint} (${index + 1}/${total}), timeout=${this.config.timeout ?? 'default'}, proxy=${this.config.proxyAgent ? 'yes' : 'no'}, compression=yes, conditional=${Object.keys(conditional).length ? 'yes' : 'no'}`)
       const response = await http<string>('', {
         responseType: 'text',
-        headers: conditional,
+        headers,
         signal,
         validateStatus: status => status === 304 || status >= 200 && status < 300,
       })
@@ -312,6 +324,8 @@ class MarketProvider extends BaseMarketProvider {
       const requestElapsed = Date.now() - requestStart
       const etag = response.headers.get('etag') || undefined
       const lastModified = response.headers.get('last-modified') || undefined
+      const contentEncoding = response.headers.get('content-encoding') || undefined
+      const headerWireSize = parseContentLength(response.headers.get('content-length'))
 
       if (response.status === 304) {
         if (!this.cacheResult || !this.conditionMeta) {
@@ -328,6 +342,8 @@ class MarketProvider extends BaseMarketProvider {
           source: 'http-304',
           timings: { request: requestElapsed, total: elapsed },
           size: this.conditionMeta.size,
+          wireSize: headerWireSize ?? this.conditionMeta.wireSize,
+          contentEncoding: contentEncoding ?? this.conditionMeta.contentEncoding,
           hash: this.conditionMeta.hash,
           etag: etag || this.conditionMeta.etag,
           lastModified: lastModified || this.conditionMeta.lastModified,
@@ -338,6 +354,7 @@ class MarketProvider extends BaseMarketProvider {
 
       const text = response.data
       const size = Buffer.byteLength(text)
+      const wireSize = normalizeWireSize(headerWireSize, size)
       const hashStart = Date.now()
       const hash = createHash('sha256').update(text).digest('hex')
       const hashElapsed = Date.now() - hashStart
@@ -354,6 +371,8 @@ class MarketProvider extends BaseMarketProvider {
           source: 'hash-cache',
           timings: { request: requestElapsed, hash: hashElapsed, total: elapsed },
           size,
+          wireSize,
+          contentEncoding,
           hash,
           etag,
           lastModified,
@@ -369,7 +388,7 @@ class MarketProvider extends BaseMarketProvider {
         throw new Error(`invalid market index from ${endpoint}`)
       }
       const elapsed = Date.now() - start
-      this.log('debug', `market index fetched from ${endpoint} in ${elapsed}ms, objects=${result.objects.length}, size=${size}, hash=${shortHash(hash) || 'unknown'}, version=${result.version ?? 'legacy'}`)
+      this.log('debug', `market index fetched from ${endpoint} in ${elapsed}ms, objects=${result.objects.length}, size=${size}, wireSize=${wireSize ?? 'unknown'}, encoding=${contentEncoding ?? 'identity'}, hash=${shortHash(hash) || 'unknown'}, version=${result.version ?? 'legacy'}`)
       return {
         endpoint,
         result,
@@ -378,6 +397,8 @@ class MarketProvider extends BaseMarketProvider {
         source: 'network',
         timings: { request: requestElapsed, hash: hashElapsed, parse: parseElapsed, total: elapsed },
         size,
+        wireSize,
+        contentEncoding,
         hash,
         etag,
         lastModified,
@@ -480,6 +501,8 @@ class MarketProvider extends BaseMarketProvider {
         lastModified: cache.lastModified,
         hash: cache.hash,
         size: cache.size,
+        wireSize: cache.wireSize,
+        contentEncoding: cache.contentEncoding,
       }
       this.cacheMeta = this.conditionMeta = meta
       this.cacheResult = cache.result
@@ -487,6 +510,8 @@ class MarketProvider extends BaseMarketProvider {
         source: 'disk-cache',
         endpoint: cache.endpoint,
         size: cache.size,
+        wireSize: cache.wireSize,
+        contentEncoding: cache.contentEncoding,
         objects: this.scanner.total,
         hash: shortHash(cache.hash),
         etag: cache.etag,
@@ -565,6 +590,8 @@ class MarketProvider extends BaseMarketProvider {
         endpoint: result.endpoint,
         candidates: result.candidates,
         size: result.size,
+        wireSize: result.wireSize,
+        contentEncoding: result.contentEncoding,
         objects: this.scanner.total,
         hash: shortHash(result.hash),
         etag: result.etag,
@@ -592,7 +619,7 @@ class MarketProvider extends BaseMarketProvider {
         ...info.timings,
       },
     }
-    this.log('debug', `market performance: source=${this.debugInfo.source ?? 'unknown'}, endpoint=${this.debugInfo.endpoint ?? 'unknown'}, objects=${this.debugInfo.objects ?? 0}, size=${this.debugInfo.size ?? 0}, timings=${formatTimings(this.debugInfo.timings)}`)
+    this.log('debug', `market performance: source=${this.debugInfo.source ?? 'unknown'}, endpoint=${this.debugInfo.endpoint ?? 'unknown'}, objects=${this.debugInfo.objects ?? 0}, size=${this.debugInfo.size ?? 0}, wireSize=${this.debugInfo.wireSize ?? 'unknown'}, encoding=${this.debugInfo.contentEncoding ?? 'identity'}, timings=${formatTimings(this.debugInfo.timings)}`)
   }
 
   private getDebugInfo(timings?: Dict<number>) {
@@ -643,6 +670,17 @@ function formatError(error: unknown) {
 
 function shortHash(hash?: string) {
   return hash?.slice(0, 12)
+}
+
+function parseContentLength(value?: string | null) {
+  if (!value) return
+  const size = Number(value)
+  return Number.isFinite(size) && size >= 0 ? size : undefined
+}
+
+function normalizeWireSize(wireSize: number | undefined, decodedSize: number) {
+  if (!wireSize && decodedSize > 0) return
+  return wireSize
 }
 
 function formatTimings(timings: Dict<number> = {}) {
