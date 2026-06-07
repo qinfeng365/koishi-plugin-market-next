@@ -35,6 +35,7 @@ class MarketProvider extends BaseMarketProvider {
   private cacheFile: string
   private cacheMeta?: Omit<CacheFile, 'result'>
   private backgroundTask?: Promise<void>
+  private cacheWriteTimer?: ReturnType<typeof setTimeout>
   private flushData: () => void
 
   constructor(ctx: Context, public config: MarketProvider.Config = {}) {
@@ -42,6 +43,7 @@ class MarketProvider extends BaseMarketProvider {
     ctx.effect(() => () => {
       this.disposed = true
       this.serial++
+      clearTimeout(this.cacheWriteTimer)
     })
     config.endpoint ||= DEFAULT_ENDPOINT
     this.endpoint = config.endpoint
@@ -114,7 +116,7 @@ class MarketProvider extends BaseMarketProvider {
         return null
       }
       this.applyIndex(result, this.endpoint)
-      await this.writeDiskCache(result)
+      this.scheduleDiskCacheWrite(result)
       this.cacheMeta = undefined
       this.log('info', `loaded market index from ${this.endpoint}: ${this.scanner.total}/${result.objects.length} objects, version=${this.scanner.version ?? 'legacy'}, elapsed=${Date.now() - start}ms`)
     } else {
@@ -311,16 +313,25 @@ class MarketProvider extends BaseMarketProvider {
     }
   }
 
-  private async writeDiskCache(result: SearchResult) {
+  private scheduleDiskCacheWrite(result: SearchResult) {
+    clearTimeout(this.cacheWriteTimer)
+    const cache: CacheFile = {
+      endpoint: this.endpoint,
+      fetchedAt: Date.now(),
+      result,
+    }
+    this.cacheWriteTimer = setTimeout(() => {
+      this.cacheWriteTimer = undefined
+      void this.writeDiskCache(cache)
+    }, 0)
+  }
+
+  private async writeDiskCache(cache: CacheFile) {
+    if (this.disposed || !this.ctx.scope.isActive) return
     try {
-      const cache: CacheFile = {
-        endpoint: this.endpoint,
-        fetchedAt: Date.now(),
-        result,
-      }
       await fsp.mkdir(dirname(this.cacheFile), { recursive: true })
       await fsp.writeFile(this.cacheFile, JSON.stringify(cache))
-      this.log('debug', `wrote market disk cache: endpoint=${cache.endpoint}, objects=${result.objects.length}`)
+      this.log('debug', `wrote market disk cache: endpoint=${cache.endpoint}, objects=${cache.result.objects.length}`)
     } catch (error) {
       this.log('warn', `failed to write market disk cache: ${formatError(error)}`)
     }
@@ -340,7 +351,7 @@ class MarketProvider extends BaseMarketProvider {
       const result = await this.fetchIndex(serial)
       if (this.isStale(serial)) return
       this.applyIndex(result, this.endpoint)
-      await this.writeDiskCache(result)
+      this.scheduleDiskCacheWrite(result)
       this._error = null
       this.cacheMeta = undefined
       this.payload = undefined

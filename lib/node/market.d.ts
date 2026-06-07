@@ -20,6 +20,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private cacheFile;
     private cacheMeta?;
     private backgroundTask?;
+    private cacheWriteTimer?;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
     start(refresh?: boolean): Promise<void>;
@@ -44,6 +45,7 @@ declare class MarketProvider extends BaseMarketProvider {
     }>;
     private applyIndex;
     private applyDiskCache;
+    private scheduleDiskCacheWrite;
     private writeDiskCache;
     private refreshInBackground;
     private refreshIndexInBackground;

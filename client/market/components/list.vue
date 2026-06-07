@@ -30,7 +30,7 @@
 
 <script lang="ts" setup>
 
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { SearchObject } from '@koishijs/registry'
 import { getSorted, getFiltered, hasFilter, kConfig } from '../utils'
 import MarketPackage from './package.vue'
@@ -46,9 +46,9 @@ const emit = defineEmits(['update:modelValue', 'update:page'])
 
 const config = inject(kConfig, {})
 
-const all = computed(() => getSorted(props.data, props.modelValue))
+const all = shallowRef<SearchObject[]>([])
 
-const packages = computed(() => getFiltered(all.value, props.modelValue, config))
+const packages = shallowRef<SearchObject[]>([])
 
 const batchSize = computed(() => {
   for (const word of props.modelValue) {
@@ -74,6 +74,7 @@ let scrollParent: HTMLElement | Window
 let resizeObserver: ResizeObserver
 let observedList: HTMLElement | undefined
 let frame = 0
+let filterFrame = 0
 
 const loadedPackages = computed(() => packages.value.slice(0, visible.value))
 
@@ -113,6 +114,10 @@ function resetVisible(scroll = true) {
 
 watch(() => props.modelValue.join('\n'), () => resetVisible(), { deep: true })
 
+watch(() => [props.data, props.modelValue.join('\n')] as const, () => {
+  schedulePackageUpdate()
+}, { immediate: true })
+
 watch(() => packages.value.length, () => {
   visible.value = Math.min(Math.max(visible.value, batchSize.value), packages.value.length || batchSize.value)
   nextTick(() => {
@@ -139,7 +144,17 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
   removeScrollListener()
   cancelAnimationFrame(frame)
+  cancelAnimationFrame(filterFrame)
 })
+
+function schedulePackageUpdate() {
+  cancelAnimationFrame(filterFrame)
+  filterFrame = requestAnimationFrame(() => {
+    const sorted = getSorted(props.data, props.modelValue)
+    all.value = sorted
+    packages.value = getFiltered(sorted, props.modelValue, config)
+  })
+}
 
 function getScrollParent() {
   return list.value?.closest('.el-scrollbar')?.querySelector('.el-scrollbar__wrap') as HTMLElement || window
