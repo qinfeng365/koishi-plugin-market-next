@@ -19,6 +19,7 @@
 - [和原版 market 的区别](#和原版-market-的区别)
 - [常见问题](#常见问题)
 - [开发](#开发)
+- [自动发布](#自动发布)
 - [发布包内容](#发布包内容)
 - [版本更新](#版本更新)
 - [许可证](#许可证)
@@ -317,6 +318,26 @@ client/          Koishi Console 前端页面与组件
 dist/            Console 前端构建产物
 lib/             后端与类型构建产物
 ```
+
+## 自动发布
+
+仓库内置 GitHub Actions workflow：`.github/workflows/publish.yml`。它会在发布前执行 `npm ci`、`npm run build` 和 `npm pack --dry-run`，然后通过 npm Trusted Publishing 发布到 npm。
+
+首次使用前，需要在 npm 包设置里添加 Trusted Publisher：
+
+- Package：`koishi-plugin-market-next`
+- Repository：`qinfeng365/koishi-plugin-market-next`
+- Workflow：`publish.yml`
+- Environment：留空
+
+发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
+
+```bash
+git tag v3.4.1
+git push origin v3.4.1
+```
+
+也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
 
 ## 发布包内容
 
