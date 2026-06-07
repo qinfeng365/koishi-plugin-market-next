@@ -15,11 +15,17 @@ declare class MarketProvider extends BaseMarketProvider {
     private endpoint;
     private disposed;
     private serial;
+    private forceRefresh;
+    private cacheFile;
+    private cacheMeta?;
+    private backgroundTask?;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
     start(refresh?: boolean): Promise<void>;
     collect(): Promise<any>;
     private fetchIndex;
+    private getEndpoints;
+    private fetchEndpoint;
     get(): Promise<BaseMarketProvider.Payload | {
         registry: string;
         data: {
@@ -31,7 +37,15 @@ declare class MarketProvider extends BaseMarketProvider {
         gravatar: string;
         stale: boolean;
         error: any;
+        cached: boolean;
+        cachedAt: number;
+        refreshing: boolean;
     }>;
+    private applyIndex;
+    private applyDiskCache;
+    private writeDiskCache;
+    private refreshInBackground;
+    private refreshIndexInBackground;
     private isStale;
     private log;
 }

@@ -33,6 +33,16 @@
               <template v-if="store.market.error">；原因：{{ store.market.error }}</template>
             </p>
           </k-comment>
+          <k-comment v-else-if="store.market.cached" type="warning" class="market-stale">
+            <p>
+              当前显示的是本地缓存的插件市场数据。
+              <template v-if="store.market.refreshing">正在后台刷新最新数据……</template>
+            </p>
+            <p>
+              Registry：{{ store.market.registry || '未知' }}
+              <template v-if="store.market.cachedAt">；缓存时间：{{ formatTime(store.market.cachedAt) }}</template>
+            </p>
+          </k-comment>
         </template>
         <template #action="data">
           <el-button
@@ -130,6 +140,10 @@ function getText(data: SearchObject) {
 
 function scrollToTop() {
   root.value?.scrollTo(0, 0)
+}
+
+function formatTime(value: number) {
+  return new Date(value).toLocaleString()
 }
 
 </script>

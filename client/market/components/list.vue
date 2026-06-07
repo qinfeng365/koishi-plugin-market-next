@@ -1,9 +1,10 @@
 <template>
   <slot name="header" v-bind="{ all, packages, hasFilter: hasFilter(modelValue) }"></slot>
   <template v-if="packages.length">
-    <div class="package-list">
+    <div ref="list" class="package-list">
+      <div v-if="topSpacer" class="virtual-spacer" :style="{ height: topSpacer + 'px' }"></div>
       <market-package
-        v-for="data in visiblePackages"
+        v-for="data in renderedPackages"
         :key="data.package.name"
         class="k-card"
         :data="data"
@@ -13,6 +14,7 @@
       >
         <slot name="action" v-bind="data"></slot>
       </market-package>
+      <div v-if="bottomSpacer" class="virtual-spacer" :style="{ height: bottomSpacer + 'px' }"></div>
     </div>
     <div v-if="hasMore" ref="sentinel" class="load-more">
       <el-button text @click="loadMore">加载更多</el-button>
@@ -59,10 +61,22 @@ const batchSize = computed(() => {
 })
 
 const sentinel = ref<HTMLElement>()
+const list = ref<HTMLElement>()
 const visible = ref(batchSize.value)
+const columns = ref(1)
+const rowHeight = ref(224)
+const startIndex = ref(0)
+const endIndex = ref(batchSize.value)
+const topSpacer = ref(0)
+const bottomSpacer = ref(0)
 let observer: IntersectionObserver
+let scrollParent: HTMLElement | Window
+let resizeObserver: ResizeObserver
+let frame = 0
 
-const visiblePackages = computed(() => packages.value.slice(0, visible.value))
+const loadedPackages = computed(() => packages.value.slice(0, visible.value))
+
+const renderedPackages = computed(() => loadedPackages.value.slice(startIndex.value, endIndex.value))
 
 const hasMore = computed(() => visible.value < packages.value.length)
 
@@ -75,30 +89,111 @@ function updateObserver() {
 function loadMore() {
   if (!hasMore.value) return
   visible.value = Math.min(visible.value + batchSize.value, packages.value.length)
-  nextTick(updateObserver)
+  nextTick(() => {
+    updateObserver()
+    updateVirtual()
+  })
 }
 
 function resetVisible(scroll = true) {
   visible.value = batchSize.value
   if (scroll) emit('update:page', 1)
-  nextTick(updateObserver)
+  startIndex.value = 0
+  endIndex.value = batchSize.value
+  topSpacer.value = 0
+  bottomSpacer.value = 0
+  nextTick(() => {
+    measureLayout()
+    updateObserver()
+    updateVirtual()
+  })
 }
 
 watch(() => props.modelValue.join('\n'), () => resetVisible(), { deep: true })
 
 watch(() => packages.value.length, () => {
   visible.value = Math.min(Math.max(visible.value, batchSize.value), packages.value.length || batchSize.value)
-  nextTick(updateObserver)
+  nextTick(() => {
+    measureLayout()
+    updateObserver()
+    updateVirtual()
+  })
 })
 
 onMounted(() => {
+  scrollParent = getScrollParent()
   observer = new IntersectionObserver((entries) => {
     if (entries.some(entry => entry.isIntersecting)) loadMore()
   }, { rootMargin: '240px 0px' })
+  resizeObserver = new ResizeObserver(() => {
+    measureLayout()
+    scheduleVirtual()
+  })
+  if (list.value) resizeObserver.observe(list.value)
+  addScrollListener()
   resetVisible(false)
 })
 
-onUnmounted(() => observer?.disconnect())
+onUnmounted(() => {
+  observer?.disconnect()
+  resizeObserver?.disconnect()
+  removeScrollListener()
+  cancelAnimationFrame(frame)
+})
+
+function getScrollParent() {
+  return list.value?.closest('.el-scrollbar')?.querySelector('.el-scrollbar__wrap') as HTMLElement || window
+}
+
+function addScrollListener() {
+  scrollParent?.addEventListener('scroll', scheduleVirtual, { passive: true })
+}
+
+function removeScrollListener() {
+  scrollParent?.removeEventListener('scroll', scheduleVirtual)
+}
+
+function measureLayout() {
+  if (!list.value) return
+  const style = getComputedStyle(list.value)
+  const gap = parseFloat(style.columnGap) || parseFloat(style.gap) || 16
+  const width = list.value.clientWidth
+  columns.value = Math.max(1, Math.floor((width + gap) / (336 + gap)))
+  const card = list.value.querySelector<HTMLElement>('.market-package')
+  rowHeight.value = (card?.offsetHeight || 202) + gap
+}
+
+function scheduleVirtual() {
+  cancelAnimationFrame(frame)
+  frame = requestAnimationFrame(updateVirtual)
+}
+
+function updateVirtual() {
+  if (!list.value) return
+  measureLayout()
+
+  const scrollTop = scrollParent instanceof Window ? window.scrollY : scrollParent.scrollTop
+  const viewportHeight = scrollParent instanceof Window ? window.innerHeight : scrollParent.clientHeight
+  const listTop = scrollParent instanceof Window
+    ? list.value.getBoundingClientRect().top + window.scrollY
+    : list.value.offsetTop
+  const offset = Math.max(0, scrollTop - listTop)
+  const totalRows = Math.ceil(loadedPackages.value.length / columns.value)
+  const overscan = 3
+  const startRow = Math.max(0, Math.floor(offset / rowHeight.value) - overscan)
+  const visibleRows = Math.ceil(viewportHeight / rowHeight.value) + overscan * 2
+  const endRow = Math.min(totalRows, startRow + visibleRows)
+
+  startIndex.value = startRow * columns.value
+  endIndex.value = Math.min(loadedPackages.value.length, endRow * columns.value)
+  topSpacer.value = startRow * rowHeight.value
+  bottomSpacer.value = Math.max(0, (totalRows - endRow) * rowHeight.value)
+
+  const loadedHeight = listTop + totalRows * rowHeight.value
+  if (hasMore.value && scrollTop + viewportHeight > loadedHeight - rowHeight.value * 4) {
+    loadMore()
+  }
+}
 
 function onQuery(word: string) {
   const words = props.modelValue.slice()
@@ -118,6 +213,12 @@ function onQuery(word: string) {
   gap: var(--card-margin);
   justify-items: center;
   flex: 1 0 auto;
+}
+
+.virtual-spacer {
+  grid-column: 1 / -1;
+  width: 100%;
+  pointer-events: none;
 }
 
 .k-empty {

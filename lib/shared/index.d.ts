@@ -30,5 +30,8 @@ export declare namespace MarketProvider {
         gravatar?: string;
         stale?: boolean;
         error?: string;
+        cached?: boolean;
+        cachedAt?: number;
+        refreshing?: boolean;
     }
 }

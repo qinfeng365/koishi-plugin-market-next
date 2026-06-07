@@ -1,6 +1,8 @@
 import { Context, Dict, HTTP, Schema, Time } from 'koishi'
 import Scanner, { SearchObject, SearchResult } from '@koishijs/registry'
 import { MarketProvider as BaseMarketProvider } from '../shared'
+import { promises as fsp } from 'fs'
+import { dirname, resolve } from 'path'
 
 export const DEFAULT_ENDPOINT = 'https://registry.koishi.t4wefan.pub/index.json'
 const FALLBACK_ENDPOINTS = [
@@ -12,6 +14,12 @@ const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
 
 type LogLevel = typeof logLevels[number]
 
+interface CacheFile {
+  endpoint: string
+  fetchedAt: number
+  result: SearchResult
+}
+
 class MarketProvider extends BaseMarketProvider {
   private http: HTTP
   private failed: string[] = []
@@ -22,6 +30,10 @@ class MarketProvider extends BaseMarketProvider {
   private endpoint: string
   private disposed = false
   private serial = 0
+  private forceRefresh = false
+  private cacheFile: string
+  private cacheMeta?: Omit<CacheFile, 'result'>
+  private backgroundTask?: Promise<void>
   private flushData: () => void
 
   constructor(ctx: Context, public config: MarketProvider.Config = {}) {
@@ -32,6 +44,7 @@ class MarketProvider extends BaseMarketProvider {
     })
     config.endpoint ||= DEFAULT_ENDPOINT
     this.endpoint = config.endpoint
+    this.cacheFile = resolve(ctx.baseDir, 'cache', 'market-next-index.json')
     this.http = ctx.http.extend(config)
     this.flushData = ctx.throttle(() => {
       if (this.disposed || !this.scanner || !ctx.scope.isActive) return
@@ -43,6 +56,9 @@ class MarketProvider extends BaseMarketProvider {
         progress: this.scanner.progress,
         stale: false,
         error: undefined,
+        cached: false,
+        cachedAt: undefined,
+        refreshing: false,
       })
       this.tempCache = {}
     }, 500)
@@ -52,6 +68,7 @@ class MarketProvider extends BaseMarketProvider {
     const serial = ++this.serial
     const start = Date.now()
     this.log('debug', `start market refresh=${refresh}, serial=${serial}, endpoint=${this.config.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
+    this.forceRefresh = refresh
     this.failed = []
     this.fullCache = {}
     this.tempCache = {}
@@ -63,6 +80,7 @@ class MarketProvider extends BaseMarketProvider {
       refreshTask = this.ctx.installer.refresh(true).catch(error => this.ctx.logger('market').warn(error))
     }
     await super.start(refresh)
+    this.forceRefresh = false
     if (this.isStale(serial)) {
       this.log('debug', `skip market refresh result because provider is stale, serial=${serial}`)
       return
@@ -81,19 +99,20 @@ class MarketProvider extends BaseMarketProvider {
     this.log('debug', `collect market index, serial=${serial}, searchEndpoint=${this.config.endpoint}, registryEndpoint=${registry?.config.endpoint}, timeout=${timeout ?? 'default'}`)
     this.scanner = new Scanner(<T>(url: string, config?: { timeout?: number }) => registry.get<T>(url, config))
     if (this.http) {
+      if (!this.forceRefresh && await this.applyDiskCache(serial)) {
+        this.refreshInBackground(serial)
+        this.log('debug', `collect market index returned disk cache first, serial=${serial}, elapsed=${Date.now() - start}ms`)
+        return null
+      }
       const result = await this.fetchIndex(serial)
       if (this.isStale(serial)) {
         this.log('debug', `drop fetched market index because provider is stale, serial=${serial}`)
         return null
       }
-      if (!Array.isArray(result?.objects)) {
-        throw new Error(`invalid market index from ${this.endpoint}`)
-      }
-      const rawTotal = result.objects.length
-      this.scanner.objects = result.objects.filter(object => !object.ignored)
-      this.scanner.total = this.scanner.objects.length
-      this.scanner.version = result.version
-      this.log('info', `loaded market index from ${this.endpoint}: ${this.scanner.total}/${rawTotal} objects, version=${this.scanner.version ?? 'legacy'}, elapsed=${Date.now() - start}ms`)
+      this.applyIndex(result, this.endpoint)
+      await this.writeDiskCache(result)
+      this.cacheMeta = undefined
+      this.log('info', `loaded market index from ${this.endpoint}: ${this.scanner.total}/${result.objects.length} objects, version=${this.scanner.version ?? 'legacy'}, elapsed=${Date.now() - start}ms`)
     } else {
       this.log('debug', `collect legacy registry index via scanner, registryEndpoint=${registry?.config.endpoint}`)
       await this.scanner.collect({ timeout })
@@ -135,37 +154,72 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   private async fetchIndex(serial: number) {
-    const endpoints = [this.config.endpoint, ...(this.config.autoRoute === false ? [] : FALLBACK_ENDPOINTS)]
-      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
-    let lastError: any
+    const endpoints = this.getEndpoints()
     this.log('debug', `market endpoint candidates: ${endpoints.join(', ')}`)
 
-    for (const [index, endpoint] of endpoints.entries()) {
-      if (this.isStale(serial)) throw new Error('market provider disposed')
-      const start = Date.now()
-      try {
-        const http: HTTP = this.ctx.http.extend({
-          ...this.config,
-          endpoint,
-        })
-        this.log('debug', `fetch market index from ${endpoint} (${index + 1}/${endpoints.length}), timeout=${this.config.timeout ?? 'default'}, proxy=${this.config.proxyAgent ? 'yes' : 'no'}`)
-        const result = await http.get<SearchResult>('')
-        if (this.isStale(serial)) throw new Error('market provider disposed')
-        this.endpoint = endpoint
-        if (endpoint !== this.config.endpoint) {
-          this.log('info', `fallback market index endpoint: ${endpoint}`)
-        }
-        this.log('debug', `market index fetched from ${endpoint} in ${Date.now() - start}ms, objects=${Array.isArray(result?.objects) ? result.objects.length : 'invalid'}, version=${result?.version ?? 'legacy'}`)
-        return result
-      } catch (error) {
-        lastError = error
-        if (this.isStale(serial)) throw new Error('market provider disposed')
-        this.log('warn', `failed to fetch market index from ${endpoint} in ${Date.now() - start}ms: ${formatError(error)}`)
-      }
+    if (endpoints.length === 1 || this.config.autoRoute === false) {
+      const { endpoint, result } = await this.fetchEndpoint(endpoints[0], 0, endpoints.length, serial)
+      this.endpoint = endpoint
+      return result
     }
 
-    this.log('debug', `all market endpoint candidates failed, count=${endpoints.length}`)
-    throw lastError
+    this.log('debug', `race market endpoints concurrently, count=${endpoints.length}`)
+    return new Promise<SearchResult>((resolve, reject) => {
+      let settled = false
+      let failed = 0
+      let lastError: any
+
+      endpoints.forEach((endpoint, index) => {
+        this.fetchEndpoint(endpoint, index, endpoints.length, serial).then((data) => {
+          if (settled) {
+            this.log('debug', `ignore slower market endpoint ${data.endpoint}, elapsed=${data.elapsed}ms`)
+            return
+          }
+          settled = true
+          this.endpoint = data.endpoint
+          if (data.endpoint !== this.config.endpoint) {
+            this.log('info', `fallback market index endpoint: ${data.endpoint}`)
+          }
+          resolve(data.result)
+        }).catch((error) => {
+          if (settled) return
+          lastError = error
+          failed++
+          if (failed < endpoints.length) return
+          this.log('debug', `all market endpoint candidates failed, count=${endpoints.length}`)
+          reject(lastError)
+        })
+      })
+    })
+  }
+
+  private getEndpoints() {
+    return [this.config.endpoint, ...(this.config.autoRoute === false ? [] : FALLBACK_ENDPOINTS)]
+      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
+  }
+
+  private async fetchEndpoint(endpoint: string, index: number, total: number, serial: number) {
+    if (this.isStale(serial)) throw new Error('market provider disposed')
+    const start = Date.now()
+    try {
+      const http: HTTP = this.ctx.http.extend({
+        ...this.config,
+        endpoint,
+      })
+      this.log('debug', `fetch market index from ${endpoint} (${index + 1}/${total}), timeout=${this.config.timeout ?? 'default'}, proxy=${this.config.proxyAgent ? 'yes' : 'no'}`)
+      const result = await http.get<SearchResult>('')
+      if (this.isStale(serial)) throw new Error('market provider disposed')
+      if (!Array.isArray(result?.objects)) {
+        throw new Error(`invalid market index from ${endpoint}`)
+      }
+      const elapsed = Date.now() - start
+      this.log('debug', `market index fetched from ${endpoint} in ${elapsed}ms, objects=${result.objects.length}, version=${result.version ?? 'legacy'}`)
+      return { endpoint, result, elapsed }
+    } catch (error) {
+      if (this.isStale(serial)) throw new Error('market provider disposed')
+      this.log('warn', `failed to fetch market index from ${endpoint} in ${Date.now() - start}ms: ${formatError(error)}`)
+      throw error
+    }
   }
 
   async get() {
@@ -183,6 +237,7 @@ class MarketProvider extends BaseMarketProvider {
           ...this.payload,
           stale: true,
           error,
+          refreshing: false,
         }
       }
       this.log('debug', `get market payload failed without cache, error=${formatError(this._error)}, elapsed=${Date.now() - start}ms`)
@@ -197,6 +252,9 @@ class MarketProvider extends BaseMarketProvider {
       gravatar: process.env.GRAVATAR_MIRROR,
       stale: false,
       error: undefined,
+      cached: !!this.cacheMeta,
+      cachedAt: this.cacheMeta?.fetchedAt,
+      refreshing: !!this.backgroundTask,
     } : {
       registry: this.endpoint || this.ctx.installer.endpoint,
       data: this.fullCache,
@@ -206,10 +264,88 @@ class MarketProvider extends BaseMarketProvider {
       gravatar: process.env.GRAVATAR_MIRROR,
       stale: false,
       error: undefined,
+      cached: !!this.cacheMeta,
+      cachedAt: this.cacheMeta?.fetchedAt,
+      refreshing: !!this.backgroundTask,
     }
     this.payload = payload
     this.log('debug', `get market payload completed: total=${payload.total}, progress=${payload.progress}, failed=${payload.failed}, stale=${!!payload.stale}, elapsed=${Date.now() - start}ms`)
     return payload
+  }
+
+  private applyIndex(result: SearchResult, endpoint: string) {
+    if (!Array.isArray(result?.objects)) {
+      throw new Error(`invalid market index from ${endpoint}`)
+    }
+    this.endpoint = endpoint
+    this.scanner.objects = result.objects.filter(object => !object.ignored)
+    this.scanner.total = this.scanner.objects.length
+    this.scanner.version = result.version
+  }
+
+  private async applyDiskCache(serial: number) {
+    try {
+      const cache = JSON.parse(await fsp.readFile(this.cacheFile, 'utf8')) as CacheFile
+      if (!this.getEndpoints().includes(cache.endpoint)) {
+        this.log('debug', `skip market disk cache from unrelated endpoint: ${cache.endpoint}`)
+        return false
+      }
+      if (this.isStale(serial)) return false
+      this.applyIndex(cache.result, cache.endpoint)
+      this.cacheMeta = { endpoint: cache.endpoint, fetchedAt: cache.fetchedAt }
+      this.log('info', `loaded market index from disk cache: ${this.scanner.total}/${cache.result.objects.length} objects, endpoint=${cache.endpoint}, cachedAt=${new Date(cache.fetchedAt).toISOString()}`)
+      return true
+    } catch (error) {
+      if ((error as any)?.code !== 'ENOENT') {
+        this.log('warn', `failed to read market disk cache: ${formatError(error)}`)
+      } else {
+        this.log('debug', 'market disk cache is empty')
+      }
+      return false
+    }
+  }
+
+  private async writeDiskCache(result: SearchResult) {
+    try {
+      const cache: CacheFile = {
+        endpoint: this.endpoint,
+        fetchedAt: Date.now(),
+        result,
+      }
+      await fsp.mkdir(dirname(this.cacheFile), { recursive: true })
+      await fsp.writeFile(this.cacheFile, JSON.stringify(cache))
+      this.log('debug', `wrote market disk cache: endpoint=${cache.endpoint}, objects=${result.objects.length}`)
+    } catch (error) {
+      this.log('warn', `failed to write market disk cache: ${formatError(error)}`)
+    }
+  }
+
+  private refreshInBackground(serial: number) {
+    if (this.backgroundTask) return
+    this.backgroundTask = this.refreshIndexInBackground(serial).finally(() => {
+      this.backgroundTask = undefined
+    })
+  }
+
+  private async refreshIndexInBackground(serial: number) {
+    const start = Date.now()
+    this.log('debug', `start background market refresh, serial=${serial}`)
+    try {
+      const result = await this.fetchIndex(serial)
+      if (this.isStale(serial)) return
+      this.applyIndex(result, this.endpoint)
+      await this.writeDiskCache(result)
+      this._error = null
+      this.cacheMeta = undefined
+      this.payload = undefined
+      await this.ctx.get('console')?.refresh('market')
+      this.log('info', `background market refresh completed in ${Date.now() - start}ms, endpoint=${this.endpoint}, objects=${this.scanner.total}`)
+    } catch (error) {
+      if (this.isStale(serial)) return
+      this._error = error
+      await this.ctx.get('console')?.refresh('market')
+      this.log('warn', `background market refresh failed in ${Date.now() - start}ms: ${formatError(error)}`)
+    }
   }
 
   private isStale(serial = this.serial) {
