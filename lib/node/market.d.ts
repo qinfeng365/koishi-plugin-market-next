@@ -1,6 +1,6 @@
-import { Context, Schema } from 'koishi';
+import { Context, Dict, Schema } from 'koishi';
 import { SearchObject } from '@koishijs/registry';
-import { MarketProvider as BaseMarketProvider } from '../shared';
+import { MarketPerformance, MarketProvider as BaseMarketProvider } from '../shared';
 export declare const DEFAULT_ENDPOINT = "https://registry.koishi.t4wefan.pub/index.json";
 declare const logLevels: readonly ["silent", "error", "warn", "info", "debug"];
 type LogLevel = typeof logLevels[number];
@@ -19,6 +19,9 @@ declare class MarketProvider extends BaseMarketProvider {
     private indexMode;
     private cacheFile;
     private cacheMeta?;
+    private conditionMeta?;
+    private cacheResult?;
+    private debugInfo?;
     private backgroundTask?;
     private cacheWriteTimer?;
     private flushData;
@@ -27,12 +30,12 @@ declare class MarketProvider extends BaseMarketProvider {
     collect(): Promise<any>;
     private fetchIndex;
     private getEndpoints;
+    private getConditionalHeaders;
+    private updateCacheState;
     private fetchEndpoint;
-    get(): Promise<BaseMarketProvider.Payload | {
+    get(): Promise<{
         registry: string;
-        data: {
-            [k: string]: SearchObject;
-        };
+        data: Dict<SearchObject>;
         failed: number;
         total: number;
         progress: number;
@@ -41,7 +44,23 @@ declare class MarketProvider extends BaseMarketProvider {
         error: any;
         cached: boolean;
         cachedAt: number;
+        validatedAt: number;
         refreshing: boolean;
+        debug: MarketPerformance;
+    } | {
+        debug: MarketPerformance;
+        registry?: string;
+        data: Dict<SearchObject>;
+        total: number;
+        failed: number;
+        progress: number;
+        gravatar?: string;
+        stale?: boolean;
+        error?: string;
+        cached?: boolean;
+        cachedAt?: number;
+        validatedAt?: number;
+        refreshing?: boolean;
     }>;
     private applyIndex;
     private applyDiskCache;
@@ -49,6 +68,8 @@ declare class MarketProvider extends BaseMarketProvider {
     private writeDiskCache;
     private refreshInBackground;
     private refreshIndexInBackground;
+    private updateDebugInfo;
+    private getDebugInfo;
     private isStale;
     private log;
 }

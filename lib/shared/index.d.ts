@@ -10,6 +10,19 @@ export interface RegistryStatus {
     elapsed?: number;
     updatedAt?: number;
 }
+export interface MarketPerformance {
+    source?: 'network' | 'disk-cache' | 'http-304' | 'hash-cache' | 'legacy';
+    endpoint?: string;
+    candidates?: number;
+    size?: number;
+    objects?: number;
+    hash?: string;
+    etag?: string;
+    lastModified?: string;
+    cachedAt?: number;
+    validatedAt?: number;
+    timings?: Dict<number>;
+}
 declare module '@koishijs/console' {
     interface Events {
         'market/refresh'(): Promise<void>;
@@ -41,6 +54,8 @@ export declare namespace MarketProvider {
         error?: string;
         cached?: boolean;
         cachedAt?: number;
+        validatedAt?: number;
         refreshing?: boolean;
+        debug?: MarketPerformance;
     }
 }

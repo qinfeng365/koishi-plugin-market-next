@@ -206,7 +206,7 @@ class Installer extends Service {
             throw new Error(`invalid registry metadata for ${name}`)
           }
           if (endpoint !== this.metadataEndpoint) {
-            logger.info(`fallback npm registry endpoint for ${name}: ${endpoint}`)
+            logger.debug(`fallback npm registry endpoint for ${name}: ${endpoint}`)
             this.metadataEndpoint = endpoint
           }
           this.setRegistryStatus(name, {

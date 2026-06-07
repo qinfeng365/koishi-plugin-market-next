@@ -40,9 +40,10 @@ const props = defineProps<{
   data: SearchObject[],
   installed?: (data: SearchObject) => boolean,
   gravatar?: string,
+  debug?: boolean,
 }>()
 
-const emit = defineEmits(['update:modelValue', 'update:page'])
+const emit = defineEmits(['update:modelValue', 'update:page', 'debug'])
 
 const config = inject(kConfig, {})
 
@@ -75,6 +76,13 @@ let resizeObserver: ResizeObserver
 let observedList: HTMLElement | undefined
 let frame = 0
 let filterFrame = 0
+let debugState = {
+  timings: {} as Record<string, number>,
+  total: 0,
+  matched: 0,
+  visible: 0,
+  rendered: 0,
+}
 
 const loadedPackages = computed(() => packages.value.slice(0, visible.value))
 
@@ -150,9 +158,21 @@ onUnmounted(() => {
 function schedulePackageUpdate() {
   cancelAnimationFrame(filterFrame)
   filterFrame = requestAnimationFrame(() => {
+    const start = props.debug ? performance.now() : 0
     const sorted = getSorted(props.data, props.modelValue)
+    const sortedAt = props.debug ? performance.now() : 0
     all.value = sorted
     packages.value = getFiltered(sorted, props.modelValue, config)
+    if (props.debug) {
+      emitDebug({
+        timings: {
+          frontendSort: sortedAt - start,
+          frontendFilter: performance.now() - sortedAt,
+        },
+        total: sorted.length,
+        matched: packages.value.length,
+      })
+    }
   })
 }
 
@@ -196,6 +216,7 @@ function scheduleVirtual() {
 
 function updateVirtual() {
   if (!list.value) return
+  const start = props.debug ? performance.now() : 0
   measureLayout()
 
   const scrollTop = scrollParent instanceof Window ? window.scrollY : scrollParent.scrollTop
@@ -220,6 +241,27 @@ function updateVirtual() {
   if (hasMore.value && scrollTop + viewportHeight > loadedHeight - rowHeight.value * 4) {
     loadMore()
   }
+  if (props.debug) {
+    emitDebug({
+      timings: {
+        frontendVirtual: performance.now() - start,
+      },
+      visible: loadedPackages.value.length,
+      rendered: renderedPackages.value.length,
+    })
+  }
+}
+
+function emitDebug(value: Partial<typeof debugState>) {
+  debugState = {
+    ...debugState,
+    ...value,
+    timings: {
+      ...debugState.timings,
+      ...value.timings,
+    },
+  }
+  emit('debug', debugState)
 }
 
 function onQuery(word: string) {

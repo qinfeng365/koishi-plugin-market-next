@@ -171,7 +171,7 @@ export default (ctx: Context) => {
     id: '.refresh',
     icon: 'refresh',
     label: '刷新',
-    type: () => !store.market || store.market.progress < store.market.total ? 'spin disabled' : '',
+    type: () => !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
   }])
 
   ctx.menu('dependencies', [{
@@ -190,7 +190,7 @@ export default (ctx: Context) => {
     id: 'market.refresh',
     icon: 'refresh',
     label: '刷新',
-    type: () => !store.market || store.market.progress < store.market.total ? 'spin disabled' : '',
+    type: () => !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
   }])
 
   ctx.effect(() => {

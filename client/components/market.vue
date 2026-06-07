@@ -20,6 +20,8 @@
         v-model="words"
         :data="data"
         :gravatar="config.market.gravatar || store.market.gravatar"
+        :debug="!!store.market.debug"
+        @debug="updateClientDebug"
         @update:page="scrollToTop">
         <template #header="{ hasFilter, all, packages }">
           <market-search v-model="words"></market-search>
@@ -41,7 +43,20 @@
             <p>
               Registry：{{ store.market.registry || '未知' }}
               <template v-if="store.market.cachedAt">；缓存时间：{{ formatTime(store.market.cachedAt) }}</template>
+              <template v-if="store.market.validatedAt">；校验时间：{{ formatTime(store.market.validatedAt) }}</template>
             </p>
+          </k-comment>
+          <k-comment v-if="store.market.debug" type="primary" class="market-debug">
+            <p>Debug 性能：{{ formatSource(store.market.debug.source) }} / {{ store.market.debug.endpoint || store.market.registry || '未知源' }}</p>
+            <div class="market-debug-grid">
+              <span v-for="item in debugItems" :key="item.label" class="market-debug-item">
+                <span>{{ item.label }}</span>
+                <span>{{ item.value }}</span>
+              </span>
+            </div>
+            <div v-if="debugTimings.length" class="market-debug-timings">
+              <span v-for="[key, value] in debugTimings" :key="key">{{ formatTimingName(key) }} {{ formatDuration(value) }}</span>
+            </div>
           </k-comment>
         </template>
         <template #action="data">
@@ -96,6 +111,40 @@ const data = computed(() => Object.values(store.market?.data || {}))
 
 const visibleData = computed(() => getVisible(data.value, words.value))
 
+const clientDebug = ref<{
+  timings?: Record<string, number>
+  total?: number
+  matched?: number
+  visible?: number
+  rendered?: number
+}>({})
+
+const debugItems = computed(() => {
+  const debug = store.market?.debug
+  if (!debug) return []
+  return [
+    ['对象数', formatNumber(debug.objects ?? store.market?.total)],
+    ['索引大小', formatSize(debug.size)],
+    ['候选源', formatNumber(debug.candidates)],
+    ['Hash', debug.hash || '-'],
+    ['ETag', debug.etag || '-'],
+    ['Last-Modified', debug.lastModified || '-'],
+    ['缓存时间', debug.cachedAt ? formatTime(debug.cachedAt) : '-'],
+    ['校验时间', debug.validatedAt ? formatTime(debug.validatedAt) : '-'],
+    ['前端匹配', clientDebug.value.matched == null ? '-' : `${clientDebug.value.matched} / ${clientDebug.value.total ?? '-'}`],
+    ['已加载/渲染', clientDebug.value.visible == null ? '-' : `${clientDebug.value.visible} / ${clientDebug.value.rendered ?? '-'}`],
+  ].map(([label, value]) => ({ label, value }))
+})
+
+const debugTimings = computed(() => {
+  return Object
+    .entries({
+      ...(store.market?.debug?.timings ?? {}),
+      ...(clientDebug.value.timings ?? {}),
+    })
+    .filter(([, value]) => typeof value === 'number')
+})
+
 watch(router.currentRoute, (value) => {
   if (value.path !== '/market') return
   const { keyword } = value.query
@@ -144,6 +193,54 @@ function scrollToTop() {
 
 function formatTime(value: number) {
   return new Date(value).toLocaleString()
+}
+
+function updateClientDebug(value: typeof clientDebug.value) {
+  clientDebug.value = value
+}
+
+function formatSource(source?: string) {
+  const labels: Record<string, string> = {
+    'network': '网络',
+    'disk-cache': '磁盘缓存',
+    'http-304': 'HTTP 304',
+    'hash-cache': 'Hash 命中',
+    'legacy': '旧索引',
+  }
+  return source ? labels[source] || source : '未知'
+}
+
+function formatTimingName(name: string) {
+  const labels: Record<string, string> = {
+    request: '请求',
+    hash: 'Hash',
+    parse: 'JSON',
+    apply: '索引',
+    total: '总计',
+    cacheRead: '读缓存',
+    cacheParse: '缓存 JSON',
+    payloadData: '映射',
+    payload: 'Payload',
+    frontendSort: '前端排序',
+    frontendFilter: '前端筛选',
+    frontendVirtual: '虚拟滚动',
+  }
+  return labels[name] || name
+}
+
+function formatDuration(value: number) {
+  return `${Math.round(value)}ms`
+}
+
+function formatSize(value?: number) {
+  if (value == null) return '-'
+  if (value > 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)}MB`
+  if (value > 1024) return `${(value / 1024).toFixed(1)}KB`
+  return `${value}B`
+}
+
+function formatNumber(value?: number) {
+  return value == null ? '-' : value.toLocaleString()
 }
 
 </script>
@@ -197,6 +294,45 @@ function formatTime(value: number) {
   p {
     margin: 0.25rem 0;
   }
+}
+
+.market-debug.k-comment {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 1.25rem 0 -0.25rem;
+  font-size: 12px;
+
+  p {
+    margin: 0.25rem 0 0.5rem;
+  }
+}
+
+.market-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.25rem 1rem;
+}
+
+.market-debug-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+
+  span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg1);
+  }
+}
+
+.market-debug-timings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.5rem;
+  color: var(--fg2);
 }
 
 .market-container {
