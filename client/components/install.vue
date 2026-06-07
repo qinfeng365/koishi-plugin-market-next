@@ -115,7 +115,7 @@
 
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, send, store, useContext, useConfig } from '@koishijs/client'
-import { analyzeVersions, install, PeerInfo, ResultType } from './utils'
+import { analyzeVersions, ensureInstalledConfig, install, PeerInfo, ResultType } from './utils'
 import { active } from '../utils'
 import { parse } from 'semver'
 
@@ -166,7 +166,7 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
     if (workspace.value) return
     if (version) {
       for (const key in versions) {
-        ctx.configWriter?.ensure(key, key !== target)
+        await ensureInstalledConfig(ctx, key, key !== target)
       }
     } else if (removeConfig) {
       ctx.configWriter?.remove(target)

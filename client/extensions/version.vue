@@ -41,6 +41,7 @@ import { global, send, store, useContext } from '@koishijs/client'
 import { computed, inject, ComputedRef } from 'vue'
 import { hasUpdate } from '../utils'
 import type {} from '@koishijs/plugin-config'
+import { ensureInstalledConfig } from '../components/utils'
 
 const ctx = useContext()
 const name = inject<ComputedRef<string>>('plugin:name')
@@ -52,7 +53,7 @@ const versions = computed(() => store.registry?.[name.value])
 
 async function addDependency() {
   const code = await send('market/install', { [name.value]: local.value.package.version })
-  if (!code) ctx.configWriter?.ensure(name.value, true)
+  if (!code) await ensureInstalledConfig(ctx, name.value, true)
 }
 
 </script>

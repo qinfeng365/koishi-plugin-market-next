@@ -1,4 +1,4 @@
-import { Awaitable, Dict, loading, message, send, socket, store, valueMap } from '@koishijs/client'
+import { Awaitable, Context, Dict, loading, message, send, socket, store, valueMap } from '@koishijs/client'
 import type { Registry } from '@koishijs/registry'
 import { compare, satisfies } from 'semver'
 import { reactive, ref, watch } from 'vue'
@@ -81,5 +81,29 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
   } finally {
     dispose()
     instance.close()
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function waitForInstalledPackage(name: string) {
+  for (let index = 0; index < 20; index++) {
+    if (store.packages?.[name]) return
+    await sleep(250)
+  }
+}
+
+export async function ensureInstalledConfig(ctx: Context, name: string, silent = true) {
+  if (!ctx.configWriter || !name) return
+  await waitForInstalledPackage(name)
+  if (ctx.configWriter.get(name)?.length) return
+  ctx.configWriter.ensure(name, silent)
+}
+
+export async function ensureInstalledConfigs(ctx: Context, names: string[], silent = true) {
+  for (const name of names) {
+    await ensureInstalledConfig(ctx, name, silent)
   }
 }

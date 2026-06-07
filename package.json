@@ -1,7 +1,15 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Manage your bots and plugins with console",
-  "version": "3.2.0",
+  "version": "3.2.1",
+  "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qinfeng365/koishi-plugin-market-next.git"
+  },
+  "bugs": {
+    "url": "https://github.com/qinfeng365/koishi-plugin-market-next/issues"
+  },
   "main": "lib/node/index.js",
   "types": "lib/index.d.ts",
   "scripts": {

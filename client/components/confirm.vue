@@ -43,7 +43,7 @@
 
 import { computed, ref } from 'vue'
 import { store, useContext, useConfig } from '@koishijs/client'
-import { showConfirm, install } from './utils'
+import { ensureInstalledConfigs, showConfirm, install } from './utils'
 
 const ctx = useContext()
 const config = useConfig()
@@ -63,10 +63,9 @@ function confirm() {
   showConfirm.value = false
   const override = { ...config.value.market.override }
   return install(config.value.market.override, async () => {
-    for (const [name, value] of Object.entries(override)) {
-      if (!value) continue
-      ctx.configWriter?.ensure(name, true)
-    }
+    await ensureInstalledConfigs(ctx, Object.entries(override)
+      .filter(([, value]) => value)
+      .map(([name]) => name), true)
   })
 }
 
