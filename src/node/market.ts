@@ -40,6 +40,8 @@ class MarketProvider extends BaseMarketProvider {
         failed: this.failed.length,
         total: this.scanner.total,
         progress: this.scanner.progress,
+        stale: false,
+        error: undefined,
       })
       this.tempCache = {}
     }, 500)
@@ -151,8 +153,13 @@ class MarketProvider extends BaseMarketProvider {
     }
     if (this._error) {
       if (this.payload) {
-        this.log('warn', `use cached market payload because current load failed: ${formatError(this._error)}`)
-        return this.payload
+        const error = formatError(this._error)
+        this.log('warn', `use cached market payload because current load failed: ${error}`)
+        return {
+          ...this.payload,
+          stale: true,
+          error,
+        }
       }
       return { data: {}, failed: 0, total: 0, progress: 0 }
     }
@@ -163,6 +170,8 @@ class MarketProvider extends BaseMarketProvider {
       total: this.scanner.total,
       progress: this.scanner.total,
       gravatar: process.env.GRAVATAR_MIRROR,
+      stale: false,
+      error: undefined,
     } : {
       registry: this.endpoint || this.ctx.installer.endpoint,
       data: this.fullCache,
@@ -170,6 +179,8 @@ class MarketProvider extends BaseMarketProvider {
       total: this.scanner.total,
       progress: this.scanner.progress,
       gravatar: process.env.GRAVATAR_MIRROR,
+      stale: false,
+      error: undefined,
     }
     this.payload = payload
     return payload

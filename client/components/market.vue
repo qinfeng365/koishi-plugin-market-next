@@ -26,6 +26,13 @@
           <div class="market-hint text-center">
             共搜索到 {{ hasFilter ? packages.length + ' / ' : '' }}{{ all.length }} 个插件。
           </div>
+          <k-comment v-if="store.market.stale" type="warning" class="market-stale">
+            <p>插件市场刷新失败，当前显示的是上一次成功加载的数据。</p>
+            <p>
+              Registry：{{ store.market.registry || '未知' }}
+              <template v-if="store.market.error">；原因：{{ store.market.error }}</template>
+            </p>
+          </k-comment>
         </template>
         <template #action="data">
           <el-button
@@ -165,6 +172,16 @@ function scrollToTop() {
 
   .el-checkbox {
     margin-left: 1.5rem;
+  }
+}
+
+.market-stale.k-comment {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 1.25rem 0 -0.25rem;
+
+  p {
+    margin: 0.25rem 0;
   }
 }
 

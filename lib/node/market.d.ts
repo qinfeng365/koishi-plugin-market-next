@@ -1,4 +1,5 @@
 import { Context, Schema } from 'koishi';
+import { SearchObject } from '@koishijs/registry';
 import { MarketProvider as BaseMarketProvider } from '../shared';
 export declare const DEFAULT_ENDPOINT = "https://registry.koishi.t4wefan.pub/index.json";
 declare const logLevels: readonly ["silent", "error", "warn", "info", "debug"];
@@ -19,7 +20,18 @@ declare class MarketProvider extends BaseMarketProvider {
     start(refresh?: boolean): Promise<void>;
     collect(): Promise<any>;
     private fetchIndex;
-    get(): Promise<BaseMarketProvider.Payload>;
+    get(): Promise<BaseMarketProvider.Payload | {
+        registry: string;
+        data: {
+            [k: string]: SearchObject;
+        };
+        failed: number;
+        total: number;
+        progress: number;
+        gravatar: string;
+        stale: boolean;
+        error: any;
+    }>;
     private isStale;
     private log;
 }

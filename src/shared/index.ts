@@ -62,5 +62,7 @@ export namespace MarketProvider {
     failed: number
     progress: number
     gravatar?: string
+    stale?: boolean
+    error?: string
   }
 }
