@@ -34,10 +34,9 @@ class MarketProvider extends BaseMarketProvider {
     if (refresh) {
       this._task = null
       this._error = null
-      await this.ctx.installer.refresh(true)
+      this.ctx.installer.refresh(true).catch(error => this.ctx.logger('market').warn(error))
     }
-    await super.start(refresh)
-    await this.prepare()
+    return super.start(refresh)
   }
 
   async collect() {
@@ -47,7 +46,16 @@ class MarketProvider extends BaseMarketProvider {
     this.failed = []
     this.scanner = new Scanner(<T>(url: string, config?: { timeout?: number }) => registry.get<T>(url, config))
     if (this.http) {
-      const result = await this.http.get<SearchResult>('')
+      let result: SearchResult
+      try {
+        result = await this.http.get<SearchResult>('')
+      } catch (error) {
+        this.ctx.logger('market').warn(`failed to fetch market index from ${this.config.endpoint}`)
+        throw error
+      }
+      if (!Array.isArray(result?.objects)) {
+        throw new Error(`invalid market index from ${this.config.endpoint}`)
+      }
       this.scanner.objects = result.objects.filter(object => !object.ignored)
       this.scanner.total = this.scanner.objects.length
       this.scanner.version = result.version
