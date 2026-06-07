@@ -15,6 +15,7 @@ export interface RegistryStatus {
 export interface MarketPerformance {
   source?: 'network' | 'disk-cache' | 'http-304' | 'hash-cache' | 'legacy'
   endpoint?: string
+  preferredEndpoint?: string
   candidates?: number
   size?: number
   wireSize?: number

@@ -30,6 +30,8 @@ declare class MarketProvider extends BaseMarketProvider {
     collect(): Promise<any>;
     private fetchIndex;
     private getEndpoints;
+    private getPreferredEndpoint;
+    private waitRouteTurn;
     private getConditionalHeaders;
     private updateCacheState;
     private fetchEndpoint;

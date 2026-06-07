@@ -14,6 +14,7 @@ const FALLBACK_ENDPOINTS = [
   'https://koishi.itzdrli.cc',
   'https://registry.koishi.chat/index.json',
 ]
+const ROUTE_STAGGER = 120
 const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
 
 type LogLevel = typeof logLevels[number]
@@ -36,6 +37,7 @@ type CacheMeta = Omit<CacheFile, 'result'>
 
 interface EndpointResult {
   endpoint: string
+  preferredEndpoint?: string
   result: SearchResult
   elapsed: number
   candidates: number
@@ -162,6 +164,7 @@ class MarketProvider extends BaseMarketProvider {
       this.updateDebugInfo({
         source: result.source,
         endpoint: result.endpoint,
+        preferredEndpoint: result.preferredEndpoint,
         candidates: result.candidates,
         size: result.size,
         wireSize: result.wireSize,
@@ -232,10 +235,11 @@ class MarketProvider extends BaseMarketProvider {
       const result = await this.fetchEndpoint(endpoints[0], 0, endpoints.length, serial)
       const { endpoint } = result
       this.endpoint = endpoint
+      result.preferredEndpoint = endpoints[0]
       return result
     }
 
-    this.log('debug', `race market endpoints concurrently, count=${endpoints.length}`)
+    this.log('debug', `race market endpoints with weighted stagger, count=${endpoints.length}, preferred=${endpoints[0]}, stagger=${ROUTE_STAGGER}ms`)
     return new Promise<EndpointResult>((resolve, reject) => {
       let settled = false
       let failed = 0
@@ -243,7 +247,11 @@ class MarketProvider extends BaseMarketProvider {
       const controllers = endpoints.map(() => new AbortController())
 
       endpoints.forEach((endpoint, index) => {
-        this.fetchEndpoint(endpoint, index, endpoints.length, serial, false, controllers[index].signal).then((data) => {
+        const signal = controllers[index].signal
+        this.waitRouteTurn(index, signal).then(() => {
+          if (settled) throw new Error('market endpoint race settled before request')
+          return this.fetchEndpoint(endpoint, index, endpoints.length, serial, false, signal)
+        }).then((data) => {
           if (settled) {
             this.log('debug', `ignore slower market endpoint ${data.endpoint}, elapsed=${data.elapsed}ms`)
             return
@@ -256,6 +264,7 @@ class MarketProvider extends BaseMarketProvider {
           if (data.endpoint !== this.config.endpoint) {
             this.log('debug', `fallback market index endpoint: ${data.endpoint}`)
           }
+          data.preferredEndpoint = endpoints[0]
           resolve(data)
         }).catch((error) => {
           if (settled) return
@@ -270,8 +279,29 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   private getEndpoints() {
-    return [this.config.endpoint, ...(this.config.autoRoute === false ? [] : FALLBACK_ENDPOINTS)]
+    const endpoints = [this.config.endpoint, ...(this.config.autoRoute === false ? [] : FALLBACK_ENDPOINTS)]
       .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
+    const preferred = this.getPreferredEndpoint()
+    if (!preferred) return endpoints
+    const index = endpoints.indexOf(preferred)
+    if (index <= 0) return endpoints
+    return [preferred, ...endpoints.slice(0, index), ...endpoints.slice(index + 1)]
+  }
+
+  private getPreferredEndpoint() {
+    return this.conditionMeta?.endpoint || this.cacheMeta?.endpoint
+  }
+
+  private waitRouteTurn(index: number, signal?: AbortSignal) {
+    if (!index) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) return reject(signal.reason)
+      const timer = setTimeout(resolve, index * ROUTE_STAGGER)
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        reject(signal.reason)
+      }, { once: true })
+    })
   }
 
   private getConditionalHeaders(endpoint: string) {
@@ -588,6 +618,7 @@ class MarketProvider extends BaseMarketProvider {
       this.updateDebugInfo({
         source: result.source,
         endpoint: result.endpoint,
+        preferredEndpoint: result.preferredEndpoint,
         candidates: result.candidates,
         size: result.size,
         wireSize: result.wireSize,
@@ -619,7 +650,7 @@ class MarketProvider extends BaseMarketProvider {
         ...info.timings,
       },
     }
-    this.log('debug', `market performance: source=${this.debugInfo.source ?? 'unknown'}, endpoint=${this.debugInfo.endpoint ?? 'unknown'}, objects=${this.debugInfo.objects ?? 0}, size=${this.debugInfo.size ?? 0}, wireSize=${this.debugInfo.wireSize ?? 'unknown'}, encoding=${this.debugInfo.contentEncoding ?? 'identity'}, timings=${formatTimings(this.debugInfo.timings)}`)
+    this.log('debug', `market performance: source=${this.debugInfo.source ?? 'unknown'}, endpoint=${this.debugInfo.endpoint ?? 'unknown'}, preferred=${this.debugInfo.preferredEndpoint ?? 'unknown'}, objects=${this.debugInfo.objects ?? 0}, size=${this.debugInfo.size ?? 0}, wireSize=${this.debugInfo.wireSize ?? 'unknown'}, encoding=${this.debugInfo.contentEncoding ?? 'identity'}, timings=${formatTimings(this.debugInfo.timings)}`)
   }
 
   private getDebugInfo(timings?: Dict<number>) {

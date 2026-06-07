@@ -129,6 +129,7 @@ const debugItems = computed(() => {
     ['压缩方式', formatEncoding(debug.contentEncoding)],
     ['压缩比例', formatCompressionRatio(debug.size, debug.wireSize)],
     ['候选源', formatNumber(debug.candidates)],
+    ['优先源', debug.preferredEndpoint || '-'],
     ['Hash', debug.hash || '-'],
     ['ETag', debug.etag || '-'],
     ['Last-Modified', debug.lastModified || '-'],
