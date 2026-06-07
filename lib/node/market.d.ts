@@ -22,6 +22,7 @@ declare namespace MarketProvider {
         endpoint?: string;
         timeout?: number;
         proxyAgent?: string;
+        autoRoute?: boolean;
     }
     const Config: Schema<Config>;
 }

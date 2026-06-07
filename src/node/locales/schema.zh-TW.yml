@@ -7,3 +7,4 @@ search:
   endpoint: 用於搜尋外掛程式市場的網址。默認使用 t4wefan 鏡像。
   timeout: 搜尋外掛程式市場的超時時間。
   proxyAgent: 用於搜尋外掛程式市場的代理。
+  autoRoute: 目前市場源失敗時自動嘗試備用市場源。

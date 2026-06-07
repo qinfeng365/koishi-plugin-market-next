@@ -80,6 +80,7 @@ plugins:
     search:
       endpoint: https://registry.koishi.t4wefan.pub/index.json
       timeout: 30s
+      autoRoute: true
     chatlunaTool: false
 ```
 
@@ -90,6 +91,7 @@ plugins:
 | `search.endpoint` | `https://registry.koishi.t4wefan.pub/index.json` | 插件市场索引地址。 |
 | `search.timeout` | `30s` | 获取市场索引的超时时间。 |
 | `search.proxyAgent` | 空 | 请求市场索引时使用的代理。 |
+| `search.autoRoute` | `true` | 当前市场源失败时是否自动尝试备用市场源。 |
 | `chatlunaTool` | `false` | 是否启用 ChatLuna 插件市场查询工具。 |
 
 可选市场索引：
@@ -111,6 +113,16 @@ plugins:
 - `https://registry.koishi.t4wefan.pub/index.json`
 - `https://koi.nyan.zone/registry/index.json`
 - `https://kp.itzdrli.cc`
+
+测试单一市场源时可以关闭自动路由：
+
+```yaml
+plugins:
+  market-next:
+    search:
+      endpoint: https://registry.koishi.chat/index.json
+      autoRoute: false
+```
 
 ## ChatLuna 市场查询 Tool
 

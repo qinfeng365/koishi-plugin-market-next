@@ -96,7 +96,7 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   private async fetchIndex() {
-    const endpoints = [this.config.endpoint, ...FALLBACK_ENDPOINTS]
+    const endpoints = [this.config.endpoint, ...(this.config.autoRoute === false ? [] : FALLBACK_ENDPOINTS)]
       .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
     let lastError: any
 
@@ -152,12 +152,14 @@ namespace MarketProvider {
     endpoint?: string
     timeout?: number
     proxyAgent?: string
+    autoRoute?: boolean
   }
 
   export const Config: Schema<Config> = Schema.object({
     endpoint: Schema.string().role('link').default(DEFAULT_ENDPOINT),
     timeout: Schema.number().role('time').default(Time.second * 30),
     proxyAgent: Schema.string().role('link'),
+    autoRoute: Schema.boolean().default(true),
   })
 }
 

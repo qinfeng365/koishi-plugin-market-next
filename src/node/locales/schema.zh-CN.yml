@@ -8,5 +8,6 @@ search:
   endpoint: 用于搜索插件市场的网址。默认使用 t4wefan 镜像。
   timeout: 搜索插件市场的超时时间。
   proxyAgent: 用于搜索插件市场的代理。
+  autoRoute: 当前市场源失败时自动尝试备用市场源。
 
 chatlunaTool: 启用 ChatLuna 插件市场查询工具。启用后，若当前 Koishi 同时安装了 ChatLuna，会注册只读工具 koishi_plugin_market_search。
