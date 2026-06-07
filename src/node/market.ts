@@ -20,14 +20,21 @@ class MarketProvider extends BaseMarketProvider {
   private tempCache: Dict<SearchObject> = {}
   private payload?: BaseMarketProvider.Payload
   private endpoint: string
+  private disposed = false
+  private serial = 0
   private flushData: () => void
 
   constructor(ctx: Context, public config: MarketProvider.Config = {}) {
     super(ctx)
+    ctx.effect(() => () => {
+      this.disposed = true
+      this.serial++
+    })
     config.endpoint ||= DEFAULT_ENDPOINT
     this.endpoint = config.endpoint
     this.http = ctx.http.extend(config)
     this.flushData = ctx.throttle(() => {
+      if (this.disposed || !this.scanner || !ctx.scope.isActive) return
       ctx.console.broadcast('market/patch', {
         data: this.tempCache,
         failed: this.failed.length,
@@ -39,6 +46,7 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   async start(refresh = false) {
+    const serial = ++this.serial
     this.log('debug', `start market refresh=${refresh}`)
     this.failed = []
     this.fullCache = {}
@@ -50,10 +58,12 @@ class MarketProvider extends BaseMarketProvider {
       refreshTask = this.ctx.installer.refresh(true).catch(error => this.ctx.logger('market').warn(error))
     }
     await super.start(refresh)
+    if (this.isStale(serial)) return
     await refreshTask
   }
 
   async collect() {
+    const serial = this.serial
     const { timeout } = this.config
     const registry = this.ctx.installer.http
 
@@ -61,7 +71,8 @@ class MarketProvider extends BaseMarketProvider {
     this.log('debug', 'collect market index')
     this.scanner = new Scanner(<T>(url: string, config?: { timeout?: number }) => registry.get<T>(url, config))
     if (this.http) {
-      const result = await this.fetchIndex()
+      const result = await this.fetchIndex(serial)
+      if (this.isStale(serial)) return null
       if (!Array.isArray(result?.objects)) {
         throw new Error(`invalid market index from ${this.endpoint}`)
       }
@@ -101,20 +112,22 @@ class MarketProvider extends BaseMarketProvider {
     return null
   }
 
-  private async fetchIndex() {
+  private async fetchIndex(serial: number) {
     const endpoints = [this.config.endpoint, ...(this.config.autoRoute === false ? [] : FALLBACK_ENDPOINTS)]
       .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
     let lastError: any
 
     for (const endpoint of endpoints) {
+      if (this.isStale(serial)) throw new Error('market provider disposed')
       const start = Date.now()
-      const http: HTTP = this.ctx.http.extend({
-        ...this.config,
-        endpoint,
-      })
       try {
+        const http: HTTP = this.ctx.http.extend({
+          ...this.config,
+          endpoint,
+        })
         this.log('debug', `fetch market index from ${endpoint}`)
         const result = await http.get<SearchResult>('')
+        if (this.isStale(serial)) throw new Error('market provider disposed')
         this.endpoint = endpoint
         if (endpoint !== this.config.endpoint) {
           this.log('info', `fallback market index endpoint: ${endpoint}`)
@@ -123,6 +136,7 @@ class MarketProvider extends BaseMarketProvider {
         return result
       } catch (error) {
         lastError = error
+        if (this.isStale(serial)) throw new Error('market provider disposed')
         this.log('warn', `failed to fetch market index from ${endpoint}: ${formatError(error)}`)
       }
     }
@@ -132,6 +146,9 @@ class MarketProvider extends BaseMarketProvider {
 
   async get() {
     await this.prepare()
+    if (!this.scanner) {
+      return this.payload || { data: {}, failed: 0, total: 0, progress: 0 }
+    }
     if (this._error) {
       if (this.payload) {
         this.log('warn', `use cached market payload because current load failed: ${formatError(this._error)}`)
@@ -158,7 +175,12 @@ class MarketProvider extends BaseMarketProvider {
     return payload
   }
 
+  private isStale(serial = this.serial) {
+    return this.disposed || serial !== this.serial || !this.ctx.scope.isActive
+  }
+
   private log(level: Exclude<LogLevel, 'silent'>, message: string) {
+    if (this.disposed || !this.ctx.scope.isActive) return
     if (logLevels.indexOf(this.config.logLevel ?? 'warn') < logLevels.indexOf(level)) return
     this.ctx.logger('market')[level](message)
   }

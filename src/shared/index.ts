@@ -47,7 +47,7 @@ export abstract class MarketProvider extends DataService<MarketProvider.Payload>
 
   async prepare(): Promise<SearchResult> {
     return this._task ||= this.collect().catch((error) => {
-      logger.warn(error)
+      if (error?.message !== 'market provider disposed') logger.warn(error)
       this._error = error
       this._task = null
     })

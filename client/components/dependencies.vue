@@ -47,8 +47,8 @@ const config = useConfig()
 const names = computed(() => {
   return Object
     .keys({
-      ...store.dependencies,
-      ...config.value.market.override,
+      ...(store.dependencies ?? {}),
+      ...(config.value.market?.override ?? {}),
     })
     .sort((a, b) => a > b ? 1 : -1)
 })
@@ -57,9 +57,10 @@ let dispose: WatchStopHandle
 watch(() => store.market?.registry, (registry) => {
   dispose?.()
   if (!registry) return
-  dispose = watch(() => config.value.market.override, (object) => {
+  dispose = watch(() => config.value.market?.override, (object) => {
+    if (!object) return
     Object.keys(object).forEach(async (name) => {
-      if (store.dependencies[name]) return
+      if (store.dependencies?.[name]) return
       addManual(name)
     })
   }, { immediate: true, deep: true })
@@ -73,7 +74,8 @@ ctx.action('dependencies.upgrade', {
   disabled: () => !updates.value.length,
   async action() {
     for (const name of updates.value) {
-      const versions = store.registry[name]
+      const versions = store.registry?.[name]
+      if (!versions) continue
       config.value.market.override[name] = Object.keys(versions)[0]
     }
   },

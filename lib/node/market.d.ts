@@ -12,12 +12,15 @@ declare class MarketProvider extends BaseMarketProvider {
     private tempCache;
     private payload?;
     private endpoint;
+    private disposed;
+    private serial;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
     start(refresh?: boolean): Promise<void>;
     collect(): Promise<any>;
     private fetchIndex;
     get(): Promise<BaseMarketProvider.Payload>;
+    private isStale;
     private log;
 }
 declare namespace MarketProvider {
