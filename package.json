@@ -32,7 +32,8 @@
   "files": [
     "lib",
     "dist",
-    "src"
+    "src",
+    "CHANGELOG.md"
   ],
   "license": "AGPL-3.0",
   "keywords": [

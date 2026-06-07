@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.3.1-blue)
+![Version](https://img.shields.io/badge/version-3.3.2-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -20,6 +20,7 @@
 - [常见问题](#常见问题)
 - [开发](#开发)
 - [发布包内容](#发布包内容)
+- [版本更新](#版本更新)
 - [许可证](#许可证)
 
 ## Next 优势
@@ -229,7 +230,7 @@ plugins:
 
 ### 刷新 WebUI 后市场才显示
 
-这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新占用了较长时间。`3.3.1` 会优先返回市场索引，并在当前源失败时尝试备用源。
+这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新、前端过滤占用了较长时间。`3.3.2` 会优先返回缓存或市场索引，并在当前源失败时尝试备用源。
 
 ### 网络正常但显示 failed to fetch
 
@@ -294,6 +295,10 @@ lib/             后端与类型构建产物
 - `src`
 
 同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
+
+## 版本更新
+
+完整变更记录见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 许可证
 
