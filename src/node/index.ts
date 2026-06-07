@@ -2,7 +2,8 @@ import { Context, Dict, pick, Schema } from 'koishi'
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
 import { gt } from 'semver'
 import { resolve } from 'path'
-import { DependencyProvider, RegistryProvider } from './deps'
+import pMap from 'p-map'
+import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
 import Installer from './installer'
 import MarketProvider from './market'
 import { applyChatLunaTool } from './chatluna'
@@ -22,6 +23,7 @@ declare module '@koishijs/console' {
     interface Services {
       dependencies: DependencyProvider
       registry: RegistryProvider
+      registryStatus: RegistryStatusProvider
     }
   }
 
@@ -42,10 +44,11 @@ export const usage = `
 ## 插件市场（填入 search.endpoint）
 
 - Koishi（全球）：https://registry.koishi.chat/index.json
+- [Gitee 聚合](https://k.ilharp.cc/4000)（大陆）：https://gitee.com/shangxueink/koishi-registry-aggregator/raw/gh-pages/market.json
 - [t4wefan](https://k.ilharp.cc/2611)（大陆）：https://registry.koishi.t4wefan.pub/index.json
 - [Lipraty](https://k.ilharp.cc/3530)（大陆）：https://koi.nyan.zone/registry/index.json
 - [itzdrli](https://k.ilharp.cc/9975)（全球）：https://kp.itzdrli.cc
-- [Q78KG](https://k.ilharp.cc/10042)（全球）：https://koishi-registry.yumetsuki.moe/index.json
+- itzdrli 备用：https://koishi.itzdrli.cc
 
 要浏览更多社区镜像，请访问 [Koishi 论坛上的镜像一览](https://k.ilharp.cc/4000)。`
 
@@ -54,7 +57,7 @@ export const usage = `
 // - 淘宝（大陆）：https://registry.npmmirror.com
 // - 腾讯（大陆）：https://mirrors.cloud.tencent.com/npm
 // - npm（全球）：https://registry.npmjs.org
-// - yarn（全球）：https://registry.yarnpkg.com
+// - cnpm：https://r.cnpmjs.org
 
 export interface Config {
   registry?: Installer.Config
@@ -137,7 +140,7 @@ export function apply(ctx: Context, config: Config = {}) {
         }
 
         // refresh dependencies
-        ctx.installer.refresh(true)
+        await ctx.installer.refresh(true)
         const deps = await ctx.installer.getDeps()
         names = await getPackages(names)
         names = names.filter((name) => {
@@ -176,6 +179,7 @@ export function apply(ctx: Context, config: Config = {}) {
   ctx.inject(['console', 'installer'], (ctx) => {
     ctx.plugin(DependencyProvider)
     ctx.plugin(RegistryProvider)
+    ctx.plugin(RegistryStatusProvider)
     ctx.plugin(MarketProvider, config.search ?? {})
 
     ctx.console.addEntry({
@@ -198,8 +202,12 @@ export function apply(ctx: Context, config: Config = {}) {
     }, { authority: 4 })
 
     ctx.console.addListener('market/registry', async (names) => {
-      const meta = await Promise.all(names.map(name => ctx.installer.getPackage(name)))
-      return Object.fromEntries(meta.map((meta, index) => [names[index], meta]))
+      const entries = await pMap(names, async (name) => {
+        const meta = await ctx.installer.getPackage(name)
+        if (!meta) return
+        return [name, meta] as const
+      }, { concurrency: ctx.installer.config.concurrency ?? 4 })
+      return Object.fromEntries(entries.filter(Boolean))
     }, { authority: 4 })
 
     ctx.console.addListener('market/ensure-config', async (name) => {

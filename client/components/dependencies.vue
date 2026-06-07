@@ -4,8 +4,8 @@
       <colgroup>
         <col width="auto">
         <col width="15%">
-        <col width="30%">
-        <col width="15%">
+        <col width="25%">
+        <col width="20%">
       </colgroup>
       <thead>
         <tr>
@@ -21,8 +21,8 @@
         <colgroup>
           <col width="auto">
           <col width="15%">
-          <col width="30%">
-          <col width="15%">
+          <col width="25%">
+          <col width="20%">
         </colgroup>
         <tbody>
           <package-view v-for="name in names" :key="name" :name="name"></package-view>

@@ -17,7 +17,7 @@
     <p class="warning" v-if="warning">{{ warning }}</p>
 
     <div v-if="!data && active && !workspace">
-      <p>正在加载版本数据……</p>
+      <p :class="{ danger: registryStatus?.error }">{{ registryStatusText }}</p>
     </div>
 
     <p v-if="store.dependencies?.[active] && !current" class="danger">
@@ -115,7 +115,7 @@
 
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, send, store, useContext, useConfig } from '@koishijs/client'
-import { analyzeVersions, ensureInstalledConfig, install, PeerInfo, ResultType } from './utils'
+import { analyzeVersions, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
 import { active } from '../utils'
 import { parse } from 'semver'
 
@@ -243,6 +243,10 @@ const data = computed(() => {
   return analyzeVersions(active.value, getVersion)
 })
 
+const registryStatus = computed(() => getRegistryStatus(active.value))
+
+const registryStatusText = computed(() => getRegistryStatusText(active.value))
+
 const danger = computed(() => {
   if (workspace.value) return
   const deprecated = store.registry?.[active.value]?.[version.value]?.deprecated
@@ -272,7 +276,7 @@ const result = computed(() => {
 })
 
 function shouldFetchRegistry(name: string) {
-  return !store.registry?.[name] && !getWorkspaceVersion(name)
+  return !store.registry?.[name] && !getWorkspaceVersion(name) && !getRegistryStatus(name)?.loading
 }
 
 watch(() => data.value?.[version.value]?.peers, async (peers) => {
@@ -280,7 +284,11 @@ watch(() => data.value?.[version.value]?.peers, async (peers) => {
   const names = Object.keys(peers).filter(shouldFetchRegistry)
   let registry: typeof store.registry = {}
   if (names.length) {
-    registry = await send('market/registry', names)
+    try {
+      registry = await send('market/registry', names)
+    } catch (error) {
+      console.error(error)
+    }
   }
   Object.assign(registry, store.registry)
   if (config.value.market.bulkMode) return
@@ -307,8 +315,13 @@ watch(active, async (name) => {
     || Object.keys(store.registry?.[name] || {})[0]
 
   if (shouldFetchRegistry(name)) {
-    const registry = await send('market/registry', [name])
-    version.value = Object.keys(registry[active.value])[0]
+    try {
+      const registry = await send('market/registry', [name])
+      const versions = registry?.[active.value] || store.registry?.[active.value]
+      if (versions) version.value = Object.keys(versions)[0]
+    } catch (error) {
+      console.error(error)
+    }
   }
 }, { immediate: true })
 

@@ -2,6 +2,16 @@ import { Awaitable, Context, Dict, Logger, Time } from 'koishi'
 import { DataService } from '@koishijs/console'
 import { SearchObject, SearchResult } from '@koishijs/registry'
 
+export interface RegistryStatus {
+  loading?: boolean
+  reason?: 'timeout' | 'not-found' | 'network' | 'invalid' | 'http' | 'unknown'
+  error?: string
+  endpoint?: string
+  attempts?: number
+  elapsed?: number
+  updatedAt?: number
+}
+
 declare module '@koishijs/console' {
   interface Events {
     'market/refresh'(): Promise<void>

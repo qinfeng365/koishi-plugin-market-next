@@ -1,6 +1,6 @@
 import { defineComponent, h, watch } from 'vue'
 import { Context, Dict, global, loading, message, receive, router, Schema, send, store, useConfig } from '@koishijs/client'
-import type {} from 'koishi-plugin-market-next'
+import type { RegistryStatus } from 'koishi-plugin-market-next'
 import { showConfirm, showManual } from './components/utils'
 import extensions from './extensions'
 import Dependencies from './components/dependencies.vue'
@@ -25,6 +25,10 @@ interface MarketConfig {
   gravatar?: string
 }
 
+type MarketStore = typeof store & {
+  registryStatus?: Dict<RegistryStatus>
+}
+
 receive('market/patch', (data) => {
   store.market = {
     ...data,
@@ -40,6 +44,19 @@ receive('market/registry', (data) => {
     ...store.registry,
     ...data,
   }
+})
+
+receive('market/registry-status', (data: Dict<RegistryStatus>) => {
+  const target = store as MarketStore
+  target.registryStatus = {
+    ...target.registryStatus,
+    ...data,
+  }
+})
+
+receive('market/registry-status/clear', () => {
+  const target = store as MarketStore
+  target.registryStatus = {}
 })
 
 export default (ctx: Context) => {
@@ -109,6 +126,7 @@ export default (ctx: Context) => {
       icon: 'activity:deps',
       order: 700,
       authority: 4,
+      fields: ['dependencies', 'registry', 'registryStatus'],
       component: Dependencies,
     })
   }
@@ -118,11 +136,11 @@ export default (ctx: Context) => {
     disabled: () => !['market', 'dependencies'].includes(router.currentRoute.value?.meta?.activity.id),
     async action() {
       const instance = loading({
-        text: '正在刷新插件市场……',
+        text: '正在刷新插件市场与依赖版本……',
       })
       try {
         await send('market/refresh')
-        message.success('插件市场已刷新。')
+        message.success('插件市场与依赖版本已刷新。')
       } catch (error) {
         console.error(error)
         message.error('刷新失败，请检查网络或日志。')

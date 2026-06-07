@@ -1,5 +1,6 @@
 import { Context, Dict, HTTP, Schema, Service } from 'koishi';
 import { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry';
+import type { RegistryStatus } from '../shared';
 export interface Dependency {
     /**
      * requested semver range
@@ -37,19 +38,31 @@ declare class Installer extends Service {
     endpoint: string;
     fullCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>;
     tempCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>;
+    registryStatus: Dict<RegistryStatus>;
     private pkgTasks;
     private agent;
     private manifest;
     private depTask;
+    private metadataEndpoint;
     private flushData;
+    private tempRegistryStatus;
+    private flushRegistryStatus;
+    private serial;
     constructor(ctx: Context, config?: Installer.Config);
     get cwd(): string;
     start(): Promise<void>;
+    private createHttp;
+    private resetEndpoint;
     resolveName(name: string): string[];
     findVersion(names: string[]): Promise<{
         [x: string]: string;
     }>;
-    getRegistry(name: string): Promise<Registry>;
+    private getRegistryEndpoints;
+    private isStale;
+    private setRegistryStatus;
+    private clearRegistryStatus;
+    getRegistry(name: string, serial?: number): Promise<Registry>;
+    private formatRegistryError;
     private _getPackage;
     setPackage(name: string, versions: RemotePackage[]): void;
     getPackage(name: string): Promise<Dict<Pick<RemotePackage, DependencyMetaKey>>>;
@@ -67,6 +80,9 @@ declare namespace Installer {
     interface Config {
         endpoint?: string;
         timeout?: number;
+        autoRoute?: boolean;
+        retry?: number;
+        concurrency?: number;
     }
     const Config: Schema<Config>;
 }

@@ -7,8 +7,11 @@ import { dirname, resolve } from 'path'
 export const DEFAULT_ENDPOINT = 'https://registry.koishi.t4wefan.pub/index.json'
 const FALLBACK_ENDPOINTS = [
   'https://registry.koishi.t4wefan.pub/index.json',
+  'https://gitee.com/shangxueink/koishi-registry-aggregator/raw/gh-pages/market.json',
   'https://koi.nyan.zone/registry/index.json',
   'https://kp.itzdrli.cc',
+  'https://koishi.itzdrli.cc',
+  'https://registry.koishi.chat/index.json',
 ]
 const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
 

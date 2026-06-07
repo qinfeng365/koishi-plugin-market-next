@@ -27,7 +27,9 @@
     <td>
       <template v-if="dep?.invalid">暂不支持</template>
       <el-button v-else-if="dep?.workspace || data" @click="active = name">修改</el-button>
-      <template v-else>版本获取失败</template>
+      <span v-else :class="['version-status', status?.error ? 'danger' : 'muted']">
+        {{ statusText }}
+      </span>
     </td>
   </tr>
 </template>
@@ -37,7 +39,7 @@
 import { computed } from 'vue'
 import { store, isNullable, useConfig } from '@koishijs/client'
 import { active, hasUpdate } from '../utils'
-import { analyzeVersions } from './utils'
+import { analyzeVersions, getRegistryStatus, getRegistryStatusText } from './utils'
 
 const props = defineProps({
   name: String,
@@ -76,6 +78,10 @@ const data = computed(() => {
   return analyzeVersions(props.name, (name) => config.value.market.override[name])
 })
 
+const status = computed(() => getRegistryStatus(props.name))
+
+const statusText = computed(() => getRegistryStatusText(props.name))
+
 </script>
 
 <style lang="scss" scoped>
@@ -86,6 +92,22 @@ const data = computed(() => {
 
   .el-button {
     width: 4rem;
+  }
+
+  .version-status {
+    display: inline-block;
+    max-width: 10rem;
+    white-space: normal;
+    line-height: 1.3;
+    font-size: 0.85em;
+
+    &.muted {
+      color: var(--fg2);
+    }
+
+    &.danger {
+      color: var(--danger);
+    }
   }
 }
 

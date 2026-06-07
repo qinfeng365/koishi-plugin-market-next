@@ -2,6 +2,7 @@ import { Context, Dict } from 'koishi'
 import { DataService } from '@koishijs/console'
 import { DependencyMetaKey, RemotePackage } from '@koishijs/registry'
 import { Dependency } from './installer'
+import { RegistryStatus } from '../shared'
 
 class DependencyProvider extends DataService<Dict<Dependency>> {
   constructor(public ctx: Context) {
@@ -23,4 +24,14 @@ class RegistryProvider extends DataService<Dict<Dict<Pick<RemotePackage, Depende
   }
 }
 
-export { DependencyProvider, RegistryProvider }
+class RegistryStatusProvider extends DataService<Dict<RegistryStatus>> {
+  constructor(public ctx: Context) {
+    super(ctx, 'registryStatus', { authority: 4 })
+  }
+
+  async get() {
+    return this.ctx.installer.registryStatus
+  }
+}
+
+export { DependencyProvider, RegistryProvider, RegistryStatusProvider }

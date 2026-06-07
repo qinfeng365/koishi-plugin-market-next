@@ -9,9 +9,16 @@ import getRegistry from 'get-registry'
 import which from 'which-pm-runs'
 import spawn from 'execa'
 import pMap from 'p-map'
+import type { RegistryStatus } from '../shared'
 import {} from '.'
 
 const logger = new Logger('market')
+const REGISTRY_FALLBACK_ENDPOINTS = [
+  'https://registry.npmmirror.com',
+  'https://mirrors.cloud.tencent.com/npm',
+  'https://registry.npmjs.org',
+  'https://r.cnpmjs.org',
+]
 
 export interface Dependency {
   /**
@@ -70,12 +77,17 @@ class Installer extends Service {
   public endpoint: string
   public fullCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>> = {}
   public tempCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>> = {}
+  public registryStatus: Dict<RegistryStatus> = {}
 
   private pkgTasks: Dict<Promise<Dict<Pick<RemotePackage, DependencyMetaKey>>>> = {}
   private agent = which()
   private manifest: PackageJson
   private depTask: Promise<Dict<Dependency>>
+  private metadataEndpoint: string
   private flushData: () => void
+  private tempRegistryStatus: Dict<RegistryStatus> = {}
+  private flushRegistryStatus: () => void
+  private serial = 0
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
     super(ctx, 'installer')
@@ -84,6 +96,10 @@ class Installer extends Service {
       ctx.get('console')?.broadcast('market/registry', this.tempCache)
       this.tempCache = {}
     }, 500)
+    this.flushRegistryStatus = ctx.throttle(() => {
+      ctx.get('console')?.broadcast('market/registry-status', this.tempRegistryStatus)
+      this.tempRegistryStatus = {}
+    }, 200)
   }
 
   get cwd() {
@@ -91,12 +107,23 @@ class Installer extends Service {
   }
 
   async start() {
-    const { endpoint, timeout } = this.config
-    this.endpoint = endpoint || await getRegistry()
-    this.http = this.ctx.http.extend({
-      endpoint: this.endpoint,
+    await this.resetEndpoint()
+    logger.debug(`registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
+  }
+
+  private createHttp(endpoint: string): HTTP {
+    const { timeout } = this.config
+    return this.ctx.http.extend({
+      endpoint,
       timeout,
     })
+  }
+
+  private async resetEndpoint() {
+    const endpoint = this.config.endpoint || await getRegistry()
+    this.endpoint = endpoint
+    this.metadataEndpoint = endpoint
+    this.http = this.createHttp(endpoint)
   }
 
   resolveName(name: string) {
@@ -121,17 +148,122 @@ class Installer extends Service {
     return entries.find(Boolean)
   }
 
-  async getRegistry(name: string) {
-    try {
-      return await this.http.get<Registry>(`/${name}`)
-    } catch (e) {
-      logger.warn(e.message)
-    }
+  private getRegistryEndpoints() {
+    return [this.metadataEndpoint || this.endpoint, this.endpoint, ...(this.config.autoRoute === false ? [] : REGISTRY_FALLBACK_ENDPOINTS)]
+      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
   }
 
-  private async _getPackage(name: string) {
+  private isStale(serial: number) {
+    return serial !== this.serial || !this.ctx.scope.isActive
+  }
+
+  private setRegistryStatus(name: string, status: RegistryStatus, serial = this.serial) {
+    if (this.isStale(serial)) return
+    const value = {
+      ...this.registryStatus[name],
+      ...status,
+      updatedAt: Date.now(),
+    }
+    this.registryStatus[name] = this.tempRegistryStatus[name] = value
+    this.flushRegistryStatus()
+  }
+
+  private clearRegistryStatus() {
+    this.registryStatus = {}
+    this.tempRegistryStatus = {}
+    this.ctx.get('console')?.broadcast('market/registry-status/clear' as any, {})
+  }
+
+  async getRegistry(name: string, serial = this.serial) {
+    const start = Date.now()
+    const endpoints = this.getRegistryEndpoints()
+    const maxRetry = Math.max(0, this.config.retry ?? 1)
+    let attempts = 0
+    let lastError: any
+    let lastEndpoint = this.metadataEndpoint || this.endpoint
+    this.setRegistryStatus(name, {
+      loading: true,
+      error: undefined,
+      reason: undefined,
+      endpoint: lastEndpoint,
+      attempts,
+      elapsed: undefined,
+    }, serial)
+
+    for (const endpoint of endpoints) {
+      const http = endpoint === this.endpoint ? this.http : this.createHttp(endpoint)
+      for (let retry = 0; retry <= maxRetry; retry++) {
+        if (this.isStale(serial)) return
+        attempts++
+        lastEndpoint = endpoint
+        this.setRegistryStatus(name, { loading: true, endpoint, attempts }, serial)
+        const attemptStart = Date.now()
+        try {
+          logger.debug(`fetch registry metadata for ${name} from ${endpoint}, attempt=${retry + 1}/${maxRetry + 1}`)
+          const registry = await http.get(`/${name}`) as Registry
+          if (this.isStale(serial)) return
+          if (!registry?.versions || typeof registry.versions !== 'object') {
+            throw new Error(`invalid registry metadata for ${name}`)
+          }
+          if (endpoint !== this.metadataEndpoint) {
+            logger.info(`fallback npm registry endpoint for ${name}: ${endpoint}`)
+            this.metadataEndpoint = endpoint
+          }
+          this.setRegistryStatus(name, {
+            loading: false,
+            error: undefined,
+            reason: undefined,
+            endpoint,
+            attempts,
+            elapsed: Date.now() - start,
+          }, serial)
+          logger.debug(`loaded registry metadata for ${name} from ${endpoint} in ${Date.now() - attemptStart}ms, versions=${Object.keys(registry.versions).length}`)
+          return registry
+        } catch (error) {
+          lastError = error
+          const detail = this.formatRegistryError(error)
+          logger.debug(`failed registry metadata for ${name} from ${endpoint} in ${Date.now() - attemptStart}ms, attempt=${retry + 1}/${maxRetry + 1}: ${detail.error}`)
+          if (detail.reason === 'not-found') break
+          if (retry < maxRetry) await sleep(300 * (retry + 1))
+        }
+      }
+    }
+
+    const detail = this.formatRegistryError(lastError)
+    this.setRegistryStatus(name, {
+      loading: false,
+      reason: detail.reason,
+      error: detail.error,
+      endpoint: lastEndpoint,
+      attempts,
+      elapsed: Date.now() - start,
+    }, serial)
+    logger.warn(`failed to fetch registry metadata for ${name}: ${detail.error}`)
+  }
+
+  private formatRegistryError(error: any): Required<Pick<RegistryStatus, 'reason' | 'error'>> {
+    const message = error instanceof Error ? error.message : String(error)
+    if (this.ctx.http.isError(error)) {
+      const status = (error as any).response?.status
+      if (status === 404) return { reason: 'not-found', error: 'npm 元数据不存在，或当前镜像尚未同步该包。' }
+      if (status) return { reason: 'http', error: `npm 元数据请求失败，HTTP ${status}。` }
+    }
+    if (/timeout|ETIMEDOUT|ECONNABORTED/i.test(message)) {
+      return { reason: 'timeout', error: 'npm 元数据请求超时。' }
+    }
+    if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|EAI_AGAIN|fetch failed|network/i.test(message)) {
+      return { reason: 'network', error: 'npm 元数据请求网络失败。' }
+    }
+    if (/invalid registry metadata/i.test(message)) {
+      return { reason: 'invalid', error: 'npm 元数据格式异常。' }
+    }
+    return { reason: 'unknown', error: message || 'npm 元数据请求失败。' }
+  }
+
+  private async _getPackage(name: string, serial = this.serial) {
     try {
-      const registry = await this.getRegistry(name)
+      const registry = await this.getRegistry(name, serial)
+      if (this.isStale(serial)) return
       if (!registry) return
       this.fullCache[name] = this.tempCache[name] = getVersions(Object.values(registry.versions).filter((remote) => {
         if (name === 'koishi') return satisfies(remote.version, '4')
@@ -151,7 +283,18 @@ class Installer extends Service {
   }
 
   getPackage(name: string) {
-    return this.pkgTasks[name] ||= this._getPackage(name)
+    if (!this.pkgTasks[name]) {
+      const task = this._getPackage(name, this.serial)
+      this.pkgTasks[name] = task
+      task.then((versions) => {
+        if (this.pkgTasks[name] !== task) return
+        if (!versions) delete this.pkgTasks[name]
+      }, () => {
+        if (this.pkgTasks[name] !== task) return
+        delete this.pkgTasks[name]
+      })
+    }
+    return this.pkgTasks[name]
   }
 
   private async _getDeps() {
@@ -173,7 +316,7 @@ class Installer extends Service {
 
       const versions = await this.getPackage(name)
       if (versions) result[name].latest = Object.keys(versions)[0]
-    }, { concurrency: 10 })
+    }, { concurrency: this.config.concurrency ?? 4 })
     return result
   }
 
@@ -185,14 +328,19 @@ class Installer extends Service {
     await Promise.all([
       this.ctx.get('console')?.refresh('dependencies'),
       this.ctx.get('console')?.refresh('registry'),
+      this.ctx.get('console')?.refresh('registryStatus'),
       this.ctx.get('console')?.refresh('packages'),
     ])
   }
 
   async refresh(refresh = false) {
+    this.serial++
+    await this.resetEndpoint()
+    this.manifest = loadManifest(this.cwd)
     this.pkgTasks = {}
     this.fullCache = {}
     this.tempCache = {}
+    this.clearRegistryStatus()
     this.depTask = this._getDeps()
     if (!refresh) return
     await this.refreshData()
@@ -314,12 +462,22 @@ namespace Installer {
   export interface Config {
     endpoint?: string
     timeout?: number
+    autoRoute?: boolean
+    retry?: number
+    concurrency?: number
   }
 
   export const Config: Schema<Config> = Schema.object({
     endpoint: Schema.string().role('link'),
     timeout: Schema.number().role('time').default(Time.second * 5),
+    autoRoute: Schema.boolean().default(true),
+    retry: Schema.number().min(0).max(5).step(1).default(1),
+    concurrency: Schema.number().min(1).max(16).step(1).default(4),
   }) // TODO .hidden()
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 export default Installer

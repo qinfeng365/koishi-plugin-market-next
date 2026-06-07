@@ -1,5 +1,6 @@
 import { Awaitable, Context, Dict, loading, message, send, socket, store, valueMap } from '@koishijs/client'
 import type { Registry } from '@koishijs/registry'
+import type { RegistryStatus } from 'koishi-plugin-market-next'
 import { compare, satisfies } from 'semver'
 import { reactive, ref, watch } from 'vue'
 import { active } from '../utils'
@@ -46,6 +47,42 @@ export function analyzeVersions(name: string, getVersion: (name: string) => stri
 }
 
 export const manualDeps = reactive<Dict<Registry>>({})
+
+type MarketStore = typeof store & {
+  registryStatus?: Dict<RegistryStatus>
+}
+
+export function getRegistryStatus(name: string) {
+  return (store as MarketStore).registryStatus?.[name]
+}
+
+export function getRegistryStatusText(name: string) {
+  const status = getRegistryStatus(name)
+  if (!status || status.loading) return '正在获取版本数据……'
+  const endpoint = status.endpoint ? `（${formatEndpoint(status.endpoint)}）` : ''
+  switch (status.reason) {
+    case 'timeout':
+      return `版本获取失败：npm 元数据请求超时${endpoint}`
+    case 'not-found':
+      return `版本获取失败：包不存在或镜像尚未同步${endpoint}`
+    case 'network':
+      return `版本获取失败：npm registry 网络连接失败${endpoint}`
+    case 'invalid':
+      return `版本获取失败：npm 元数据格式异常${endpoint}`
+    case 'http':
+      return `版本获取失败：npm registry 返回错误${endpoint}`
+    default:
+      return `版本获取失败${endpoint}${status.error ? '：' + status.error : ''}`
+  }
+}
+
+function formatEndpoint(endpoint: string) {
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return endpoint
+  }
+}
 
 export async function addManual(name: string) {
   const data = await send('market/package', name) as Registry

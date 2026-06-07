@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.3.2-blue)
+![Version](https://img.shields.io/badge/version-3.3.4-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -83,6 +83,10 @@ plugins:
       timeout: 30s
       autoRoute: true
       logLevel: warn
+    registry:
+      autoRoute: true
+      retry: 1
+      concurrency: 4
     chatlunaTool: false
 ```
 
@@ -90,6 +94,9 @@ plugins:
 | --- | --- | --- |
 | `registry.endpoint` | 跟随当前 npm 配置 | 安装插件时使用的软件源。 |
 | `registry.timeout` | `5s` | 获取 npm 包元数据的超时时间。 |
+| `registry.autoRoute` | `true` | 获取依赖版本失败时是否自动尝试备用 npm 源。 |
+| `registry.retry` | `1` | 每个 npm 源获取版本失败后的重试次数。 |
+| `registry.concurrency` | `4` | 批量获取依赖版本时的最大并发数。 |
 | `search.endpoint` | `https://registry.koishi.t4wefan.pub/index.json` | 插件市场索引地址。 |
 | `search.timeout` | `30s` | 获取市场索引的超时时间。 |
 | `search.proxyAgent` | 空 | 请求市场索引时使用的代理。 |
@@ -110,12 +117,25 @@ plugins:
 
 - `search.endpoint` 决定市场页面和 ChatLuna Tool 从哪里读取插件列表。
 - `registry.endpoint` 决定安装、更新插件时从哪个 npm registry 下载包。
+- `registry.autoRoute` 只影响 npm 包元数据和依赖版本获取；`search.autoRoute` 只影响市场索引获取。
 
 当 `search.endpoint` 获取失败时，`market-next` 会自动尝试以下市场索引，不会把 fallback 写入你的配置文件：
 
 - `https://registry.koishi.t4wefan.pub/index.json`
+- `https://gitee.com/shangxueink/koishi-registry-aggregator/raw/gh-pages/market.json`
 - `https://koi.nyan.zone/registry/index.json`
 - `https://kp.itzdrli.cc`
+- `https://koishi.itzdrli.cc`
+- `https://registry.koishi.chat/index.json`
+
+当 `registry.endpoint` 获取 npm 包元数据失败时，`registry.autoRoute` 会尝试以下 npm 源：
+
+- `https://registry.npmmirror.com`
+- `https://mirrors.cloud.tencent.com/npm`
+- `https://registry.npmjs.org`
+- `https://r.cnpmjs.org`
+
+更多社区镜像可参考 [Koishi 论坛镜像一览](https://forum.koishi.xyz/t/topic/4000)。
 
 测试单一市场源时可以关闭自动路由：
 
@@ -230,7 +250,7 @@ plugins:
 
 ### 刷新 WebUI 后市场才显示
 
-这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新、前端过滤占用了较长时间。`3.3.2` 会优先返回缓存或市场索引，并在当前源失败时尝试备用源。
+这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新、前端过滤占用了较长时间。`3.3.4` 会优先返回缓存或市场索引，并在当前源失败时尝试备用源；手动刷新时也会重新读取本地 `package.json` 并清理旧的依赖版本请求状态。
 
 ### 网络正常但显示 failed to fetch
 
@@ -298,7 +318,31 @@ lib/             后端与类型构建产物
 
 ## 版本更新
 
-完整变更记录见 [CHANGELOG.md](./CHANGELOG.md)。
+### 3.3.4
+
+- 依赖版本获取新增 loading/error 状态，避免请求中误显示“版本获取失败”。
+- npm registry 版本元数据获取增加备用源自动路由、失败重试和批量并发限制。
+- 自动路由镜像列表参考 Koishi 论坛镜像一览，并按实测可用性补充 Gitee 聚合、itzdrli 备用、腾讯 npm、cnpm 等源。
+- 依赖页和安装弹窗会区分超时、网络失败、镜像未同步、元数据异常等原因。
+- 手动刷新会重新读取本地 `package.json`，清理旧版本请求状态，并重新同步依赖、版本和插件状态。
+
+### 3.3.2
+
+- 增加本地市场索引缓存优先显示，打开市场时可先显示旧数据并在后台刷新。
+- 使用缓存或旧 payload 时，在市场页面内显示固定提示。
+- 自动路由改为并发竞速，当前源和备用源同时尝试，优先使用最快返回的有效市场索引。
+- 市场列表加入虚拟滚动窗口，减少大量插件卡片同时渲染造成的前端卡顿。
+- 修复插件 reload / dispose 后旧请求继续写回导致的上下文错误。
+- 扩展 debug 日志，输出 endpoint、耗时、fallback、缓存、patch 进度等关键链路。
+
+### 3.3.1
+
+- 新增市场搜索输入防抖，降低输入时的前端重算频率。
+- 新增 `search.logLevel` 多级日志配置。
+- 新增 `search.autoRoute` 开关，可关闭备用市场源自动回退。
+- 修复刷新按钮反馈不清晰的问题。
+
+完整历史记录见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 许可证
 
