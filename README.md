@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.2.1-blue)
+![Version](https://img.shields.io/badge/version-3.3.0-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -29,6 +29,7 @@
 这一版主要改进了这些地方：
 
 - **默认使用大陆更友好的市场索引**：`https://registry.koishi.t4wefan.pub/index.json`。
+- **当前源失败时自动回退**：优先尊重 `search.endpoint`，失败后依次尝试 t4wefan、Lipraty、itzdrli。
 - **刷新有明确反馈**：手动刷新会进入 loading，并在完成或失败时提示。
 - **首屏加载更稳**：市场索引加载不再等待依赖刷新完成，避免被 npm registry、本地依赖扫描或包元数据刷新拖住。
 - **列表浏览更自然**：使用无限滚动加载更多插件，减少分页带来的空页和跳转成本。
@@ -105,6 +106,12 @@ plugins:
 - `search.endpoint` 决定市场页面和 ChatLuna Tool 从哪里读取插件列表。
 - `registry.endpoint` 决定安装、更新插件时从哪个 npm registry 下载包。
 
+当 `search.endpoint` 获取失败时，`market-next` 会自动尝试以下市场索引，不会把 fallback 写入你的配置文件：
+
+- `https://registry.koishi.t4wefan.pub/index.json`
+- `https://koi.nyan.zone/registry/index.json`
+- `https://kp.itzdrli.cc`
+
 ## ChatLuna 市场查询 Tool
 
 开启 `chatlunaTool` 后，如果当前 Koishi 同时安装并启用了 ChatLuna，本插件会注册只读工具：
@@ -157,6 +164,7 @@ koishi_plugin_market_search
 | 场景 | 原版 market | market-next |
 | --- | --- | --- |
 | 默认市场索引 | 官方源为主 | 默认 t4wefan 镜像 |
+| 市场源异常 | 等待当前源超时或失败 | 当前源失败后自动 fallback |
 | 刷新按钮 | 反馈不明显 | loading、成功、失败都有反馈 |
 | 网络错误 | 容易只看到 `failed to fetch` | 展示 registry 和错误原因 |
 | 浏览方式 | 分页 | 无限滚动 |
@@ -196,7 +204,7 @@ plugins:
 
 ### 刷新 WebUI 后市场才显示
 
-这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新占用了较长时间。`3.2.1` 已将依赖刷新改为后台执行，市场索引会优先返回给页面。
+这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新占用了较长时间。`3.3.0` 会优先返回市场索引，并在当前源失败时尝试备用源。
 
 ### 网络正常但显示 failed to fetch
 

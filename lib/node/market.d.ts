@@ -1,5 +1,4 @@
 import { Context, Schema } from 'koishi';
-import { SearchObject } from '@koishijs/registry';
 import { MarketProvider as BaseMarketProvider } from '../shared';
 export declare const DEFAULT_ENDPOINT = "https://registry.koishi.t4wefan.pub/index.json";
 declare class MarketProvider extends BaseMarketProvider {
@@ -9,27 +8,14 @@ declare class MarketProvider extends BaseMarketProvider {
     private scanner;
     private fullCache;
     private tempCache;
+    private payload?;
+    private endpoint;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
     start(refresh?: boolean): Promise<void>;
     collect(): Promise<any>;
-    get(): Promise<{
-        data: {};
-        failed: number;
-        total: number;
-        progress: number;
-        registry?: undefined;
-        gravatar?: undefined;
-    } | {
-        registry: string;
-        data: {
-            [k: string]: SearchObject;
-        };
-        failed: number;
-        total: number;
-        progress: number;
-        gravatar: string;
-    }>;
+    private fetchIndex;
+    get(): Promise<BaseMarketProvider.Payload>;
 }
 declare namespace MarketProvider {
     interface Config {

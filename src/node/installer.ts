@@ -183,6 +183,7 @@ class Installer extends Service {
 
   async refreshData() {
     await Promise.all([
+      this.ctx.get('console')?.refresh('dependencies'),
       this.ctx.get('console')?.refresh('registry'),
       this.ctx.get('console')?.refresh('packages'),
     ])

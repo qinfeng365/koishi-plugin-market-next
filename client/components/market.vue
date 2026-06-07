@@ -2,7 +2,7 @@
   <k-layout main="darker" class="page-market" menu="market">
     <template #left>
       <el-scrollbar>
-        <market-filter v-model="words" :data="getSorted(data, words)"></market-filter>
+        <market-filter v-model="words" :data="visibleData"></market-filter>
       </el-scrollbar>
     </template>
 
@@ -53,7 +53,7 @@
 import { router, store, global, useConfig } from '@koishijs/client'
 import { computed, provide, ref, watch } from 'vue'
 import { active } from '../utils'
-import { getSorted, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
+import { getVisible, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
 import { SearchObject } from '@koishijs/registry'
 
 function installed(data: SearchObject) {
@@ -76,6 +76,8 @@ const words = ref<string[]>([''])
 const prompt = computed(() => words.value.filter(w => w).join(' '))
 
 const data = computed(() => Object.values(store.market?.data || {}))
+
+const visibleData = computed(() => getVisible(data.value, words.value))
 
 watch(router.currentRoute, (value) => {
   if (value.path !== '/market') return

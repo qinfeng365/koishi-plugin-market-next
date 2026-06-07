@@ -3,6 +3,7 @@ import { InjectionKey } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Dict } from 'cosmokit'
 import zhCN from './locales/zh-CN.yml'
+import * as md5 from 'spark-md5'
 
 export const useMarketI18n = () => useI18n({
   messages: {
@@ -13,16 +14,32 @@ export const useMarketI18n = () => useI18n({
 export function getUsers(data: SearchObject) {
   const result: Record<string, User> = {}
   for (const user of data.package.contributors ?? []) {
-    if (!user.email) continue
-    result[user.email] ||= user
+    const key = getUserKey(user)
+    if (!key) continue
+    result[key] ||= user
   }
-  if (!data.package.maintainers.some(user => result[user.email])) {
-    return data.package.maintainers.map(({ email, username }) => ({
-      email,
-      name: username,
+  if (!data.package.maintainers.some(user => result[getUserKey(user)])) {
+    return data.package.maintainers.map(user => ({
+      ...user,
+      name: user.name || user.username,
     }))
   }
   return Object.values(result)
+}
+
+export function getUserKey(user: User) {
+  return user.email || user.username || user.name
+}
+
+export function getUserAvatar(user: User, gravatar?: string) {
+  const avatar = (user as User & { avatar?: string, url?: string }).avatar
+  if (avatar) return avatar
+  const url = (user as User & { avatar?: string, url?: string }).url
+  if (url && /\.(?:png|jpe?g|gif|webp|svg)(?:[?#].*)?$/i.test(url)) return url
+  return (gravatar || 'https://s.gravatar.com')
+    + '/avatar/'
+    + (user.email ? md5.hash(user.email.toLowerCase()) : '')
+    + '.png?d=mp'
 }
 
 const aWeekAgo = new Date(Date.now() - 1000 * 3600 * 24 * 7).toISOString()
@@ -151,11 +168,15 @@ interface ValidateConfig extends MarketConfig {
 
 export const kConfig = Symbol('market.config') as InjectionKey<MarketConfig>
 
-export function getSorted(market: SearchObject[], words: string[]) {
+export function getVisible(market: SearchObject[], words: string[]) {
   return market?.slice().filter((data) => {
     return (!data.manifest?.hidden || words.includes('show:hidden'))
       && (!data.deprecated || words.includes('show:deprecated'))
-  }).sort((a, b) => {
+  })
+}
+
+export function getSorted(market: SearchObject[], words: string[]) {
+  return getVisible(market, words).sort((a, b) => {
     for (let word of words) {
       if (!word.startsWith('sort:')) continue
       let order = 1

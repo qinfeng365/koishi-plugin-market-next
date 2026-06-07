@@ -89,7 +89,7 @@ function sleep(ms: number) {
 }
 
 async function waitForInstalledPackage(name: string) {
-  for (let index = 0; index < 20; index++) {
+  for (let index = 0; index < 40; index++) {
     if (store.packages?.[name]) return
     await sleep(250)
   }
@@ -97,6 +97,7 @@ async function waitForInstalledPackage(name: string) {
 
 export async function ensureInstalledConfig(ctx: Context, name: string, silent = true) {
   if (!ctx.configWriter || !name) return
+  await send('market/ensure-config', name).catch(console.error)
   await waitForInstalledPackage(name)
   if (ctx.configWriter.get(name)?.length) return
   ctx.configWriter.ensure(name, silent)

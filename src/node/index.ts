@@ -29,6 +29,7 @@ declare module '@koishijs/console' {
     'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>
     'market/package'(name: string): Promise<Registry>
     'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>
+    'market/ensure-config'(name: string): Promise<void>
   }
 }
 
@@ -199,6 +200,14 @@ export function apply(ctx: Context, config: Config = {}) {
     ctx.console.addListener('market/registry', async (names) => {
       const meta = await Promise.all(names.map(name => ctx.installer.getPackage(name)))
       return Object.fromEntries(meta.map((meta, index) => [names[index], meta]))
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/ensure-config', async (name) => {
+      await ctx.get('console')?.listeners['config/request-runtime']?.callback.call(null, name)
+      await Promise.all([
+        ctx.get('console')?.refresh('packages'),
+        ctx.get('console')?.refresh('config'),
+      ])
     }, { authority: 4 })
   })
 }

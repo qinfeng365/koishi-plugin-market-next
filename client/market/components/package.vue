@@ -52,9 +52,9 @@
       </template>
       <span class="long-spacer"></span>
       <div class="avatars">
-        <el-tooltip v-for="({ email, name }) in getUsers(data)" :key="name" :content="name" placement="top">
-          <span class="avatar" @click.stop.prevent="$emit('query', 'email:' + email)">
-            <img :src="getAvatar(email)">
+        <el-tooltip v-for="user in getUsers(data)" :key="user.email || user.username || user.name" :content="user.name || user.username || user.email" placement="top">
+          <span class="avatar" @click.stop.prevent="user.email && $emit('query', 'email:' + user.email)">
+            <img :src="getAvatar(user)">
           </span>
         </el-tooltip>
       </div>
@@ -67,12 +67,11 @@
 import { computed, inject } from 'vue'
 import { SearchObject } from '@koishijs/registry'
 import { useI18nText } from '@koishijs/components'
-import { badges, getUsers, resolveCategory, validate } from '../utils'
+import { badges, getUserAvatar, getUsers, resolveCategory, validate } from '../utils'
 import { kConfig } from '../utils'
 import { useI18n } from 'vue-i18n'
 import zhCN from '../locales/zh-CN.yml'
 import MarketIcon from '../icons'
-import * as md5 from 'spark-md5'
 
 defineEmits(['query'])
 
@@ -98,11 +97,8 @@ const badge = computed(() => {
   }
 })
 
-function getAvatar(email: string) {
-  return (props.gravatar || 'https://s.gravatar.com')
-    + '/avatar/'
-    + (email ? (md5 as unknown as typeof import('spark-md5')).hash(email.toLowerCase()) : '')
-    + '.png?d=mp'
+function getAvatar(user: ReturnType<typeof getUsers>[number]) {
+  return getUserAvatar(user, props.gravatar)
 }
 
 function formatValue(value: number) {

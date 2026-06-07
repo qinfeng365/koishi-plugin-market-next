@@ -30,7 +30,7 @@
         <span class="text">{{ t(`badge.${key}`) }}</span>
         <span class="spacer"></span>
         <span class="count" v-if="data">
-          {{ data.filter(x => validate(x, item.query, config)).length }}
+          {{ badgeCounts[key] ?? 0 }}
         </span>
       </div>
     </template>
@@ -47,7 +47,7 @@
       <span class="text">{{ t(`category.${key}`) }}</span>
       <span class="spacer"></span>
       <span class="count" v-if="data">
-        {{ data.filter(item => resolveCategory(item.category) === key).length }}
+        {{ categoryCounts[key] ?? 0 }}
       </span>
     </div>
   </div>
@@ -88,6 +88,29 @@ const activeSort = computed<string[]>(() => {
   } else {
     return [word, 'desc']
   }
+})
+
+const badgeCounts = computed(() => {
+  const result: Record<string, number> = {}
+  if (!props.data) return result
+  for (const key in badges) result[key] = 0
+  for (const item of props.data) {
+    for (const key in badges) {
+      if (validate(item, badges[key].query, config)) result[key]++
+    }
+  }
+  return result
+})
+
+const categoryCounts = computed(() => {
+  const result: Record<string, number> = {}
+  if (!props.data) return result
+  for (const key of categories) result[key] = 0
+  for (const item of props.data) {
+    const category = resolveCategory(item.category)
+    if (category in result) result[category]++
+  }
+  return result
 })
 
 function addWord(word: string) {
