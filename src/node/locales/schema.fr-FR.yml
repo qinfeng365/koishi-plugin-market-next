@@ -8,3 +8,4 @@ search:
   timeout: 搜索插件市场的超时时间。
   proxyAgent: 用于搜索插件市场的代理。
   autoRoute: 当前市场源失败时自动尝试备用市场源。
+  logLevel: 插件市场调试日志级别。silent 关闭日志，debug 输出最详细。

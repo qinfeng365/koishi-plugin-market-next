@@ -1,6 +1,8 @@
 import { Context, Schema } from 'koishi';
 import { MarketProvider as BaseMarketProvider } from '../shared';
 export declare const DEFAULT_ENDPOINT = "https://registry.koishi.t4wefan.pub/index.json";
+declare const logLevels: readonly ["silent", "error", "warn", "info", "debug"];
+type LogLevel = typeof logLevels[number];
 declare class MarketProvider extends BaseMarketProvider {
     config: MarketProvider.Config;
     private http;
@@ -16,6 +18,7 @@ declare class MarketProvider extends BaseMarketProvider {
     collect(): Promise<any>;
     private fetchIndex;
     get(): Promise<BaseMarketProvider.Payload>;
+    private log;
 }
 declare namespace MarketProvider {
     interface Config {
@@ -23,6 +26,7 @@ declare namespace MarketProvider {
         timeout?: number;
         proxyAgent?: string;
         autoRoute?: boolean;
+        logLevel?: LogLevel;
     }
     const Config: Schema<Config>;
 }

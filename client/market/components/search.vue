@@ -49,7 +49,7 @@ watch(() => props.modelValue, (value) => {
 
 const update = useDebounceFn(() => {
   emit('update:modelValue', words.value)
-}, 100)
+}, 120, { maxWait: 500 })
 
 const lastWord = computed({
   get: () => words.value[words.value.length - 1],

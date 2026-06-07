@@ -81,6 +81,7 @@ plugins:
       endpoint: https://registry.koishi.t4wefan.pub/index.json
       timeout: 30s
       autoRoute: true
+      logLevel: warn
     chatlunaTool: false
 ```
 
@@ -92,6 +93,7 @@ plugins:
 | `search.timeout` | `30s` | 获取市场索引的超时时间。 |
 | `search.proxyAgent` | 空 | 请求市场索引时使用的代理。 |
 | `search.autoRoute` | `true` | 当前市场源失败时是否自动尝试备用市场源。 |
+| `search.logLevel` | `warn` | 市场后端日志级别：`silent`、`error`、`warn`、`info`、`debug`。 |
 | `chatlunaTool` | `false` | 是否启用 ChatLuna 插件市场查询工具。 |
 
 可选市场索引：
@@ -123,6 +125,17 @@ plugins:
       endpoint: https://registry.koishi.chat/index.json
       autoRoute: false
 ```
+
+排查加载、fallback 或缓存回退问题时可以提高日志级别：
+
+```yaml
+plugins:
+  market-next:
+    search:
+      logLevel: debug
+```
+
+市场搜索输入已做 120ms 防抖，并设置 500ms 最大等待上限；连续输入时不会每个字符都触发完整筛选，但长时间连续输入也会定期同步结果。
 
 ## ChatLuna 市场查询 Tool
 
