@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.3.0-blue)
+![Version](https://img.shields.io/badge/version-3.3.1-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -229,7 +229,7 @@ plugins:
 
 ### 刷新 WebUI 后市场才显示
 
-这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新占用了较长时间。`3.3.0` 会优先返回市场索引，并在当前源失败时尝试备用源。
+这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新占用了较长时间。`3.3.1` 会优先返回市场索引，并在当前源失败时尝试备用源。
 
 ### 网络正常但显示 failed to fetch
 
