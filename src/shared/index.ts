@@ -12,7 +12,7 @@ export interface RegistryStatus {
   updatedAt?: number
 }
 
-export interface MarketPerformance {
+export interface MarketPerformanceSnapshot {
   source?: 'network' | 'disk-cache' | 'http-304' | 'hash-cache' | 'legacy'
   endpoint?: string
   preferredEndpoint?: string
@@ -27,6 +27,22 @@ export interface MarketPerformance {
   cachedAt?: number
   validatedAt?: number
   timings?: Dict<number>
+}
+
+export interface MarketRouteScore {
+  endpoint: string
+  score: number
+  successes?: number
+  failures?: number
+  averageElapsed?: number
+  lastSuccess?: number
+  contentEncoding?: string
+}
+
+export interface MarketPerformance extends MarketPerformanceSnapshot {
+  initial?: MarketPerformanceSnapshot
+  refresh?: MarketPerformanceSnapshot
+  routeScores?: MarketRouteScore[]
 }
 
 declare module '@koishijs/console' {

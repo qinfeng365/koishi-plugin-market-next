@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.1-blue)
+![Version](https://img.shields.io/badge/version-3.4.2-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -39,7 +39,7 @@
 - **失败原因更可读**：市场加载失败时尽量展示实际 registry 和错误原因，而不是只给一个笼统的 fetch 失败。
 - **缓存更有判断力**：缓存优先显示后，后台刷新会利用 ETag、Last-Modified 和内容 hash 判断索引是否变化，未变化时跳过重复 JSON 解析和写盘。
 - **弱网少做无用功**：自动路由会提高上次成功源的优先级，并在命中可用源后取消其他候选源请求，减少额外带宽占用。
-- **慢在哪里能看见**：`search.logLevel: debug` 时，市场页会显示下载、压缩方式、传输大小、缓存读取、JSON parse、索引映射、前端筛选和虚拟滚动耗时。
+- **慢在哪里能看见**：`search.logLevel: debug` 时，市场页会拆分首屏与后台刷新，并显示下载、压缩方式、传输大小、路由评分、缓存读取、JSON parse、索引映射、前端筛选和虚拟滚动耗时。
 - **安装后自动尝试补配置**：安装完成后等待 config 插件识别新包，再自动调用配置补齐逻辑，减少手动去依赖页点“配置”的次数。
 - **AI 可以查市场**：可选注册 ChatLuna 只读工具，让 AI 按关键词、分类、状态、创建/更新时间、评分、下载量等条件查询插件。
 
@@ -338,8 +338,8 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.1
-git push origin v3.4.1
+git tag v3.4.2
+git push origin v3.4.2
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。

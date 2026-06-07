@@ -22,6 +22,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private conditionMeta?;
     private cacheResult?;
     private debugInfo?;
+    private routeStats;
     private backgroundTask?;
     private cacheWriteTimer?;
     private flushData;
@@ -32,6 +33,10 @@ declare class MarketProvider extends BaseMarketProvider {
     private getEndpoints;
     private getPreferredEndpoint;
     private waitRouteTurn;
+    private getRouteScore;
+    private recordRouteSuccess;
+    private recordRouteFailure;
+    private getRouteScores;
     private getConditionalHeaders;
     private updateCacheState;
     private fetchEndpoint;

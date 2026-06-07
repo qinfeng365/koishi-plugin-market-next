@@ -57,6 +57,16 @@
             <div v-if="debugTimings.length" class="market-debug-timings">
               <span v-for="[key, value] in debugTimings" :key="key">{{ formatTimingName(key) }} {{ formatDuration(value) }}</span>
             </div>
+            <div v-if="debugPhases.length" class="market-debug-timings">
+              <span v-for="item in debugPhases" :key="item.label">{{ item.label }}：{{ item.value }}</span>
+            </div>
+            <div v-if="debugRoutes.length" class="market-debug-routes">
+              <span v-for="route in debugRoutes" :key="route.endpoint" class="market-debug-route">
+                {{ shortEndpoint(route.endpoint) }} score={{ formatScore(route.score) }}
+                <template v-if="route.averageElapsed"> avg={{ formatDuration(route.averageElapsed) }}</template>
+                <template v-if="route.contentEncoding"> {{ route.contentEncoding }}</template>
+              </span>
+            </div>
           </k-comment>
         </template>
         <template #action="data">
@@ -149,6 +159,20 @@ const debugTimings = computed(() => {
     .filter(([, value]) => typeof value === 'number')
 })
 
+const debugPhases = computed(() => {
+  const debug = store.market?.debug
+  if (!debug) return []
+  return [
+    ['首屏', debug.initial],
+    ['后台', debug.refresh],
+  ].filter(([, value]) => value).map(([label, value]) => ({
+    label,
+    value: formatDebugPhase(value as any),
+  }))
+})
+
+const debugRoutes = computed(() => store.market?.debug?.routeScores?.slice(0, 6) ?? [])
+
 watch(router.currentRoute, (value) => {
   if (value.path !== '/market') return
   const { keyword } = value.query
@@ -236,6 +260,23 @@ function formatDuration(value: number) {
   return `${Math.round(value)}ms`
 }
 
+function formatDebugPhase(value: {
+  source?: string
+  endpoint?: string
+  timings?: Record<string, number>
+  contentEncoding?: string
+  wireSize?: number
+}) {
+  const parts = [
+    formatSource(value.source),
+    shortEndpoint(value.endpoint),
+  ]
+  if (value.timings?.total != null) parts.push(formatDuration(value.timings.total))
+  if (value.contentEncoding) parts.push(value.contentEncoding)
+  if (value.wireSize) parts.push(formatSize(value.wireSize))
+  return parts.filter(Boolean).join(' / ')
+}
+
 function formatSize(value?: number) {
   if (value == null) return '-'
   if (value > 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)}MB`
@@ -251,6 +292,20 @@ function formatCompressionRatio(decoded?: number, encoded?: number) {
   if (!decoded || !encoded) return '-'
   if (encoded >= decoded) return '未压缩'
   return `${(decoded / encoded).toFixed(1)}x`
+}
+
+function shortEndpoint(value?: string) {
+  if (!value) return '-'
+  try {
+    const url = new URL(value)
+    return url.hostname
+  } catch {
+    return value
+  }
+}
+
+function formatScore(value?: number) {
+  return value == null ? '-' : value.toFixed(1)
 }
 
 function formatNumber(value?: number) {
@@ -347,6 +402,21 @@ function formatNumber(value?: number) {
   gap: 0.35rem 0.75rem;
   margin-top: 0.5rem;
   color: var(--fg2);
+}
+
+.market-debug-routes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.5rem;
+  color: var(--fg2);
+}
+
+.market-debug-route {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .market-container {
