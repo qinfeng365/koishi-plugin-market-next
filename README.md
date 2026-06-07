@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.4-blue)
+![Version](https://img.shields.io/badge/version-3.4.5-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -297,6 +297,8 @@ plugins:
 
 ```bash
 npm install
+npm run audit:package
+npm run audit:high
 npm run build
 npm pack --dry-run
 ```
@@ -305,6 +307,8 @@ npm pack --dry-run
 
 | 命令 | 说明 |
 | --- | --- |
+| `npm run audit:package` | 审计插件自身发布依赖树，排除 Koishi peer runtime。 |
+| `npm run audit:high` | 审计完整安装树的高危及严重漏洞。 |
 | `npm run build` | 生成 TypeScript 声明、后端 bundle 和前端 `dist`。 |
 | `npm run build:dts` | 只生成 TypeScript 声明。 |
 | `npm run build:js` | 只运行 JS / Console 构建。 |
@@ -325,7 +329,7 @@ lib/             后端与类型构建产物
 
 仓库内置两个 GitHub Actions workflows：
 
-- `.github/workflows/ci.yml`：普通 push 和 pull request 运行 `npm ci`、`npm audit --audit-level=high`、`npm run build` 和 `npm pack --dry-run`，只验证，不发布。
+- `.github/workflows/ci.yml`：普通 push 和 pull request 运行 `npm ci`、`npm run audit:package`、`npm run audit:high`、`npm run build` 和 `npm pack --dry-run`，只验证，不发布。
 - `.github/workflows/publish.yml`：`v*` tag 或手动触发时运行同样的校验，然后通过 npm Trusted Publishing 发布到 npm。
 
 首次使用前，需要在 npm 包设置里添加 Trusted Publisher：
@@ -338,13 +342,13 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.4
-git push origin v3.4.4
+git tag v3.4.5
+git push origin v3.4.5
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
 
-当前安全策略是把高危 audit 作为发布门禁；中危来自 Koishi / Cordis 上游链路且修复路径会降级 Console 时，不强行处理，避免为了 audit 破坏插件兼容性。
+当前安全策略分两层：`npm run audit:package` 要求插件自身发布依赖树没有已知漏洞；`npm run audit:high` 要求完整安装树没有高危或严重漏洞。完整 `npm audit` 中剩余的中危来自 Koishi peer runtime 的 Cordis / `file-type` 链路，npm 给出的修复路径会降级 Koishi 或跨 Cordis 主版本，因此不强行处理，避免为了 audit 破坏插件兼容性。
 
 ## 发布包内容
 
@@ -357,6 +361,12 @@ git push origin v3.4.4
 同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
 
 ## 版本更新
+
+### 3.4.5
+
+- CI 和发布 workflow 增加 `audit:package`，要求 market-next 自身发布依赖树排除 peer runtime 后为 0 漏洞。
+- 保留完整安装树的高危 audit 门禁，继续阻止 high / critical 漏洞进入发布。
+- README 补充 Koishi peer runtime 中危的来源和边界，避免把上游运行时链路误判为 market-next 发布包本体漏洞。
 
 ### 3.4.4
 

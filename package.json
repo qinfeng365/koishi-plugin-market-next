@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Manage your bots and plugins with console",
-  "version": "3.4.4",
+  "version": "3.4.5",
   "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
   "repository": {
     "type": "git",
@@ -13,6 +13,8 @@
   "main": "lib/node/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
+    "audit:package": "npm audit --omit=peer",
+    "audit:high": "npm audit --audit-level=high",
     "build": "tsc -p tsconfig.json && node build.mjs",
     "build:dts": "tsc -p tsconfig.json",
     "build:js": "node build.mjs"

@@ -2,6 +2,12 @@
 
 本文件记录 `koishi-plugin-market-next` 已发布到 npm 的版本差异。
 
+## 3.4.5
+
+- CI 和发布 workflow 增加 `audit:package`，要求 market-next 自身发布依赖树排除 peer runtime 后为 0 漏洞。
+- 保留完整安装树的高危 audit 门禁，继续阻止 high / critical 漏洞进入发布。
+- README 补充 Koishi peer runtime 中危的来源和边界，避免把上游运行时链路误判为 market-next 发布包本体漏洞。
+
 ## 3.4.4
 
 - 安全审计：通过 npm override 将 `@koishijs/plugin-console` 链路中的 `uuid` 收敛到 `11.1.1` 以上。
