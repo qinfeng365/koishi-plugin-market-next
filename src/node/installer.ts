@@ -19,6 +19,25 @@ const REGISTRY_FALLBACK_ENDPOINTS = [
   'https://registry.npmjs.org',
   'https://r.cnpmjs.org',
 ]
+const REGISTRY_ROUTE_STAGGER = 120
+const REGISTRY_FAST_ROUTE_THRESHOLD = Time.second * 1.5
+
+interface RouteStats {
+  score: number
+  successes: number
+  failures: number
+  averageElapsed?: number
+  lastSuccess?: number
+  lastFailure?: number
+  lastFailureReason?: RegistryStatus['reason']
+}
+
+interface RegistryEndpointResult {
+  endpoint: string
+  registry: Registry
+  elapsed: number
+  fallbackReason?: 'primary-failed' | 'primary-slow'
+}
 
 export interface Dependency {
   /**
@@ -91,7 +110,9 @@ class Installer extends Service {
     endpoint: string
     registry: Registry
     elapsed: number
+    fallbackReason?: RegistryEndpointResult['fallbackReason']
   }
+  private registryRouteStats: Dict<RouteStats> = {}
   private flushData: () => void
   private tempRegistryStatus: Dict<RegistryStatus> = {}
   private flushRegistryStatus: () => void
@@ -130,11 +151,16 @@ class Installer extends Service {
 
   private async resetEndpoint() {
     const endpoint = this.config.endpoint || await getRegistry()
+    const previous = this.endpoint
     this.endpoint = endpoint
     this.metadataEndpoint = endpoint
     this.routeProbeTask = undefined
     this.routeProbeResult = undefined
     this.http = this.createHttp(endpoint)
+    if (previous && previous !== endpoint) {
+      this.registryRouteStats = {}
+      logger.info(`npm registry endpoint changed: previous=${previous}, current=${endpoint}, routeStats=reset`)
+    }
   }
 
   resolveName(name: string) {
@@ -160,14 +186,40 @@ class Installer extends Service {
   }
 
   private getRegistryEndpoints() {
-    return [this.metadataEndpoint || this.endpoint, this.endpoint, ...(this.config.autoRoute === false ? [] : REGISTRY_FALLBACK_ENDPOINTS)]
+    const preferred = this.getPreferredMetadataEndpoint()
+    return [preferred, ...this.getRouteProbeEndpoints()]
+      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
+  }
+
+  private getPreferredMetadataEndpoint() {
+    const endpoint = this.metadataEndpoint || this.endpoint
+    if (endpoint === this.endpoint) return endpoint
+    const stats = this.registryRouteStats[endpoint]
+    if (!stats) return endpoint
+    const primaryScore = this.getRegistryRouteScore(this.endpoint)
+    const selectedScore = this.getRegistryRouteScore(endpoint)
+    if (stats.failures >= 2 && selectedScore + 1 < primaryScore) {
+      logger.debug(`demote npm metadata endpoint: selected=${endpoint}, selectedScore=${selectedScore.toFixed(1)}, primary=${this.endpoint}, primaryScore=${primaryScore.toFixed(1)}, failures=${stats.failures}, lastFailure=${stats.lastFailureReason ?? '-'}`)
+      return this.endpoint
+    }
+    return endpoint
+  }
+
+  private getRegistryEndpointCandidates() {
+    return [this.endpoint, ...(this.config.autoRoute === false ? [] : REGISTRY_FALLBACK_ENDPOINTS)]
       .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
   }
 
   private getRouteProbeEndpoints() {
-    if (this.config.autoRoute === false) return []
-    return [this.endpoint, ...REGISTRY_FALLBACK_ENDPOINTS]
-      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
+    const endpoints = this.getRegistryEndpointCandidates()
+    if (this.config.autoRoute === false) return endpoints
+    const [primary, ...fallbacks] = endpoints
+    const originalIndex = new Map(fallbacks.map((endpoint, index) => [endpoint, index]))
+    return [primary, ...fallbacks.sort((a, b) => {
+      const delta = this.getRegistryRouteScore(b) - this.getRegistryRouteScore(a)
+      if (delta) return delta
+      return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0)
+    })]
   }
 
   private async ensureMetadataEndpoint(name: string, serial = this.serial) {
@@ -181,34 +233,192 @@ class Installer extends Service {
 
   private async probeMetadataEndpoint(name: string, endpoints: string[], serial: number) {
     const start = Date.now()
-    logger.info(`npm registry route probe started: probe=${name}, candidates=${endpoints.join(', ')}`)
-    const tasks = endpoints.map(async (endpoint) => {
-      const attemptStart = Date.now()
+    logger.debug(`npm registry route scores before probe: ${formatRouteScores(endpoints.map(endpoint => ({ endpoint, score: this.getRegistryRouteScore(endpoint), ...this.registryRouteStats[endpoint] })))}`)
+    const fallbackDelay = this.getFallbackDelay(endpoints[0])
+    logger.info(`npm registry route probe started: probe=${name}, primary=${endpoints[0]}, fallbackCount=${Math.max(0, endpoints.length - 1)}, slowThreshold=${fallbackDelay}ms`)
+
+    if (endpoints.length === 1 || this.config.autoRoute === false) {
       try {
-        logger.debug(`probe npm registry endpoint: probe=${name}, endpoint=${endpoint}`)
-        const registry = await this.createHttp(endpoint).get(`/${name}`) as Registry
-        if (!registry?.versions || typeof registry.versions !== 'object') {
-          throw new Error(`invalid registry metadata for ${name}`)
-        }
-        return { endpoint, registry, elapsed: Date.now() - attemptStart }
+        const result = await this.fetchRegistryEndpoint(name, endpoints[0], serial)
+        if (this.isStale(serial)) return
+        this.recordRegistryRouteSuccess(result)
+        this.applyRouteProbeResult(name, result, serial, start)
       } catch (error) {
+        if (this.isStale(serial)) return
         const detail = this.formatRegistryError(error)
-        logger.debug(`probe npm registry endpoint failed: probe=${name}, endpoint=${endpoint}, elapsed=${Date.now() - attemptStart}ms, reason=${detail.reason}, error=${detail.error}`)
-        throw error
+        this.recordRegistryRouteFailure(endpoints[0], detail.reason)
+        logger.warn(`npm registry route probe failed: probe=${name}, candidates=${endpoints.length}, elapsed=${Date.now() - start}ms`)
       }
-    })
+      return
+    }
 
     try {
-      const result = await Promise.any(tasks)
+      const result = await new Promise<RegistryEndpointResult>((resolve, reject) => {
+        let settled = false
+        let failed = 0
+        let lastError: any
+        let fallbackStarted = false
+        let fallbackReason: RegistryEndpointResult['fallbackReason']
+        const controllers = endpoints.map(() => new AbortController())
+        const timer = setTimeout(() => startFallback('primary-slow'), fallbackDelay)
+
+        const settle = (result: RegistryEndpointResult, index: number) => {
+          if (settled) {
+            logger.debug(`ignore slower npm registry endpoint: probe=${name}, endpoint=${result.endpoint}, elapsed=${result.elapsed}ms`)
+            return
+          }
+          settled = true
+          clearTimeout(timer)
+          controllers.forEach((controller, controllerIndex) => {
+            if (controllerIndex !== index) controller.abort(new Error('npm registry route probe settled'))
+          })
+          if (result.endpoint !== endpoints[0]) result.fallbackReason = fallbackReason
+          this.recordRegistryRouteSuccess(result)
+          resolve(result)
+        }
+
+        const fail = (endpoint: string, index: number, error: any) => {
+          if (settled) return
+          const detail = this.formatRegistryError(error)
+          this.recordRegistryRouteFailure(endpoint, detail.reason)
+          lastError = error
+          failed++
+          if (index === 0) startFallback('primary-failed')
+          if (failed < endpoints.length) return
+          settled = true
+          clearTimeout(timer)
+          reject(lastError)
+        }
+
+        const startEndpoint = (endpoint: string, index: number, waitIndex = 0) => {
+          const signal = controllers[index].signal
+          this.waitRouteTurn(waitIndex, signal).then(() => {
+            if (settled) throw new Error('npm registry route probe settled before request')
+            return this.fetchRegistryEndpoint(name, endpoint, serial, signal)
+          }).then(result => settle(result, index)).catch(error => fail(endpoint, index, error))
+        }
+
+        const startFallback = (reason: NonNullable<RegistryEndpointResult['fallbackReason']>) => {
+          if (settled || fallbackStarted) return
+          fallbackStarted = true
+          fallbackReason = reason
+          logger.info(`npm registry fallback race started: probe=${name}, reason=${reason}, count=${endpoints.length - 1}, stagger=${REGISTRY_ROUTE_STAGGER}ms`)
+          endpoints.slice(1).forEach((endpoint, fallbackIndex) => startEndpoint(endpoint, fallbackIndex + 1, fallbackIndex))
+        }
+
+        startEndpoint(endpoints[0], 0)
+      })
       if (this.isStale(serial)) return
-      const previous = this.metadataEndpoint
-      this.metadataEndpoint = result.endpoint
-      this.routeProbeResult = { serial, name, ...result }
-      logger.info(`npm registry route probe selected: probe=${name}, endpoint=${result.endpoint}, previous=${previous}, elapsed=${result.elapsed}ms, total=${Date.now() - start}ms`)
+      this.applyRouteProbeResult(name, result, serial, start)
     } catch (error) {
       if (this.isStale(serial)) return
       logger.warn(`npm registry route probe failed: probe=${name}, candidates=${endpoints.length}, elapsed=${Date.now() - start}ms`)
     }
+  }
+
+  private async fetchRegistryEndpoint(name: string, endpoint: string, serial: number, signal?: AbortSignal): Promise<RegistryEndpointResult> {
+    const attemptStart = Date.now()
+    try {
+      logger.debug(`probe npm registry endpoint: probe=${name}, endpoint=${endpoint}`)
+      const registry = await this.createHttp(endpoint).get(`/${name}`, { signal }) as Registry
+      if (this.isStale(serial)) throw new Error('npm registry route probe stale')
+      if (!registry?.versions || typeof registry.versions !== 'object') {
+        throw new Error(`invalid registry metadata for ${name}`)
+      }
+      const elapsed = Date.now() - attemptStart
+      logger.debug(`probe npm registry endpoint succeeded: probe=${name}, endpoint=${endpoint}, elapsed=${elapsed}ms, versions=${Object.keys(registry.versions).length}`)
+      return { endpoint, registry, elapsed }
+    } catch (error) {
+      const detail = this.formatRegistryError(error)
+      logger.debug(`probe npm registry endpoint failed: probe=${name}, endpoint=${endpoint}, elapsed=${Date.now() - attemptStart}ms, reason=${detail.reason}, error=${detail.error}`)
+      throw error
+    }
+  }
+
+  private applyRouteProbeResult(name: string, result: RegistryEndpointResult, serial: number, start: number) {
+    const previous = this.metadataEndpoint
+    this.metadataEndpoint = result.endpoint
+    this.routeProbeResult = { serial, name, ...result }
+    if (result.endpoint === this.endpoint) {
+      logger.info(`npm registry primary selected: probe=${name}, endpoint=${result.endpoint}, elapsed=${result.elapsed}ms, total=${Date.now() - start}ms`)
+    } else {
+      logger.info(`npm registry fallback selected: probe=${name}, endpoint=${result.endpoint}, previous=${previous}, reason=${result.fallbackReason ?? 'unknown'}, elapsed=${result.elapsed}ms, total=${Date.now() - start}ms`)
+    }
+    logger.debug(`npm registry route scores after probe: ${formatRouteScores(this.getRegistryRouteScores())}`)
+  }
+
+  private waitRouteTurn(index: number, signal?: AbortSignal) {
+    if (!index) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) return reject(signal.reason)
+      const timer = setTimeout(resolve, index * REGISTRY_ROUTE_STAGGER)
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        reject(signal.reason)
+      }, { once: true })
+    })
+  }
+
+  private getRegistryRouteScore(endpoint: string) {
+    const stats = this.registryRouteStats[endpoint]
+    let score = endpoint === this.endpoint ? 1 : 0
+    if (!stats) return score
+
+    const total = stats.successes + stats.failures
+    if (total) score += (stats.successes / total - 0.5) * 4
+    score += stats.score
+    score += Math.min(1.5, stats.successes * 0.3)
+    score -= Math.min(6, stats.failures * 1.2)
+    if (stats.averageElapsed != null) {
+      if (stats.averageElapsed <= 300) score += 4
+      else if (stats.averageElapsed <= 800) score += 3
+      else if (stats.averageElapsed <= REGISTRY_FAST_ROUTE_THRESHOLD) score += 2
+      else if (stats.averageElapsed <= 2500) score += 0
+      else if (stats.averageElapsed <= 4000) score -= 2
+      else score -= 4
+    }
+    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 0.5
+    return score
+  }
+
+  private recordRegistryRouteSuccess(result: RegistryEndpointResult) {
+    const stats = this.registryRouteStats[result.endpoint] ||= { score: 0, successes: 0, failures: 0 }
+    stats.successes++
+    stats.score = clamp(stats.score + (result.elapsed <= REGISTRY_FAST_ROUTE_THRESHOLD ? 0.5 : -0.5), -6, 3)
+    stats.lastSuccess = Date.now()
+    stats.averageElapsed = stats.averageElapsed == null
+      ? result.elapsed
+      : Math.round(stats.averageElapsed * 0.7 + result.elapsed * 0.3)
+  }
+
+  private recordRegistryRouteFailure(endpoint: string, reason?: RegistryStatus['reason']) {
+    const stats = this.registryRouteStats[endpoint] ||= { score: 0, successes: 0, failures: 0 }
+    stats.failures++
+    stats.lastFailure = Date.now()
+    stats.lastFailureReason = reason
+    stats.score = clamp(stats.score - getFailurePenalty(stats.lastFailureReason), -8, 3)
+  }
+
+  private getFallbackDelay(endpoint: string) {
+    const stats = this.registryRouteStats[endpoint]
+    if (!stats) return REGISTRY_FAST_ROUTE_THRESHOLD
+    const recentSuccess = stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10
+    if (!recentSuccess && stats.failures >= 3) return 200
+    if (!recentSuccess && stats.failures >= 2) return 400
+    if (stats.averageElapsed != null) {
+      if (stats.averageElapsed > 4000) return 400
+      if (stats.averageElapsed > 2500) return 800
+    }
+    return REGISTRY_FAST_ROUTE_THRESHOLD
+  }
+
+  private getRegistryRouteScores() {
+    return this.getRegistryEndpointCandidates().map(endpoint => ({
+      endpoint,
+      score: this.getRegistryRouteScore(endpoint),
+      fallbackDelay: endpoint === this.endpoint ? this.getFallbackDelay(endpoint) : undefined,
+      ...this.registryRouteStats[endpoint],
+    }))
   }
 
   private isStale(serial: number) {
@@ -288,6 +498,7 @@ class Installer extends Service {
             logger.info(`npm registry fallback selected for ${name}: endpoint=${endpoint}, previous=${this.metadataEndpoint}`)
             this.metadataEndpoint = endpoint
           }
+          this.recordRegistryRouteSuccess({ endpoint, registry, elapsed: Date.now() - attemptStart })
           this.setRegistryStatus(name, {
             loading: false,
             error: undefined,
@@ -301,6 +512,7 @@ class Installer extends Service {
         } catch (error) {
           lastError = error
           const detail = this.formatRegistryError(error)
+          this.recordRegistryRouteFailure(endpoint, detail.reason)
           logger.debug(`failed registry metadata for ${name} from ${endpoint} in ${Date.now() - attemptStart}ms, attempt=${retry + 1}/${maxRetry + 1}: ${detail.error}`)
           if (detail.reason === 'not-found') break
           if (retry < maxRetry) await sleep(300 * (retry + 1))
@@ -625,6 +837,33 @@ function pickMetadataProbe(names: string[]) {
     || names.find(name => name === '@koishijs/plugin-console')
     || names.find(name => Scanner.isPlugin(name))
     || names[0]
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function getFailurePenalty(reason?: RegistryStatus['reason']) {
+  switch (reason) {
+    case 'not-found':
+      return 0.4
+    case 'invalid':
+      return 0.8
+    case 'http':
+      return 1.2
+    case 'timeout':
+    case 'network':
+      return 1.8
+    default:
+      return 1.5
+  }
+}
+
+function formatRouteScores(routes: Array<{ endpoint: string, score: number, successes?: number, failures?: number, averageElapsed?: number, fallbackDelay?: number, lastFailureReason?: RegistryStatus['reason'] }>) {
+  if (!routes.length) return '(none)'
+  return routes
+    .map(route => `${route.endpoint} score=${route.score.toFixed(1)} ok=${route.successes ?? 0} fail=${route.failures ?? 0} avg=${route.averageElapsed ?? '-'} delay=${route.fallbackDelay ?? '-'} last=${route.lastFailureReason ?? '-'}`)
+    .join(' | ')
 }
 
 export default Installer

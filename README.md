@@ -7,7 +7,7 @@
 
 `koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.0` 是弱网依赖版本刷新策略的 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
+`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.1` 是弱网依赖版本刷新策略的 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
 
 ## 为什么做 Next
 
@@ -60,7 +60,7 @@ npm install koishi-plugin-market-next@alpha
 也可以固定安装某个 alpha 版本：
 
 ```bash
-npm install koishi-plugin-market-next@3.5.6-alpha.0
+npm install koishi-plugin-market-next@3.5.6-alpha.1
 ```
 
 ## 基础配置
@@ -127,15 +127,21 @@ market-next 区分两类源：
 
 依赖管理页显示“可更新版本”时，请求的不是 4MB 左右的市场索引，而是每个依赖包自己的 npm 元数据，例如 `https://registry.npmjs.org/koishi-plugin-xxx`。如果弱网环境下每个包都分别尝试多个 npm 源，132 个依赖就可能放大成大量超时等待。
 
-`3.5.6-alpha.0` 开始，依赖版本刷新会先进行一次 npm registry route probe：
+`3.5.6-alpha.1` 起，依赖版本刷新会先进行一次 npm registry route probe：
 
 - 代表包选择顺序：`koishi`、`@koishijs/plugin-console`、第一个 Koishi 插件包、第一个普通依赖。
-- 并发测试当前 `registry.endpoint` 和内置 npm 备用源。
+- 当前 `registry.endpoint` 始终作为主源先请求。
+- 主源失败，或超过 1.5 秒仍未返回时，备用 npm 源才会启动竞速。
+- 如果主源近期连续失败或平均耗时明显偏高，备用源启动延迟会自动缩短，但主源仍会先请求。
+- 备用 npm 源会按 route score 排序，评分参考成功率、失败次数、平均耗时和最近成功时间。
+- 不同失败原因有不同权重：超时和网络失败会较快降权，`not-found` / 镜像未同步只轻度降权。
 - 第一个返回有效 `versions` 元数据的源会成为本轮刷新使用的 `metadataEndpoint`。
 - probe 包自身的返回结果会直接复用，避免同一个包重复请求一次。
 - 本轮后续 `getPackage()` / `market/registry` 请求优先走选中的源。
+- 如果选中的备用源后续连续失败且分数低于主源，会自动回退到主源优先。
 - 这个选择只保存在进程内，不写入用户配置；下次刷新会重新判断。
 - 如果 route probe 全部失败，会回到原有的逐包重试和备用源 fallback 行为。
+- `registry.autoRoute: false` 时只请求 `registry.endpoint`，不会访问任何备用 npm 源。
 
 这项策略主要解决“每个插件都单独试一遍 npm 链路”的等待放大问题。它不会改变安装命令真正使用的 npm registry；安装时仍按 `registry.endpoint` 和包管理器行为执行。
 
@@ -208,8 +214,9 @@ debug 模式会在日志页写入 `[debug] ...` 记录。这样即使 Koishi 全
 [debug] market response headers: endpoint=..., status=304, request=276ms, ...
 [debug] market disk cache store parsed: entries=2, ...
 [debug] route success updated: endpoint=..., score=..., average=...
-npm registry route probe started: probe=koishi, candidates=...
-npm registry route probe selected: probe=koishi, endpoint=..., previous=..., elapsed=...
+npm registry route probe started: probe=koishi, primary=..., fallbackCount=3, slowThreshold=1500ms
+npm registry fallback race started: probe=koishi, reason=primary-slow, count=3, stagger=120ms
+npm registry fallback selected: probe=koishi, endpoint=..., previous=..., reason=primary-slow, elapsed=...
 dependency metadata refresh completed: total=132, installed=132, invalid=0, registry=..., elapsed=...
 ```
 
@@ -316,11 +323,11 @@ npm pack --dry-run
 - 手动发布只能在默认分支执行。
 - 发布前检查 npm 是否已经存在同版本。
 - 使用 npm Trusted Publishing，不需要 `NPM_TOKEN`。
-- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.0` 发布到 `alpha`，正式版本发布到 `latest`。
+- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.1` 发布到 `alpha`，正式版本发布到 `latest`。
 
 ## 3.5.6 Alpha Notes
 
-`3.5.6-alpha.0` 主要用于验证弱网环境下的依赖版本刷新性能。
+`3.5.6-alpha.1` 主要用于验证弱网环境下的依赖版本刷新性能。
 
 这一版重点关注：
 

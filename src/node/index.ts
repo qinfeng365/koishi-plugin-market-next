@@ -106,39 +106,53 @@ async function requestPluginRuntime(ctx: Context, name: string) {
   await ctx.get('console')?.listeners['config/request-runtime']?.callback.call(null, name)
 }
 
-async function ensurePluginConfig(ctx: Context, name: string) {
+async function ensurePluginConfig(ctx: Context, name: string, write = true) {
   if (!Scanner.isPlugin(name)) return false
-
-  await requestPluginRuntime(ctx, name).catch(error => ctx.logger('market').warn(error))
 
   const shortname = getPluginShortname(name)
   if (hasPluginConfig(ctx.loader.config?.plugins, shortname)) return false
 
+  await requestPluginRuntime(ctx, name).catch(error => ctx.logger('market').warn(error))
+  if (hasPluginConfig(ctx.loader.config?.plugins, shortname)) return false
+
   const key = createDisabledPluginConfig(ctx, shortname)
   if (!key) return false
-  await ctx.loader.writeConfig()
+  if (write) await ctx.loader.writeConfig()
   ctx.logger('market').info('created disabled default config entry %c for %c', key, name)
   return true
 }
 
 async function ensurePluginConfigs(ctx: Context, names: string[]) {
+  const start = Date.now()
   let changed = false
-  for (const name of names) {
-    if (await ensurePluginConfig(ctx, name)) changed = true
+  let checked = 0
+  for (const name of names.filter(name => Scanner.isPlugin(name))) {
+    if (!ctx.scope.isActive) return false
+    if (await ensurePluginConfig(ctx, name, false)) changed = true
+    if (++checked % 20 === 0) await sleep(0)
   }
   if (!changed) return false
+  await ctx.loader.writeConfig()
   await Promise.all([
     ctx.get('console')?.refresh('config'),
     ctx.get('console')?.refresh('packages'),
   ])
+  ctx.logger('market').info(`plugin config ensure completed: checked=${checked}, elapsed=${Date.now() - start}ms`)
   return true
 }
 
 async function ensureInstalledPluginConfigs(ctx: Context) {
+  const start = Date.now()
   const manifest = loadManifest(ctx.baseDir)
   const names = Object.keys(manifest.dependencies ?? {})
     .filter(name => Scanner.isPlugin(name))
-  return ensurePluginConfigs(ctx, names)
+  const missing = names.filter(name => !hasPluginConfig(ctx.loader.config?.plugins, getPluginShortname(name)))
+  ctx.logger('market').debug(`installed plugin config repair scan: total=${names.length}, missing=${missing.length}`)
+  if (!missing.length) return false
+  await sleep(0)
+  const changed = await ensurePluginConfigs(ctx, missing)
+  ctx.logger('market').info(`installed plugin config repair scan completed: total=${names.length}, missing=${missing.length}, changed=${changed}, elapsed=${Date.now() - start}ms`)
+  return changed
 }
 
 export function apply(ctx: Context, config: Config = {}) {
@@ -296,8 +310,17 @@ export function apply(ctx: Context, config: Config = {}) {
       return ensurePluginConfig(ctx, name)
     }, { authority: 4 })
 
-    ctx.on('ready', async () => {
-      await ensureInstalledPluginConfigs(ctx).catch(error => ctx.logger('market').warn(error))
+    ctx.on('ready', () => {
+      const timer = setTimeout(() => {
+        if (!ctx.scope.isActive) return
+        ctx.logger('market').debug('schedule installed plugin config repair after market-next ready')
+        void ensureInstalledPluginConfigs(ctx).catch(error => ctx.logger('market').warn(error))
+      }, 1000)
+      ctx.effect(() => () => clearTimeout(timer))
     })
   })
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

@@ -46,6 +46,7 @@ declare class Installer extends Service {
     private metadataEndpoint;
     private routeProbeTask?;
     private routeProbeResult?;
+    private registryRouteStats;
     private flushData;
     private tempRegistryStatus;
     private flushRegistryStatus;
@@ -60,9 +61,19 @@ declare class Installer extends Service {
         [x: string]: string;
     }>;
     private getRegistryEndpoints;
+    private getPreferredMetadataEndpoint;
+    private getRegistryEndpointCandidates;
     private getRouteProbeEndpoints;
     private ensureMetadataEndpoint;
     private probeMetadataEndpoint;
+    private fetchRegistryEndpoint;
+    private applyRouteProbeResult;
+    private waitRouteTurn;
+    private getRegistryRouteScore;
+    private recordRegistryRouteSuccess;
+    private recordRegistryRouteFailure;
+    private getFallbackDelay;
+    private getRegistryRouteScores;
     private isStale;
     private setRegistryStatus;
     private clearRegistryStatus;
