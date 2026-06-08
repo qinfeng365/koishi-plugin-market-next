@@ -15,6 +15,7 @@ const FALLBACK_ENDPOINTS = [
   'https://registry.koishi.chat/index.json',
 ]
 const ROUTE_STAGGER = 120
+const FIRST_PAYLOAD_TIMEOUT = Time.second * 1.5
 const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
 
 type LogLevel = typeof logLevels[number]
@@ -81,6 +82,7 @@ class MarketProvider extends BaseMarketProvider {
   private debugInfo?: MarketPerformance
   private routeStats: Dict<RouteStats> = {}
   private backgroundTask?: Promise<void>
+  private pendingRefreshTask?: Promise<any>
   private cacheWriteTimer?: ReturnType<typeof setTimeout>
   private flushData: () => void
 
@@ -499,7 +501,29 @@ class MarketProvider extends BaseMarketProvider {
 
   async get() {
     const start = Date.now()
-    await this.prepare()
+    const task = this.prepare()
+    if (!this.scanner && !this.payload) {
+      const ready = await waitFor(task, FIRST_PAYLOAD_TIMEOUT)
+      if (!ready) {
+        this.refreshAfterPrepare(task)
+        this.log('debug', `return loading market payload while waiting for network, elapsed=${Date.now() - start}ms`)
+        return {
+          registry: this.endpoint || this.config.endpoint,
+          data: {},
+          failed: 0,
+          total: 0,
+          progress: 0,
+          stale: false,
+          error: undefined,
+          cached: false,
+          refreshing: true,
+          loading: true,
+          debug: this.getDebugInfo({ total: Date.now() - start }),
+        }
+      }
+    } else {
+      await task
+    }
     if (!this.scanner) {
       this.log('debug', `get market payload without scanner, cached=${!!this.payload}, elapsed=${Date.now() - start}ms`)
       return this.payload ? { ...this.payload, debug: this.getDebugInfo() } : { data: {}, failed: 0, total: 0, progress: 0, debug: this.getDebugInfo() }
@@ -513,6 +537,7 @@ class MarketProvider extends BaseMarketProvider {
           stale: true,
           error,
           refreshing: false,
+          loading: false,
           debug: this.getDebugInfo(),
         }
       }
@@ -542,6 +567,7 @@ class MarketProvider extends BaseMarketProvider {
       cachedAt: this.cacheMeta?.fetchedAt,
       validatedAt: this.cacheMeta?.validatedAt,
       refreshing: !!this.backgroundTask,
+      loading: false,
       debug: this.getDebugInfo({
         payloadData: dataElapsed,
         payload: Date.now() - payloadStart,
@@ -550,6 +576,16 @@ class MarketProvider extends BaseMarketProvider {
     this.payload = payload
     this.log('debug', `get market payload completed: total=${payload.total}, progress=${payload.progress}, failed=${payload.failed}, stale=${!!payload.stale}, elapsed=${Date.now() - start}ms`)
     return payload
+  }
+
+  private refreshAfterPrepare(task: Promise<any>) {
+    if (this.pendingRefreshTask === task) return
+    this.pendingRefreshTask = task
+    task.finally(async () => {
+      if (this.pendingRefreshTask === task) this.pendingRefreshTask = undefined
+      if (this.disposed || !this.ctx.scope.isActive) return
+      await this.ctx.get('console')?.refresh('market')
+    })
   }
 
   private applyIndex(result: SearchResult, endpoint: string) {
@@ -773,6 +809,20 @@ function parseContentLength(value?: string | null) {
 function normalizeWireSize(wireSize: number | undefined, decodedSize: number) {
   if (!wireSize && decodedSize > 0) return
   return wireSize
+}
+
+async function waitFor(task: Promise<any>, timeout: number) {
+  let timer: ReturnType<typeof setTimeout>
+  try {
+    return await Promise.race([
+      task.then(() => true),
+      new Promise<boolean>(resolve => {
+        timer = setTimeout(() => resolve(false), timeout)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function formatTimings(timings: Dict<number> = {}) {

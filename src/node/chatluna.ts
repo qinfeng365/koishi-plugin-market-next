@@ -8,12 +8,15 @@ const TOOL_NAME = 'koishi_plugin_market_search'
 const CACHE_TTL = Time.minute * 10
 const DAY = Time.day
 
+const intentValues = ['search', 'recommend', 'recent', 'popular', 'risk', 'compare'] as const
 const statusValues = ['verified', 'insecure', 'preview', 'portable', 'deprecated'] as const
 const sortValues = ['relevance', 'rating', 'downloads', 'created', 'updated'] as const
 const orderValues = ['asc', 'desc'] as const
 
+type Intent = typeof intentValues[number]
 type Status = typeof statusValues[number]
 type Sort = typeof sortValues[number]
+type Order = typeof orderValues[number]
 
 type MarketObject = SearchObject & {
   deprecated?: string
@@ -65,36 +68,104 @@ interface LoadResult {
   error?: string
 }
 
+interface NormalizedSearchInput {
+  intent: Intent
+  query?: string
+  requirements?: string
+  names: string[]
+  category: string[]
+  status: Status[]
+  createdAfter?: string
+  createdBefore?: string
+  updatedAfter?: string
+  updatedBefore?: string
+  createdWithinDays?: number
+  updatedWithinDays?: number
+  sort: Sort
+  order: Order
+  limit: number
+  includeHidden: boolean
+  includeDeprecated: boolean
+}
+
+interface SearchPayload {
+  tool: typeof TOOL_NAME
+  registry: string
+  fetchedAt: string | null
+  stale: boolean
+  error: string | null
+  intent: Intent
+  filters: Record<string, unknown>
+  total: number
+  matched: number
+  returned: number
+  summary: {
+    text: string
+    warnings: string[]
+    risk: Record<string, number>
+  }
+  results: SearchResultItem[]
+  nextQueries: string[]
+}
+
+interface SearchResultItem {
+  rank: number
+  name: string
+  shortname: string
+  version: string
+  category: string
+  rating: number
+  downloadsLastMonth: number
+  createdAt: string | null
+  updatedAt: string | null
+  statusTags: string[]
+  description: string
+  links: {
+    npm: string
+    homepage?: string
+    repository?: string
+  }
+  reasons: string[]
+}
+
 const cache: Record<string, MarketIndex> = {}
 const pending: Record<string, Promise<MarketIndex>> = {}
 
 const searchSchema = z.object({
+  intent: z.enum(intentValues).optional().describe('Search intent. Use recommend for plugin recommendations, recent for newly created plugins, popular for high-download plugins, risk for insecure/deprecated plugins, and compare for comparing named plugins.'),
   query: z.string().optional().describe('Keyword search. Matches plugin package name, short name, description, and keywords.'),
-  category: z.array(z.string()).optional().describe('Category filter, for example adapter, ai, tool, game, webui. Multiple values match any category.'),
-  status: z.array(z.enum(statusValues)).optional().describe('Status filter: verified, insecure, preview, portable, deprecated. Multiple values match any status.'),
+  requirements: z.string().optional().describe('Natural language user requirements, for example "找一个好用的 onebot 适配器" or "recommend a stable AI plugin".'),
+  names: stringList('Plugin package names or short names for exact lookup or comparison. Accepts an array, a single string, or comma-separated names.'),
+  category: stringList('Category filter, for example adapter, ai, tool, game, webui. Accepts an array, a single string, or comma-separated categories.'),
+  status: statusList(),
   createdAfter: z.string().optional().describe('Only include plugins created on or after this date. Supports YYYY-MM-DD or ISO date.'),
   createdBefore: z.string().optional().describe('Only include plugins created on or before this date. Supports YYYY-MM-DD or ISO date.'),
   updatedAfter: z.string().optional().describe('Only include plugins updated on or after this date. Supports YYYY-MM-DD or ISO date.'),
   updatedBefore: z.string().optional().describe('Only include plugins updated on or before this date. Supports YYYY-MM-DD or ISO date.'),
   createdWithinDays: z.number().int().positive().optional().describe('Only include plugins created within the last N days.'),
   updatedWithinDays: z.number().int().positive().optional().describe('Only include plugins updated within the last N days.'),
-  sort: z.enum(sortValues).default('relevance').describe('Sort mode.'),
-  order: z.enum(orderValues).default('desc').describe('Sort order.'),
-  limit: z.number().int().min(1).max(50).default(10).describe('Maximum number of results to show, from 1 to 50.'),
+  sort: z.enum(sortValues).optional().describe('Sort mode. If omitted, the tool chooses a good default from intent.'),
+  order: z.enum(orderValues).optional().describe('Sort order. Defaults to desc.'),
+  limit: z.number().int().min(1).max(50).optional().describe('Maximum number of results to show, from 1 to 50. Defaults to 10.'),
   includeHidden: z.boolean().optional().describe('Include ignored or hidden plugins. Defaults to false.'),
-  includeDeprecated: z.boolean().optional().describe('Include deprecated plugins. Defaults to false unless status includes deprecated.'),
+  includeDeprecated: z.boolean().optional().describe('Include deprecated plugins. Defaults to false unless status includes deprecated or intent is risk.'),
 })
 
 type SearchInput = z.infer<typeof searchSchema>
 
-const description = `Search the Koishi plugin market.
+const description = `Search the Koishi plugin market / 查询 Koishi 插件市场。
 
-Use this read-only tool when the user asks to find Koishi plugins by keyword, category, status, created/updated time range, recent additions, recent updates, downloads, rating, or market metadata.
+Use this read-only tool whenever the user wants to find, recommend, compare, inspect, or rank Koishi plugins. 适用场景包括：插件搜索、插件推荐、插件对比、最近新增、最近更新、热门插件、认证插件、风险/不安全/废弃状态查询。
 
-The tool only reads the market registry index. It does not install, uninstall, update, edit configuration, or modify package.json.`
+Prefer calling this tool before answering questions like "有没有 onebot 插件", "推荐一个 AI 插件", "最近新增了什么插件", "哪些插件有风险", "compare these Koishi plugins", or "find a stable adapter".
+
+Return value is JSON. The tool only reads the market registry index. It never installs, uninstalls, updates, edits configuration, or modifies package.json.`
 
 export function applyChatLunaTool(ctx: Context, config: ChatLunaToolConfig = {}) {
   if (!config.chatlunaTool) return
+
+  const logger = ctx.logger('market')
+  logger.debug('ChatLuna market search tool is enabled; waiting for chatluna service')
 
   ctx.inject(['chatluna'], (ctx) => {
     const marketTool = createMarketTool(ctx, config)
@@ -107,33 +178,45 @@ export function applyChatLunaTool(ctx: Context, config: ChatLunaToolConfig = {})
         return () => {}
       }
 
-      return registerTool.call(chatluna.platform, TOOL_NAME, {
-        description: marketTool.description,
-        selector: () => true,
-        meta: {
-          source: 'extension',
-          group: 'market',
-          tags: ['market', 'koishi', 'plugin'],
-          defaultAvailability: {
-            enabled: true,
-            main: true,
-            chatluna: true,
-            characterScope: 'all',
+      try {
+        const dispose = registerTool.call(chatluna.platform, TOOL_NAME, {
+          description: marketTool.description,
+          selector: () => true,
+          meta: {
+            source: 'extension',
+            group: 'market',
+            tags: ['market', 'koishi', 'plugin', 'search', 'recommend'],
+            defaultAvailability: {
+              enabled: true,
+              main: true,
+              chatluna: true,
+              characterScope: 'all',
+            },
           },
-        },
-        createTool: () => marketTool,
-      })
+          createTool: () => marketTool,
+        })
+
+        ctx.logger('market').info(`ChatLuna market search tool registered: ${TOOL_NAME}`)
+        return () => {
+          ctx.logger('market').debug(`ChatLuna market search tool disposed: ${TOOL_NAME}`)
+          dispose?.()
+        }
+      } catch (error) {
+        ctx.logger('market').warn(`Failed to register ChatLuna market search tool: ${formatError(error)}`)
+        return () => {}
+      }
     })
   })
 }
 
 function createMarketTool(ctx: Context, config: ChatLunaToolConfig) {
   return tool(async (input: SearchInput) => {
+    const normalized = normalizeInput(input ?? {})
     try {
       const result = await loadIndex(ctx, config)
-      return formatSearchResult(result, input)
+      return formatSearchResult(result, normalized)
     } catch (error) {
-      return formatLoadError(resolveEndpoint(config), error)
+      return formatLoadError(resolveEndpoint(config), normalized, error)
     }
   }, {
     name: TOOL_NAME,
@@ -182,42 +265,35 @@ async function fetchIndex(ctx: Context, config: ChatLunaToolConfig): Promise<Mar
   }
 }
 
-function formatSearchResult(result: LoadResult, input: SearchInput) {
+function formatSearchResult(result: LoadResult, input: NormalizedSearchInput) {
   const { index } = result
   const filtered = filterObjects(index.objects, input)
   const sorted = sortObjects(filtered, input)
   const shown = sorted.slice(0, input.limit)
-  const lines = [
-    '# Koishi 插件市场查询结果',
-    '',
-    `- Registry: ${index.endpoint}`,
-    `- 索引时间: ${formatDateTime(index.fetchedAt)}${result.stale ? '（缓存）' : ''}`,
-    `- 命中数: ${filtered.length}`,
-    `- 展示数: ${shown.length}`,
-    `- 筛选条件: ${formatFilters(input)}`,
-  ]
-
-  if (result.stale) {
-    lines.push(`- 警告: 获取最新市场索引失败，正在使用旧缓存。原因：${result.error}`)
+  const items = shown.map((item, index) => formatItem(item, index + 1, input))
+  const payload: SearchPayload = {
+    tool: TOOL_NAME,
+    registry: index.endpoint,
+    fetchedAt: formatDateTime(index.fetchedAt),
+    stale: result.stale,
+    error: result.error ?? null,
+    intent: input.intent,
+    filters: formatFilters(input),
+    total: index.objects.length,
+    matched: filtered.length,
+    returned: items.length,
+    summary: buildSummary(result, input, filtered, items),
+    results: items,
+    nextQueries: buildNextQueries(result, input, filtered.length, items.length),
   }
-
-  if (!shown.length) {
-    lines.push('', '没有找到符合条件的插件。可以放宽关键词、时间范围、分类或状态过滤。')
-    return lines.join('\n')
-  }
-
-  shown.forEach((item, index) => {
-    lines.push('', formatItem(item, index + 1))
-  })
-
-  return lines.join('\n')
+  return stringifyPayload(payload)
 }
 
-function filterObjects(objects: MarketObject[], input: SearchInput) {
-  const terms = getQueryTerms(input.query)
-  const categories = new Set(input.category?.map(normalizeText).filter(Boolean))
-  const statuses = input.status ?? []
-  const includeDeprecated = input.includeDeprecated || statuses.includes('deprecated')
+function filterObjects(objects: MarketObject[], input: NormalizedSearchInput) {
+  const terms = getFilterTerms(input)
+  const categories = new Set(input.category.map(normalizeText).filter(Boolean))
+  const statuses = input.status
+  const names = new Set(input.names.map(normalizeNameTarget).filter(Boolean))
   const createdAfter = input.createdWithinDays
     ? Date.now() - input.createdWithinDays * DAY
     : parseDate(input.createdAfter, false)
@@ -229,7 +305,8 @@ function filterObjects(objects: MarketObject[], input: SearchInput) {
 
   return objects.filter((item) => {
     if (!input.includeHidden && (item.ignored || item.manifest?.hidden)) return false
-    if (!includeDeprecated && isDeprecated(item)) return false
+    if (!input.includeDeprecated && isDeprecated(item)) return false
+    if (names.size && !matchesName(item, names)) return false
     if (categories.size && !categories.has(resolveCategory(item.category))) return false
     if (statuses.length && !statuses.some(status => hasStatus(item, status))) return false
     if (terms.length && !terms.every(term => relevancePart(item, term) > 0)) return false
@@ -245,22 +322,81 @@ function filterObjects(objects: MarketObject[], input: SearchInput) {
   })
 }
 
-function sortObjects(objects: MarketObject[], input: SearchInput) {
-  const terms = getQueryTerms(input.query)
+function sortObjects(objects: MarketObject[], input: NormalizedSearchInput) {
+  const terms = getQueryTerms(input)
   const order = input.order === 'asc' ? 1 : -1
   return objects.slice().sort((a, b) => {
-    const delta = compareObject(a, b, input.sort, terms)
+    const delta = compareObject(a, b, input, terms)
     if (delta) return delta * order
     return a.package.name.localeCompare(b.package.name)
   })
 }
 
-function compareObject(a: MarketObject, b: MarketObject, sort: Sort, terms: string[]) {
-  if (sort === 'rating') return (a.rating ?? 0) - (b.rating ?? 0)
-  if (sort === 'downloads') return (a.downloads?.lastMonth ?? 0) - (b.downloads?.lastMonth ?? 0)
-  if (sort === 'created') return (parseItemDate(a.createdAt) ?? 0) - (parseItemDate(b.createdAt) ?? 0)
-  if (sort === 'updated') return (parseItemDate(a.updatedAt) ?? 0) - (parseItemDate(b.updatedAt) ?? 0)
+function compareObject(a: MarketObject, b: MarketObject, input: NormalizedSearchInput, terms: string[]) {
+  if (input.intent === 'risk' && input.sort === 'relevance') {
+    return riskScore(a) - riskScore(b)
+  }
+  if (input.intent === 'recommend' && input.sort === 'relevance') {
+    return recommendationScore(a, terms) - recommendationScore(b, terms)
+  }
+  if (input.sort === 'rating') return (a.rating ?? 0) - (b.rating ?? 0)
+  if (input.sort === 'downloads') return (a.downloads?.lastMonth ?? 0) - (b.downloads?.lastMonth ?? 0)
+  if (input.sort === 'created') return (parseItemDate(a.createdAt) ?? 0) - (parseItemDate(b.createdAt) ?? 0)
+  if (input.sort === 'updated') return (parseItemDate(a.updatedAt) ?? 0) - (parseItemDate(b.updatedAt) ?? 0)
   return relevanceScore(a, terms) - relevanceScore(b, terms)
+}
+
+function normalizeInput(input: SearchInput): NormalizedSearchInput {
+  const status = input.status ?? []
+  const intent = inferIntent(input, status)
+  const sort = input.sort ?? defaultSort(intent)
+  const includeDeprecated = !!input.includeDeprecated || intent === 'risk' || status.includes('deprecated')
+  return {
+    intent,
+    query: cleanText(input.query),
+    requirements: cleanText(input.requirements),
+    names: input.names ?? [],
+    category: input.category?.map(resolveCategory).filter(Boolean) ?? [],
+    status: intent === 'risk' && !status.length ? ['insecure', 'deprecated'] : status,
+    createdAfter: input.createdAfter,
+    createdBefore: input.createdBefore,
+    updatedAfter: input.updatedAfter,
+    updatedBefore: input.updatedBefore,
+    createdWithinDays: input.createdWithinDays,
+    updatedWithinDays: input.updatedWithinDays,
+    sort,
+    order: input.order ?? 'desc',
+    limit: clamp(input.limit ?? 10, 1, 50),
+    includeHidden: !!input.includeHidden,
+    includeDeprecated,
+  }
+}
+
+function inferIntent(input: SearchInput, status: Status[]): Intent {
+  if (input.intent) return input.intent
+  if (input.names?.length) return 'compare'
+  if (status.some(status => status === 'insecure' || status === 'deprecated')) return 'risk'
+  if (input.createdWithinDays || input.createdAfter || input.createdBefore) return 'recent'
+  if (input.sort === 'downloads') return 'popular'
+  if (input.requirements) return 'recommend'
+  return 'search'
+}
+
+function defaultSort(intent: Intent): Sort {
+  if (intent === 'recent') return 'created'
+  if (intent === 'popular') return 'downloads'
+  return 'relevance'
+}
+
+function recommendationScore(item: MarketObject, terms: string[]) {
+  let score = relevanceScore(item, terms)
+  score += (item.rating ?? 0) * 4
+  score += Math.log10((item.downloads?.lastMonth ?? 0) + 1) * 8
+  score += recencyScore(item.updatedAt)
+  if (item.verified) score += 12
+  if (item.insecure || item.manifest?.insecure) score -= 20
+  if (isDeprecated(item)) score -= 30
+  return score
 }
 
 function relevanceScore(item: MarketObject, terms: string[]) {
@@ -286,41 +422,100 @@ function relevancePart(item: MarketObject, term: string) {
   return 0
 }
 
-function formatItem(item: MarketObject, index: number) {
+function riskScore(item: MarketObject) {
+  let score = 0
+  if (item.insecure || item.manifest?.insecure) score += 100
+  if (isDeprecated(item)) score += 80
+  if (item.manifest?.preview) score += 20
+  return score
+}
+
+function recencyScore(value?: string) {
+  const timestamp = parseItemDate(value)
+  if (!timestamp) return 0
+  const days = Math.max(0, (Date.now() - timestamp) / DAY)
+  return Math.max(0, 12 - Math.log2(days + 1) * 2)
+}
+
+function formatItem(item: MarketObject, rank: number, input: NormalizedSearchInput): SearchResultItem {
   const pkg = item.package
-  const links = getLinks(item)
-  const maintainers = pkg.maintainers?.slice(0, 3).map(user => user.username || user.name || user.email).filter(Boolean)
-  const lines = [
-    `## ${index}. ${item.shortname || pkg.name}`,
-    `- 包名: \`${pkg.name}\``,
-    `- 版本: \`${pkg.version}\``,
-    `- 分类: ${resolveCategory(item.category)}`,
-    `- 评分: ${formatNumber(item.rating ?? 0)}`,
-    `- 月下载: ${formatInteger(item.downloads?.lastMonth ?? 0)}`,
-    `- 创建时间: ${formatDate(item.createdAt)}`,
-    `- 更新时间: ${formatDate(item.updatedAt)}`,
-    `- 状态标签: ${getStatusTags(item).join(', ') || 'normal'}`,
-  ]
-
-  if (maintainers?.length) {
-    lines.push(`- 维护者: ${maintainers.join(', ')}`)
+  return {
+    rank,
+    name: pkg.name,
+    shortname: item.shortname || normalizePackageName(pkg.name),
+    version: pkg.version,
+    category: resolveCategory(item.category),
+    rating: round(item.rating ?? 0),
+    downloadsLastMonth: Math.round(pkgDownloads(item)),
+    createdAt: formatDate(item.createdAt),
+    updatedAt: formatDate(item.updatedAt),
+    statusTags: getStatusTags(item),
+    description: truncate(getDescription(item), 220),
+    links: getLinks(item),
+    reasons: getReasons(item, input),
   }
+}
 
-  lines.push(
-    `- 简介: ${truncate(getDescription(item), 220) || '暂无简介。'}`,
-    `- 链接: ${links.join(' / ')}`,
-  )
+function getReasons(item: MarketObject, input: NormalizedSearchInput) {
+  const reasons: string[] = []
+  const terms = getQueryTerms(input)
+  if (input.names.length && matchesName(item, new Set(input.names.map(normalizeNameTarget)))) reasons.push('matched requested plugin name')
+  if (terms.some(term => relevancePart(item, term) >= 55)) reasons.push('strong keyword/name match')
+  else if (terms.some(term => relevancePart(item, term) > 0)) reasons.push('matched description or keywords')
+  if (input.category.includes(resolveCategory(item.category))) reasons.push(`matched category: ${resolveCategory(item.category)}`)
+  if (item.verified) reasons.push('verified plugin')
+  if (pkgDownloads(item) >= 1000) reasons.push('high monthly downloads')
+  if (recencyScore(item.updatedAt) >= 8) reasons.push('recently updated')
+  if (item.insecure || item.manifest?.insecure) reasons.push('marked insecure')
+  if (isDeprecated(item)) reasons.push('marked deprecated')
+  if (!reasons.length) reasons.push('included by current filters')
+  return reasons
+}
 
-  return lines.join('\n')
+function buildSummary(result: LoadResult, input: NormalizedSearchInput, filtered: MarketObject[], items: SearchResultItem[]) {
+  const warnings: string[] = []
+  if (result.stale) warnings.push(`using stale cache: ${result.error}`)
+  const risk = countRisk(filtered)
+  if (risk.insecure) warnings.push(`${risk.insecure} matched plugin(s) are marked insecure`)
+  if (risk.deprecated) warnings.push(`${risk.deprecated} matched plugin(s) are deprecated`)
+  const top = items[0]?.name
+  const text = top
+    ? `${input.intent} matched ${filtered.length} plugin(s); top result is ${top}.`
+    : `${input.intent} matched no plugins. Relax keyword, category, status, or date filters.`
+  return { text, warnings, risk }
+}
+
+function buildNextQueries(result: LoadResult, input: NormalizedSearchInput, matched: number, returned: number) {
+  const queries: string[] = []
+  if (result.stale) queries.push('Retry after checking market.search.endpoint or network connectivity.')
+  if (!matched) {
+    queries.push('Try a shorter keyword or remove category/status filters.')
+    if (input.intent !== 'recommend') queries.push('Use intent=recommend with requirements for broader matching.')
+  } else if (matched > returned) {
+    queries.push('Increase limit or add category/status filters to narrow the result set.')
+  }
+  if (input.intent !== 'popular') queries.push('Use intent=popular to see high-download alternatives.')
+  if (input.intent !== 'risk') queries.push('Use intent=risk to inspect insecure or deprecated matches.')
+  return queries
+}
+
+function countRisk(items: MarketObject[]) {
+  return items.reduce<Record<string, number>>((result, item) => {
+    if (item.insecure || item.manifest?.insecure) result.insecure += 1
+    if (isDeprecated(item)) result.deprecated += 1
+    if (item.manifest?.preview) result.preview += 1
+    return result
+  }, { insecure: 0, deprecated: 0, preview: 0 })
 }
 
 function getLinks(item: MarketObject) {
   const name = item.package.name
-  const links = item.package.links ?? {}
-  const result = [`[npm](${links.npm || `https://www.npmjs.com/package/${name}`})`]
-  const homepage = links.homepage || links.repository
-  if (homepage) result.push(`[homepage](${homepage.replace(/^git\+/, '').replace(/\.git$/, '')})`)
-  return result
+  const links = (item.package.links ?? {}) as Record<string, string | undefined>
+  return {
+    npm: cleanLink(links.npm) || `https://www.npmjs.com/package/${name}`,
+    homepage: cleanLink(links.homepage),
+    repository: cleanLink(links.repository),
+  }
 }
 
 function getStatusTags(item: MarketObject) {
@@ -348,41 +543,69 @@ function isDeprecated(item: MarketObject) {
   return !!(item.deprecated || item.package.deprecated)
 }
 
+function matchesName(item: MarketObject, names: Set<string>) {
+  const candidates = [
+    item.package.name,
+    item.shortname,
+    normalizePackageName(item.package.name),
+  ].map(normalizeNameTarget)
+  return candidates.some(name => names.has(name))
+}
+
 function getDescription(item: MarketObject) {
   const description = item.manifest?.description
   if (typeof description === 'string') return cleanText(description)
   if (description) {
-    return cleanText(description['zh-CN'] || description['en-US'] || Object.values(description)[0])
+    return cleanText(description['zh-CN'] || description['en-US'] || String(Object.values(description)[0] ?? ''))
   }
   return cleanText(item.package.description)
 }
 
-function formatFilters(input: SearchInput) {
-  const filters: string[] = []
-  if (input.query) filters.push(`关键词=${input.query}`)
-  if (input.category?.length) filters.push(`分类=${input.category.join(', ')}`)
-  if (input.status?.length) filters.push(`状态=${input.status.join(', ')}`)
-  if (input.createdAfter) filters.push(`创建晚于=${input.createdAfter}`)
-  if (input.createdBefore) filters.push(`创建早于=${input.createdBefore}`)
-  if (input.updatedAfter) filters.push(`更新晚于=${input.updatedAfter}`)
-  if (input.updatedBefore) filters.push(`更新早于=${input.updatedBefore}`)
-  if (input.createdWithinDays) filters.push(`最近新增=${input.createdWithinDays}天`)
-  if (input.updatedWithinDays) filters.push(`最近更新=${input.updatedWithinDays}天`)
-  if (input.includeHidden) filters.push('包含隐藏')
-  if (input.includeDeprecated) filters.push('包含废弃')
-  filters.push(`排序=${input.sort}/${input.order}`, `限制=${input.limit}`)
-  return filters.join('; ')
+function formatFilters(input: NormalizedSearchInput) {
+  return {
+    query: input.query || null,
+    requirements: input.requirements || null,
+    names: input.names,
+    category: input.category,
+    status: input.status,
+    createdAfter: input.createdAfter ?? null,
+    createdBefore: input.createdBefore ?? null,
+    updatedAfter: input.updatedAfter ?? null,
+    updatedBefore: input.updatedBefore ?? null,
+    createdWithinDays: input.createdWithinDays ?? null,
+    updatedWithinDays: input.updatedWithinDays ?? null,
+    sort: input.sort,
+    order: input.order,
+    limit: input.limit,
+    includeHidden: input.includeHidden,
+    includeDeprecated: input.includeDeprecated,
+  }
 }
 
-function formatLoadError(endpoint: string, error: unknown) {
-  return [
-    '# Koishi 插件市场查询失败',
-    '',
-    `- Registry: ${endpoint}`,
-    `- 原因: ${formatError(error)}`,
-    '',
-    '请检查 market.search.endpoint、market.search.timeout 配置或当前网络连接。此工具只读查询市场索引，不会修改本地配置。',
-  ].join('\n')
+function formatLoadError(endpoint: string, input: NormalizedSearchInput, error: unknown) {
+  const payload: SearchPayload = {
+    tool: TOOL_NAME,
+    registry: endpoint,
+    fetchedAt: null,
+    stale: false,
+    error: formatError(error),
+    intent: input.intent,
+    filters: formatFilters(input),
+    total: 0,
+    matched: 0,
+    returned: 0,
+    summary: {
+      text: 'Failed to load the Koishi plugin market index.',
+      warnings: [formatError(error)],
+      risk: { insecure: 0, deprecated: 0, preview: 0 },
+    },
+    results: [],
+    nextQueries: [
+      'Check market.search.endpoint, market.search.timeout, proxyAgent, or current network connectivity.',
+      'If a previous call had stale=true, use its cached results until the registry is reachable.',
+    ],
+  }
+  return stringifyPayload(payload)
 }
 
 function parseDate(value?: string, endOfDay = false) {
@@ -412,16 +635,36 @@ function normalizePackageName(name: string) {
   return name.replace(/^(koishi-|@koishijs\/)plugin-/, '')
 }
 
+function normalizeNameTarget(name?: string) {
+  return normalizePackageName(normalizeText(name))
+}
+
 function normalizeText(value?: string) {
   return (value ?? '').toLowerCase().trim()
 }
 
-function getQueryTerms(query?: string) {
-  return normalizeText(query).split(/\s+/).filter(Boolean)
+function getQueryTerms(input: NormalizedSearchInput) {
+  return getTextTerms([input.query, input.requirements].filter(Boolean).join(' '))
+}
+
+function getFilterTerms(input: NormalizedSearchInput) {
+  return getTextTerms(input.query)
+}
+
+function getTextTerms(value?: string) {
+  const text = normalizeText(value)
+  const words = text.split(/\s+/).filter(Boolean)
+  const tokens = text.match(/[a-z0-9@/_-]+/g) ?? []
+  return unique([...words, ...tokens].map(normalizeNameTarget).filter(Boolean))
 }
 
 function cleanText(value?: string) {
   return (value ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function cleanLink(value?: string) {
+  if (!value) return undefined
+  return value.replace(/^git\+/, '').replace(/\.git$/, '')
 }
 
 function truncate(value: string, length: number) {
@@ -435,19 +678,83 @@ function formatDateTime(value: number) {
 
 function formatDate(value?: string) {
   const timestamp = parseItemDate(value)
-  if (!timestamp) return 'unknown'
+  if (!timestamp) return null
   return new Date(timestamp).toISOString().slice(0, 10)
-}
-
-function formatNumber(value: number) {
-  return Number.isFinite(value) ? value.toFixed(2) : '0.00'
-}
-
-function formatInteger(value: number) {
-  return Number.isFinite(value) ? Math.round(value).toLocaleString('en-US') : '0'
 }
 
 function formatError(error: unknown) {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+function pkgDownloads(item: MarketObject) {
+  return item.downloads?.lastMonth ?? 0
+}
+
+function round(value: number) {
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : 0
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function unique<T>(values: T[]) {
+  return Array.from(new Set(values))
+}
+
+function stringifyPayload(payload: SearchPayload) {
+  return JSON.stringify(payload, null, 2)
+}
+
+function stringList(description: string) {
+  return z.preprocess((value) => normalizeList(value), z.array(z.string()).optional()).describe(description)
+}
+
+function statusList() {
+  return z.preprocess((value) => {
+    return normalizeList(value)?.map(normalizeStatus)
+  }, z.array(z.enum(statusValues)).optional()).describe('Status filter: verified, insecure, preview, portable, deprecated. Accepts an array, a single string, or comma-separated status values.')
+}
+
+function normalizeList(value: unknown) {
+  if (value == null || value === '') return undefined
+  const values = Array.isArray(value) ? value : [value]
+  return values.flatMap((item) => {
+    if (typeof item !== 'string') return item
+    return item.split(/[,，;；、\n]/g)
+      .map(part => part.trim())
+      .filter(Boolean)
+  })
+}
+
+function normalizeStatus(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const status = normalizeText(value)
+  const aliases: Record<string, Status> = {
+    safe: 'verified',
+    secure: 'verified',
+    certified: 'verified',
+    official: 'verified',
+    verified: 'verified',
+    认证: 'verified',
+    已认证: 'verified',
+    unsafe: 'insecure',
+    risk: 'insecure',
+    risky: 'insecure',
+    insecure: 'insecure',
+    不安全: 'insecure',
+    风险: 'insecure',
+    preview: 'preview',
+    beta: 'preview',
+    alpha: 'preview',
+    预览: 'preview',
+    portable: 'portable',
+    可移植: 'portable',
+    deprecated: 'deprecated',
+    abandoned: 'deprecated',
+    废弃: 'deprecated',
+    已废弃: 'deprecated',
+  }
+  return aliases[status] ?? status
 }

@@ -203,9 +203,11 @@ function toggleQuery(item: Badge, event: MouseEvent) {
   .icon {
     display: inline-flex;
     width: 1.75rem;
+    height: 1rem;
     margin-right: 4px;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
   }
 
   &:not(.active) .order {
@@ -215,13 +217,18 @@ function toggleQuery(item: Badge, event: MouseEvent) {
   .order {
     display: inline-flex;
     width: 1.75rem;
+    height: 1rem;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
   }
 
-  svg {
+  :deep(.market-icon) {
+    display: block;
+    width: 1.125rem;
     height: 1rem;
     max-width: 1.125rem;
+    flex: 0 0 auto;
   }
 
   .text, .count {

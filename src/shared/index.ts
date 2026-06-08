@@ -111,6 +111,7 @@ export namespace MarketProvider {
     cachedAt?: number
     validatedAt?: number
     refreshing?: boolean
+    loading?: boolean
     debug?: MarketPerformance
   }
 }

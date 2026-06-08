@@ -24,6 +24,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private debugInfo?;
     private routeStats;
     private backgroundTask?;
+    private pendingRefreshTask?;
     private cacheWriteTimer?;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
@@ -53,6 +54,7 @@ declare class MarketProvider extends BaseMarketProvider {
         cachedAt: number;
         validatedAt: number;
         refreshing: boolean;
+        loading: boolean;
         debug: MarketPerformance;
     } | {
         debug: MarketPerformance;
@@ -68,7 +70,9 @@ declare class MarketProvider extends BaseMarketProvider {
         cachedAt?: number;
         validatedAt?: number;
         refreshing?: boolean;
+        loading?: boolean;
     }>;
+    private refreshAfterPrepare;
     private applyIndex;
     private applyDiskCache;
     private scheduleDiskCacheWrite;

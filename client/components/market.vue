@@ -6,13 +6,22 @@
       </el-scrollbar>
     </template>
 
-    <div v-if="!store.market">
+    <div v-if="marketLoading">
       <div class="el-loading-spinner">
         <svg class="circular" viewBox="25 25 50 50">
           <circle class="path" cx="50" cy="50" r="20" fill="none"></circle>
         </svg>
         <p class="el-loading-text">正在加载插件市场……</p>
+        <p class="market-loading-detail">Registry：{{ loadingEndpoint }}</p>
       </div>
+      <k-comment v-if="loadingSlow" type="warning" class="market-loading-warning">
+        <p>插件市场仍在等待网络响应，可能是当前市场源连接慢、代理不可用或首次冷启动没有本地缓存。</p>
+        <p>
+          Registry：{{ loadingEndpoint }}
+          <template v-if="loadingTimeout">；超时：{{ loadingTimeout }}</template>
+          <template v-if="loadingAutoRoute">；备用源自动路由已开启</template>
+        </p>
+      </k-comment>
     </div>
 
     <el-scrollbar ref="root" v-else-if="store.market.total">
@@ -93,7 +102,7 @@
 <script setup lang="ts">
 
 import { router, store, global, useConfig } from '@koishijs/client'
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { active } from '../utils'
 import { getVisible, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
 import { SearchObject } from '@koishijs/registry'
@@ -128,6 +137,23 @@ const clientDebug = ref<{
   visible?: number
   rendered?: number
 }>({})
+
+const marketLoading = computed(() => !store.market || store.market.loading)
+const loadingSlow = ref(false)
+let loadingTimer: ReturnType<typeof setTimeout>
+
+const loadingEndpoint = computed(() => {
+  return store.market?.registry || config.value.market?.search?.endpoint || 'https://registry.koishi.t4wefan.pub/index.json'
+})
+
+const loadingTimeout = computed(() => {
+  const timeout = config.value.market?.search?.timeout
+  if (!timeout) return ''
+  if (typeof timeout === 'number') return timeout >= 1000 ? `${Math.round(timeout / 1000)}s` : `${timeout}ms`
+  return String(timeout)
+})
+
+const loadingAutoRoute = computed(() => config.value.market?.search?.autoRoute !== false)
 
 const debugItems = computed(() => {
   const debug = store.market?.debug
@@ -190,6 +216,24 @@ watch(prompt, (value) => {
     router.replace({ query: rest })
   }
 }, { deep: true })
+
+watch(marketLoading, (loading) => {
+  loadingSlow.value = false
+  clearTimeout(loadingTimer)
+  if (loading) scheduleLoadingWarning()
+}, { immediate: true })
+
+onMounted(scheduleLoadingWarning)
+
+onUnmounted(() => clearTimeout(loadingTimer))
+
+function scheduleLoadingWarning() {
+  clearTimeout(loadingTimer)
+  if (!marketLoading.value) return
+  loadingTimer = setTimeout(() => {
+    if (marketLoading.value) loadingSlow.value = true
+  }, 8000)
+}
 
 function getType(data: SearchObject) {
   if (global.static) return 'primary'
@@ -359,6 +403,21 @@ function formatNumber(value?: number) {
   width: 100%;
   box-sizing: border-box;
   margin: 1.25rem 0 -0.25rem;
+
+  p {
+    margin: 0.25rem 0;
+  }
+}
+
+.market-loading-detail {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.market-loading-warning.k-comment {
+  max-width: 640px;
+  margin: 2rem auto;
+  box-sizing: border-box;
 
   p {
     margin: 0.25rem 0;

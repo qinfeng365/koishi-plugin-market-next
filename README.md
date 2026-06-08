@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.5-blue)
+![Version](https://img.shields.io/badge/version-3.4.6-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -181,9 +181,12 @@ koishi_plugin_market_search
 
 | 参数 | 说明 |
 | --- | --- |
+| `intent` | 查询意图：`search`、`recommend`、`recent`、`popular`、`risk`、`compare`。省略时会根据参数自动推断。 |
 | `query` | 关键词搜索，匹配插件名、短名、描述和 keywords。 |
-| `category` | 分类过滤，例如 `adapter`、`ai`、`tool`、`game`、`webui`。 |
-| `status` | 状态过滤：`verified`、`insecure`、`preview`、`portable`、`deprecated`。 |
+| `requirements` | 用户自然语言需求，例如“找一个好用的 onebot 适配器”。 |
+| `names` | 插件包名或短名列表，用于精确查询或对比。 |
+| `category` | 分类过滤，例如 `adapter`、`ai`、`tool`、`game`、`webui`。支持数组、单个字符串或逗号分隔字符串。 |
+| `status` | 状态过滤：`verified`、`insecure`、`preview`、`portable`、`deprecated`。支持数组、单个字符串或逗号分隔字符串。 |
 | `createdAfter` / `createdBefore` | 创建时间范围，支持 `YYYY-MM-DD` 或 ISO 日期。 |
 | `updatedAfter` / `updatedBefore` | 更新时间范围。 |
 | `createdWithinDays` | 最近新增，例如 `30` 表示最近 30 天新增。 |
@@ -206,13 +209,20 @@ koishi_plugin_market_search
 
 ```json
 {
-  "category": ["ai"],
-  "updatedWithinDays": 30,
-  "status": ["verified"]
+  "intent": "recommend",
+  "requirements": "找一个稳定的 AI 聊天插件",
+  "status": "verified"
 }
 ```
 
-工具会在进程内缓存市场索引 10 分钟。请求失败但已有旧缓存时，会返回 stale 结果并标注失败原因；请求失败且没有缓存时，会返回明确错误。
+```json
+{
+  "intent": "compare",
+  "names": ["koishi-plugin-adapter-onebot"]
+}
+```
+
+工具返回 JSON 字符串，包含 `summary`、`results`、`filters` 和 `nextQueries`。工具会在进程内缓存市场索引 10 分钟。请求失败但已有旧缓存时，会返回 `stale: true` 的旧结果并标注失败原因；请求失败且没有缓存时，会返回 JSON 错误对象。
 
 ## 和原版 market 的区别
 
@@ -342,8 +352,8 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.5
-git push origin v3.4.5
+git tag v3.4.6
+git push origin v3.4.6
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
@@ -361,6 +371,14 @@ git push origin v3.4.5
 同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
 
 ## 版本更新
+
+### 3.4.6
+
+- ChatLuna Tool 优化：增强工具描述，让模型更容易在插件搜索、推荐、对比、最近新增/更新、热门和风险查询场景调用市场工具。
+- ChatLuna Tool 输入增加 `intent`、`requirements`、`names`，并允许 `category`、`status`、`names` 使用数组、单字符串或逗号分隔字符串。
+- ChatLuna Tool 输出从 Markdown 列表改为 JSON 字符串，包含 `summary`、`filters`、`results`、`nextQueries` 和 stale/error 信息。
+- ChatLuna Tool 注册增加成功、失败和注销诊断日志。
+- 弱网优化：市场冷启动无缓存时先返回 loading payload，页面显示当前 registry、超时和自动路由状态，后端请求完成后自动刷新市场数据。
 
 ### 3.4.5
 
