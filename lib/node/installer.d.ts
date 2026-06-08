@@ -74,7 +74,7 @@ declare class Installer extends Service {
     override(deps: Dict<string>): Promise<void>;
     private _install;
     private _getLocalDeps;
-    install(deps: Dict<string>, forced?: boolean): Promise<number>;
+    install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>): Promise<number>;
 }
 declare namespace Installer {
     interface Config {

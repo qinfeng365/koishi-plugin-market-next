@@ -109,6 +109,7 @@ class Installer extends Service {
   async start() {
     await this.resetEndpoint()
     logger.debug(`registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
+    logger.info(`npm registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
   }
 
   private createHttp(endpoint: string): HTTP {
@@ -189,6 +190,7 @@ class Installer extends Service {
       attempts,
       elapsed: undefined,
     }, serial)
+    logger.debug(`registry metadata candidates for ${name}: endpoints=${endpoints.join(', ')}, retry=${maxRetry}, concurrency=${this.config.concurrency ?? 4}`)
 
     for (const endpoint of endpoints) {
       const http = endpoint === this.endpoint ? this.http : this.createHttp(endpoint)
@@ -207,6 +209,7 @@ class Installer extends Service {
           }
           if (endpoint !== this.metadataEndpoint) {
             logger.debug(`fallback npm registry endpoint for ${name}: ${endpoint}`)
+            logger.info(`npm registry fallback selected for ${name}: endpoint=${endpoint}, previous=${this.metadataEndpoint}`)
             this.metadataEndpoint = endpoint
           }
           this.setRegistryStatus(name, {
@@ -298,25 +301,39 @@ class Installer extends Service {
   }
 
   private async _getDeps() {
+    const start = Date.now()
     const result = valueMap(this.manifest.dependencies, (request) => {
       return { request: request.replace(/^[~^]/, '') } as Dependency
     })
+    logger.debug(`refresh dependency metadata started: total=${Object.keys(result).length}, concurrency=${this.config.concurrency ?? 4}, registry=${this.endpoint}`)
     await pMap(Object.keys(result), async (name) => {
       try {
         // some dependencies may be left with no local installation
         const meta = loadManifest(name)
         result[name].resolved = meta.version
         result[name].workspace = meta.$workspace
+        logger.debug(`local dependency resolved: ${name}@${meta.version}, workspace=${!!meta.$workspace}, request=${result[name].request}`)
         if (meta.$workspace) return
-      } catch {}
+      } catch {
+        logger.debug(`local dependency not found before metadata fetch: ${name}, request=${result[name].request}`)
+      }
 
       if (!valid(result[name].request)) {
         result[name].invalid = true
+        logger.debug(`dependency request is not exact semver: ${name}, request=${result[name].request}`)
       }
 
       const versions = await this.getPackage(name)
-      if (versions) result[name].latest = Object.keys(versions)[0]
+      if (versions) {
+        result[name].latest = Object.keys(versions)[0]
+        logger.debug(`dependency latest resolved: ${name}, resolved=${result[name].resolved ?? '-'}, latest=${result[name].latest}, versions=${Object.keys(versions).length}`)
+      } else {
+        logger.debug(`dependency latest unresolved: ${name}, resolved=${result[name].resolved ?? '-'}, request=${result[name].request}`)
+      }
     }, { concurrency: this.config.concurrency ?? 4 })
+    const installed = Object.values(result).filter(dep => dep.resolved).length
+    const invalid = Object.values(result).filter(dep => dep.invalid).length
+    logger.info(`dependency metadata refresh completed: total=${Object.keys(result).length}, installed=${installed}, invalid=${invalid}, elapsed=${Date.now() - start}ms`)
     return result
   }
 
@@ -334,6 +351,7 @@ class Installer extends Service {
   }
 
   async refresh(refresh = false) {
+    const start = Date.now()
     this.serial++
     await this.resetEndpoint()
     this.manifest = loadManifest(this.cwd)
@@ -344,17 +362,26 @@ class Installer extends Service {
     this.depTask = this._getDeps()
     if (!refresh) return
     await this.refreshData()
+    logger.info(`dependency refresh requested by console: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, elapsed=${Date.now() - start}ms`)
   }
 
   async exec(args: string[]) {
     const name = this.agent?.name ?? 'npm'
     const useJson = name === 'yarn' && this.agent.version >= '2'
     if (name !== 'yarn') args.unshift('install')
+    const start = Date.now()
+    logger.info(`run package manager: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}, args=${args.join(' ') || '(none)'}, cwd=${this.cwd}, json=${useJson}`)
     return new Promise<number>((resolve) => {
       if (useJson) args.push('--json')
       const child = spawn(name, args, { cwd: this.cwd })
-      child.on('exit', (code) => resolve(code))
-      child.on('error', () => resolve(-1))
+      child.on('exit', (code) => {
+        logger.info(`package manager exited: code=${code}, elapsed=${Date.now() - start}ms`)
+        resolve(code)
+      })
+      child.on('error', (error) => {
+        logger.warn(`package manager failed to start: ${error instanceof Error ? error.message : String(error)}`)
+        resolve(-1)
+      })
 
       let stderr = ''
       child.stderr.on('data', (data) => {
@@ -390,6 +417,7 @@ class Installer extends Service {
 
   async override(deps: Dict<string>) {
     const filename = resolve(this.cwd, 'package.json')
+    logger.debug(`override package dependencies: file=${filename}, changes=${formatDeps(deps)}`)
     for (const key in deps) {
       if (deps[key]) {
         this.manifest.dependencies[key] = deps[key]
@@ -399,6 +427,7 @@ class Installer extends Service {
     }
     this.manifest.dependencies = Object.fromEntries(Object.entries(this.manifest.dependencies).sort((a, b) => a[0].localeCompare(b[0])))
     await fsp.writeFile(filename, JSON.stringify(this.manifest, null, 2) + '\n')
+    logger.info(`package dependencies updated: changes=${formatDeps(deps)}, total=${Object.keys(this.manifest.dependencies).length}`)
   }
 
   private _install() {
@@ -421,14 +450,18 @@ class Installer extends Service {
     })
   }
 
-  async install(deps: Dict<string>, forced?: boolean) {
+  async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>) {
+    const start = Date.now()
+    logger.info(`dependency install requested: deps=${formatDeps(deps)}, forced=${!!forced}`)
     const localDeps = this._getLocalDeps(deps)
+    logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
     await this.override(deps)
 
     for (const name in deps) {
       const { resolved, workspace } = localDeps[name] || {}
       if (workspace || deps[name] && resolved && satisfies(resolved, deps[name], { includePrerelease: true })) continue
       forced = true
+      logger.debug(`dependency install requires package manager: name=${name}, requested=${deps[name] || '(remove)'}, resolved=${resolved ?? '-'}, workspace=${!!workspace}`)
       break
     }
 
@@ -439,6 +472,7 @@ class Installer extends Service {
 
     await this.refresh()
     const newDeps = await this.getDeps()
+    let shouldReload = false
     for (const name in localDeps) {
       const { resolved, workspace } = localDeps[name]
       if (workspace || !newDeps[name]) continue
@@ -450,9 +484,23 @@ class Installer extends Service {
         // I have no idea why this happens and how to fix it.
         logger.error(error)
       }
-      this.ctx.loader.fullReload()
+      shouldReload = true
+      logger.debug(`dependency changed may require full reload: ${name}, previous=${resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
+    }
+    if (beforeReload) {
+      try {
+        logger.debug('run pre-reload dependency hook')
+        await beforeReload()
+      } catch (error) {
+        logger.warn(error)
+      }
     }
     await this.refreshData()
+    logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!forced}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
+    if (shouldReload) {
+      logger.info('dependency install triggers full reload')
+      this.ctx.loader.fullReload()
+    }
 
     return 0
   }
@@ -478,6 +526,18 @@ namespace Installer {
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function formatDeps(deps: Dict<string>) {
+  const entries = Object.entries(deps)
+  if (!entries.length) return '(none)'
+  return entries.map(([name, version]) => `${name}@${version || '(remove)'}`).join(', ')
+}
+
+function formatLocalDeps(deps: Dict<Dependency>) {
+  const entries = Object.entries(deps)
+  if (!entries.length) return '(none)'
+  return entries.map(([name, dep]) => `${name}{request=${dep.request || '-'},resolved=${dep.resolved ?? '-'},workspace=${!!dep.workspace}}`).join(', ')
 }
 
 export default Installer

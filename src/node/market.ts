@@ -47,6 +47,7 @@ type CacheMeta = Omit<CacheFile, 'result'>
 interface EndpointResult {
   endpoint: string
   preferredEndpoint?: string
+  fallbackReason?: 'primary-failed' | 'primary-slow'
   result: SearchResult
   elapsed: number
   candidates: number
@@ -91,6 +92,7 @@ class MarketProvider extends BaseMarketProvider {
   private debugInfo?: MarketPerformance
   private routeStats: Dict<RouteStats> = {}
   private backgroundTask?: Promise<void>
+  private backgroundSerial?: number
   private pendingRefreshTask?: Promise<any>
   private cacheWriteTimer?: ReturnType<typeof setTimeout>
   private flushData: () => void
@@ -127,10 +129,22 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   async start(refresh = false) {
-    const serial = ++this.serial
+    const reuseBackground = refresh && !!this.backgroundTask && this.backgroundSerial === this.serial
+    const serial = reuseBackground ? this.serial : ++this.serial
     const start = Date.now()
     this.log('debug', `start market refresh=${refresh}, serial=${serial}, endpoint=${this.config.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
-    this.forceRefresh = refresh
+    if (refresh) {
+      this.log('info', `market refresh requested: endpoint=${this.config.endpoint}, autoRoute=${this.config.autoRoute !== false}, cache=${this.hasCurrentMarketData() ? 'warm' : 'cold'}`)
+    }
+    this.forceRefresh = false
+    if (refresh && await this.startSoftRefresh(serial, start)) {
+      if (this.isStale(serial)) {
+        this.log('debug', `skip soft market refresh because provider is stale, serial=${serial}`)
+        return
+      }
+      this.log('debug', `market soft refresh accepted in ${Date.now() - start}ms, serial=${serial}`)
+      return
+    }
     this.failed = []
     this.fullCache = {}
     this.tempCache = {}
@@ -138,10 +152,10 @@ class MarketProvider extends BaseMarketProvider {
     if (refresh) {
       this._task = null
       this._error = null
-      this.log('debug', 'refresh requested: reset market task')
+      this.log('debug', 'soft refresh has no usable cache: start cold market load')
     }
     try {
-      await super.start(refresh)
+      await super.start(false)
     } finally {
       this.forceRefresh = false
     }
@@ -150,20 +164,20 @@ class MarketProvider extends BaseMarketProvider {
       return
     }
     this.log('debug', `market start completed in ${Date.now() - start}ms, serial=${serial}`)
+    this.log('info', `market start completed: elapsed=${Date.now() - start}ms, endpoint=${this.endpoint || this.config.endpoint}, objects=${this.scanner?.total ?? 0}, source=${this.debugInfo?.source ?? 'unknown'}`)
   }
 
   async collect() {
     const serial = this.serial
     const { timeout } = this.config
-    const registry = this.ctx.installer.http
+    const registry = this.createScanner()
     const start = Date.now()
 
     this.failed = []
     this.log('debug', `collect market index, serial=${serial}, searchEndpoint=${this.config.endpoint}, registryEndpoint=${registry?.config.endpoint}, timeout=${timeout ?? 'default'}`)
-    this.scanner = new Scanner(<T>(url: string, config?: { timeout?: number }) => registry.get<T>(url, config))
     if (this.http) {
       if (!this.forceRefresh && await this.applyDiskCache(serial)) {
-        this.refreshInBackground(serial)
+        if (this.refreshInBackground(serial, 'cache-first')) void this.notifyMarketRefresh()
         this.log('debug', `collect market index returned disk cache first, serial=${serial}, elapsed=${Date.now() - start}ms`)
         return null
       }
@@ -183,6 +197,7 @@ class MarketProvider extends BaseMarketProvider {
         source: result.source,
         endpoint: result.endpoint,
         preferredEndpoint: result.preferredEndpoint,
+        fallbackReason: result.fallbackReason,
         candidates: result.candidates,
         size: result.size,
         wireSize: result.wireSize,
@@ -196,6 +211,20 @@ class MarketProvider extends BaseMarketProvider {
         timings: result.timings,
       }, 'initial')
       this.log('debug', `loaded market index from ${this.endpoint}: ${this.scanner.total}/${result.result.objects.length} objects, source=${result.source}, version=${this.scanner.version ?? 'legacy'}, elapsed=${Date.now() - start}ms`)
+      this.log('info', `market index ready: ${formatSnapshot({
+        source: result.source,
+        endpoint: result.endpoint,
+        preferredEndpoint: result.preferredEndpoint,
+        fallbackReason: result.fallbackReason,
+        candidates: result.candidates,
+        objects: this.scanner.total,
+        size: result.size,
+        wireSize: result.wireSize,
+        contentEncoding: result.contentEncoding,
+        cachedAt: result.cachedAt,
+        validatedAt: result.validatedAt,
+        timings: result.timings,
+      })}`)
     } else {
       this.indexMode = 'legacy'
       this.log('debug', `collect legacy registry index via scanner, registryEndpoint=${registry?.config.endpoint}`)
@@ -245,9 +274,52 @@ class MarketProvider extends BaseMarketProvider {
     return null
   }
 
+  private createScanner() {
+    const registry = this.ctx.installer.http
+    this.scanner = new Scanner(<T>(url: string, config?: { timeout?: number }) => registry.get<T>(url, config))
+    return registry
+  }
+
+  private hasCurrentMarketData() {
+    return !!this.payload || !!this.scanner?.version || this.scanner?.total > 0 || Object.keys(this.fullCache).length > 0
+  }
+
+  private async startSoftRefresh(serial: number, start: number) {
+    if (!this.http) return false
+    this._error = null
+    this.tempCache = {}
+    if (this.backgroundTask && this.backgroundSerial === serial) {
+      this.log('debug', `soft refresh reused running background task, serial=${serial}, elapsed=${Date.now() - start}ms`)
+      this.log('info', `market soft refresh reused running background task: serial=${serial}, elapsed=${Date.now() - start}ms`)
+      await this.notifyMarketRefresh()
+      return true
+    }
+    if (this.hasCurrentMarketData()) {
+      if (!this.scanner) this.createScanner()
+      this.log('debug', `soft refresh started with current market data, serial=${serial}, hasScanner=${!!this.scanner}, hasPayload=${!!this.payload}`)
+      this.log('info', `market soft refresh started with current data: serial=${serial}, endpoint=${this.endpoint || this.config.endpoint}, objects=${this.scanner?.total ?? this.payload?.total ?? 0}`)
+      this.refreshInBackground(serial, 'soft refresh')
+      await this.notifyMarketRefresh()
+      return true
+    }
+    this.failed = []
+    this.fullCache = {}
+    this.createScanner()
+    if (await this.applyDiskCache(serial)) {
+      this.log('debug', `soft refresh loaded disk cache before background refresh, serial=${serial}, elapsed=${Date.now() - start}ms`)
+      this.log('info', `market soft refresh loaded disk cache first: serial=${serial}, elapsed=${Date.now() - start}ms, endpoint=${this.endpoint}`)
+      this.refreshInBackground(serial, 'soft refresh')
+      await this.notifyMarketRefresh()
+      return true
+    }
+    return false
+  }
+
   private async fetchIndex(serial: number): Promise<EndpointResult> {
     const endpoints = this.getEndpoints()
     this.log('debug', `market endpoint candidates: ${endpoints.join(', ')}`)
+    this.log('debug', `market route scores before fetch: ${formatRouteScores(this.getRouteScores(endpoints))}`)
+    this.log('info', `market endpoint candidates: primary=${endpoints[0]}, fallbacks=${Math.max(0, endpoints.length - 1)}, autoRoute=${this.config.autoRoute !== false}`)
 
     if (endpoints.length === 1 || this.config.autoRoute === false) {
       const result = await this.fetchEndpoint(endpoints[0], 0, endpoints.length, serial)
@@ -258,44 +330,73 @@ class MarketProvider extends BaseMarketProvider {
       return result
     }
 
-    this.log('debug', `race market endpoints with weighted stagger, count=${endpoints.length}, preferred=${endpoints[0]}, stagger=${ROUTE_STAGGER}ms`)
+    this.log('debug', `fetch primary market endpoint first, primary=${endpoints[0]}, fallbacks=${endpoints.slice(1).join(', ')}, slowThreshold=${FAST_ROUTE_THRESHOLD}ms`)
+    this.log('info', `market route started: primary=${endpoints[0]}, fallbackCount=${endpoints.length - 1}, slowThreshold=${FAST_ROUTE_THRESHOLD}ms`)
     return new Promise<EndpointResult>((resolve, reject) => {
       let settled = false
       let failed = 0
       let lastError: any
+      let fallbackStarted = false
+      let fallbackReason: EndpointResult['fallbackReason']
       const controllers = endpoints.map(() => new AbortController())
+      const timer = setTimeout(() => startFallback('primary-slow'), FAST_ROUTE_THRESHOLD)
 
-      endpoints.forEach((endpoint, index) => {
+      const settle = (data: EndpointResult, index: number) => {
+        if (settled) {
+          this.log('debug', `ignore slower market endpoint ${data.endpoint}, elapsed=${data.elapsed}ms`)
+          return
+        }
+        settled = true
+        clearTimeout(timer)
+        controllers.forEach((controller, controllerIndex) => {
+          if (controllerIndex !== index) controller.abort(new Error('market endpoint race settled'))
+        })
+        this.endpoint = data.endpoint
+        data.preferredEndpoint = endpoints[0]
+        if (data.endpoint !== this.config.endpoint) {
+          data.fallbackReason = fallbackReason
+          this.log('debug', `fallback endpoint selected: endpoint=${data.endpoint}, reason=${fallbackReason ?? 'unknown'}, elapsed=${data.elapsed}ms`)
+          this.log('info', `market fallback endpoint selected: endpoint=${data.endpoint}, reason=${fallbackReason ?? 'unknown'}, elapsed=${data.elapsed}ms, primary=${endpoints[0]}`)
+        } else {
+          this.log('info', `market primary endpoint selected: endpoint=${data.endpoint}, elapsed=${data.elapsed}ms, source=${data.source}`)
+        }
+        this.recordRouteSuccess(data)
+        resolve(data)
+      }
+
+      const fail = (endpoint: string, index: number, error: any) => {
+        if (settled) return
+        this.recordRouteFailure(endpoint)
+        lastError = error
+        failed++
+        if (index === 0) startFallback('primary-failed')
+        if (failed < endpoints.length) return
+        settled = true
+        clearTimeout(timer)
+        this.log('debug', `all market endpoint candidates failed, count=${endpoints.length}`)
+        reject(lastError)
+      }
+
+      const startEndpoint = (endpoint: string, index: number, waitIndex = 0) => {
         const signal = controllers[index].signal
-        this.waitRouteTurn(index, signal).then(() => {
+        this.waitRouteTurn(waitIndex, signal).then(() => {
           if (settled) throw new Error('market endpoint race settled before request')
           return this.fetchEndpoint(endpoint, index, endpoints.length, serial, false, signal)
-        }).then((data) => {
-          if (settled) {
-            this.log('debug', `ignore slower market endpoint ${data.endpoint}, elapsed=${data.elapsed}ms`)
-            return
-          }
-          settled = true
-          controllers.forEach((controller, controllerIndex) => {
-            if (controllerIndex !== index) controller.abort(new Error('market endpoint race settled'))
-          })
-          this.endpoint = data.endpoint
-          if (data.endpoint !== this.config.endpoint) {
-            this.log('debug', `fallback market index endpoint: ${data.endpoint}`)
-          }
-          data.preferredEndpoint = endpoints[0]
-          this.recordRouteSuccess(data)
-          resolve(data)
-        }).catch((error) => {
-          if (settled) return
-          this.recordRouteFailure(endpoint)
-          lastError = error
-          failed++
-          if (failed < endpoints.length) return
-          this.log('debug', `all market endpoint candidates failed, count=${endpoints.length}`)
-          reject(lastError)
+        }).then(data => settle(data, index)).catch(error => fail(endpoint, index, error))
+      }
+
+      const startFallback = (reason: NonNullable<EndpointResult['fallbackReason']>) => {
+        if (settled || fallbackStarted) return
+        fallbackStarted = true
+        fallbackReason = reason
+        this.log('debug', `start fallback market endpoint race, reason=${reason}, count=${endpoints.length - 1}, stagger=${ROUTE_STAGGER}ms`)
+        this.log('info', `market fallback race started: reason=${reason}, count=${endpoints.length - 1}, stagger=${ROUTE_STAGGER}ms`)
+        endpoints.slice(1).forEach((endpoint, fallbackIndex) => {
+          startEndpoint(endpoint, fallbackIndex + 1, fallbackIndex)
         })
-      })
+      }
+
+      startEndpoint(endpoints[0], 0)
     })
   }
 
@@ -308,16 +409,17 @@ class MarketProvider extends BaseMarketProvider {
   private getEndpoints() {
     const endpoints = this.getEndpointCandidates()
     if (this.config.autoRoute === false) return endpoints
-    const originalIndex = new Map(endpoints.map((endpoint, index) => [endpoint, index]))
-    return endpoints.slice().sort((a, b) => {
+    const [primary, ...fallbacks] = endpoints
+    const originalIndex = new Map(fallbacks.map((endpoint, index) => [endpoint, index]))
+    return [primary, ...fallbacks.sort((a, b) => {
       const delta = this.getRouteScore(b) - this.getRouteScore(a)
       if (delta) return delta
       return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0)
-    })
+    })]
   }
 
   private getPreferredEndpoint() {
-    return this.getEndpoints()[0] || this.config.endpoint
+    return this.config.endpoint
   }
 
   private waitRouteTurn(index: number, signal?: AbortSignal) {
@@ -370,12 +472,14 @@ class MarketProvider extends BaseMarketProvider {
     stats.averageElapsed = stats.averageElapsed == null
       ? result.elapsed
       : stats.averageElapsed * 0.7 + result.elapsed * 0.3
+    this.log('debug', `route success updated: endpoint=${result.endpoint}, elapsed=${result.elapsed}ms, source=${result.source}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, average=${Math.round(stats.averageElapsed)}ms, encoding=${stats.contentEncoding ?? 'identity'}`)
   }
 
   private recordRouteFailure(endpoint: string) {
     const stats = this.routeStats[endpoint] ||= { score: 0, successes: 0, failures: 0 }
     stats.failures++
     stats.score = clamp(stats.score - 2, -10, 3)
+    this.log('debug', `route failure updated: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
   }
 
   private getRouteScores(endpoints = this.getEndpoints()) {
@@ -441,6 +545,7 @@ class MarketProvider extends BaseMarketProvider {
       }
       const requestStart = Date.now()
       this.log('debug', `fetch market index from ${endpoint} (${index + 1}/${total}), timeout=${this.config.timeout ?? 'default'}, proxy=${this.config.proxyAgent ? 'yes' : 'no'}, compression=yes, conditional=${Object.keys(conditional).length ? 'yes' : 'no'}`)
+      this.log('debug', `market request headers: endpoint=${endpoint}, acceptEncoding=br,gzip,deflate, etag=${conditional['if-none-match'] ?? '-'}, lastModified=${conditional['if-modified-since'] ?? '-'}`)
       const response = await http<string>('', {
         responseType: 'text',
         headers,
@@ -453,6 +558,7 @@ class MarketProvider extends BaseMarketProvider {
       const lastModified = response.headers.get('last-modified') || undefined
       const contentEncoding = response.headers.get('content-encoding') || undefined
       const headerWireSize = parseContentLength(response.headers.get('content-length'))
+      this.log('debug', `market response headers: endpoint=${endpoint}, status=${response.status}, request=${requestElapsed}ms, etag=${etag ?? '-'}, lastModified=${lastModified ?? '-'}, encoding=${contentEncoding ?? 'identity'}, contentLength=${formatBytes(headerWireSize)}`)
 
       const cached = this.cacheEntries[endpoint]
 
@@ -463,6 +569,7 @@ class MarketProvider extends BaseMarketProvider {
         const elapsed = Date.now() - start
         const validatedAt = Date.now()
         this.log('debug', `market index not modified from ${endpoint} in ${elapsed}ms, reuse cache hash=${shortHash(cached.hash) || 'unknown'}`)
+        this.log('info', `market index http-304: endpoint=${endpoint}, elapsed=${elapsed}ms, request=${requestElapsed}ms, cachedAt=${formatTime(cached.fetchedAt)}, hash=${shortHash(cached.hash) || 'unknown'}`)
         return {
           endpoint,
           result: cached.result,
@@ -484,14 +591,17 @@ class MarketProvider extends BaseMarketProvider {
       const text = response.data
       const size = Buffer.byteLength(text)
       const wireSize = normalizeWireSize(headerWireSize, size)
+      this.log('debug', `market response body decoded: endpoint=${endpoint}, chars=${text.length}, decodedSize=${formatBytes(size)}, wireSize=${formatBytes(wireSize)}, cachedHash=${shortHash(cached?.hash) ?? '-'}, cachedAt=${cached?.fetchedAt ? formatTime(cached.fetchedAt) : '-'}`)
       const hashStart = Date.now()
       const hash = createHash('sha256').update(text).digest('hex')
       const hashElapsed = Date.now() - hashStart
+      this.log('debug', `market response hash computed: endpoint=${endpoint}, hash=${shortHash(hash) || 'unknown'}, elapsed=${hashElapsed}ms, unchanged=${!!cached && cached.hash === hash}`)
 
       if (cached && cached.hash === hash) {
         const elapsed = Date.now() - start
         const validatedAt = Date.now()
         this.log('debug', `market index hash unchanged from ${endpoint} in ${elapsed}ms, size=${size}, hash=${shortHash(hash)}`)
+        this.log('info', `market index hash-cache: endpoint=${endpoint}, elapsed=${elapsed}ms, request=${requestElapsed}ms, hash=${shortHash(hash)}, size=${formatBytes(size)}, wireSize=${formatBytes(wireSize)}, encoding=${contentEncoding ?? 'identity'}`)
         return {
           endpoint,
           result: cached.result,
@@ -511,13 +621,16 @@ class MarketProvider extends BaseMarketProvider {
       }
 
       const parseStart = Date.now()
+      this.log('debug', `market json parse started: endpoint=${endpoint}, decodedSize=${formatBytes(size)}`)
       const result = JSON.parse(text) as SearchResult
       const parseElapsed = Date.now() - parseStart
       if (!Array.isArray(result?.objects)) {
         throw new Error(`invalid market index from ${endpoint}`)
       }
+      this.log('debug', `market json parse completed: endpoint=${endpoint}, objects=${result.objects.length}, version=${result.version ?? 'legacy'}, elapsed=${parseElapsed}ms`)
       const elapsed = Date.now() - start
       this.log('debug', `market index fetched from ${endpoint} in ${elapsed}ms, objects=${result.objects.length}, size=${size}, wireSize=${wireSize ?? 'unknown'}, encoding=${contentEncoding ?? 'identity'}, hash=${shortHash(hash) || 'unknown'}, version=${result.version ?? 'legacy'}`)
+      this.log('info', `market index fetched: endpoint=${endpoint}, elapsed=${elapsed}ms, request=${requestElapsed}ms, hash=${hashElapsed}ms, json=${parseElapsed}ms, objects=${result.objects.length}, size=${formatBytes(size)}, wireSize=${formatBytes(wireSize)}, encoding=${contentEncoding ?? 'identity'}, hash=${shortHash(hash) || 'unknown'}, version=${result.version ?? 'legacy'}`)
       return {
         endpoint,
         result,
@@ -535,18 +648,32 @@ class MarketProvider extends BaseMarketProvider {
     } catch (error) {
       if (this.isStale(serial)) throw new Error('market provider disposed')
       this.log(warnFailure ? 'warn' : 'debug', `failed to fetch market index from ${endpoint} in ${Date.now() - start}ms: ${formatError(error)}`)
+      this.log('debug', `market endpoint error detail: endpoint=${endpoint}, index=${index + 1}/${total}, warn=${warnFailure}, elapsed=${Date.now() - start}ms, stack=${formatStack(error)}`)
       throw error
     }
   }
 
   async get() {
     const start = Date.now()
+    if (this.backgroundTask && this.hasCurrentMarketData()) {
+      this.log('debug', `return current market payload while background refresh is running, hasScanner=${!!this.scanner}, hasPayload=${!!this.payload}, elapsed=${Date.now() - start}ms`)
+      if (this.scanner) return this.createPayload(start, true)
+      return {
+        ...this.payload,
+        stale: false,
+        error: undefined,
+        refreshing: true,
+        loading: false,
+        debug: this.getDebugInfo(),
+      }
+    }
     const task = this.prepare()
     if (!this.scanner && !this.payload) {
       const ready = await waitFor(task, FIRST_PAYLOAD_TIMEOUT)
       if (!ready) {
         this.refreshAfterPrepare(task)
         this.log('debug', `return loading market payload while waiting for network, elapsed=${Date.now() - start}ms`)
+        this.log('info', `market first payload still waiting for network: elapsed=${Date.now() - start}ms, endpoint=${this.endpoint || this.config.endpoint}`)
         return {
           registry: this.endpoint || this.config.endpoint,
           data: {},
@@ -569,9 +696,13 @@ class MarketProvider extends BaseMarketProvider {
       return this.payload ? { ...this.payload, debug: this.getDebugInfo() } : { data: {}, failed: 0, total: 0, progress: 0, debug: this.getDebugInfo() }
     }
     if (this._error) {
+      if (!this.payload && this.hasCurrentMarketData() && this.scanner) {
+        this.createPayload(start, false)
+      }
       if (this.payload) {
         const error = formatError(this._error)
         this.log('debug', `use cached market payload because current load failed: ${error}`)
+        this.log('warn', `market load failed; returning previous payload: endpoint=${this.endpoint || this.config.endpoint}, total=${this.payload.total}, error=${error}`)
         return {
           ...this.payload,
           stale: true,
@@ -582,8 +713,25 @@ class MarketProvider extends BaseMarketProvider {
         }
       }
       this.log('debug', `get market payload failed without cache, error=${formatError(this._error)}, elapsed=${Date.now() - start}ms`)
-      return { data: {}, failed: 0, total: 0, progress: 0, debug: this.getDebugInfo() }
+      return {
+        registry: this.endpoint || this.config.endpoint,
+        data: {},
+        failed: 0,
+        total: 0,
+        progress: 0,
+        stale: false,
+        error: formatError(this._error),
+        cached: false,
+        refreshing: false,
+        loading: false,
+        debug: this.getDebugInfo(),
+      }
     }
+    return this.createPayload(start)
+  }
+
+  private createPayload(start: number, refreshing = !!this.backgroundTask) {
+    this._task ||= Promise.resolve(null)
     const payloadStart = Date.now()
     let data: Dict<SearchObject>
     let dataElapsed = 0
@@ -606,7 +754,7 @@ class MarketProvider extends BaseMarketProvider {
       cached: !!this.cacheMeta,
       cachedAt: this.cacheMeta?.fetchedAt,
       validatedAt: this.cacheMeta?.validatedAt,
-      refreshing: !!this.backgroundTask,
+      refreshing,
       loading: false,
       debug: this.getDebugInfo({
         payloadData: dataElapsed,
@@ -615,6 +763,7 @@ class MarketProvider extends BaseMarketProvider {
     }
     this.payload = payload
     this.log('debug', `get market payload completed: total=${payload.total}, progress=${payload.progress}, failed=${payload.failed}, stale=${!!payload.stale}, elapsed=${Date.now() - start}ms`)
+    this.log('debug', `market payload detail: registry=${payload.registry}, cached=${payload.cached}, cachedAt=${payload.cachedAt ? formatTime(payload.cachedAt) : '-'}, validatedAt=${payload.validatedAt ? formatTime(payload.validatedAt) : '-'}, refreshing=${payload.refreshing}, payloadData=${payload.debug?.timings?.payloadData ?? '-'}ms, payload=${payload.debug?.timings?.payload ?? '-'}ms`)
     return payload
   }
 
@@ -634,14 +783,17 @@ class MarketProvider extends BaseMarketProvider {
     }
     this.endpoint = endpoint
     this.indexMode = 'modern'
+    const ignored = result.objects.filter(object => object.ignored).length
     this.scanner.objects = result.objects.filter(object => !object.ignored)
     this.scanner.total = this.scanner.objects.length
     this.scanner.version = result.version
+    this.log('debug', `market index applied: endpoint=${endpoint}, version=${result.version ?? 'legacy'}, rawObjects=${result.objects.length}, ignored=${ignored}, visible=${this.scanner.total}`)
   }
 
   private async applyDiskCache(serial: number) {
     const start = Date.now()
     try {
+      this.log('debug', `read market disk cache: file=${this.cacheFile}, preferred=${this.config.endpoint}, candidates=${this.getEndpointCandidates().join(', ')}`)
       const readStart = Date.now()
       const content = await fsp.readFile(this.cacheFile, 'utf8')
       const readElapsed = Date.now() - readStart
@@ -649,6 +801,7 @@ class MarketProvider extends BaseMarketProvider {
       const store = normalizeCacheStore(JSON.parse(content))
       const parseElapsed = Date.now() - parseStart
       this.cacheEntries = { ...this.cacheEntries, ...store.entries }
+      this.log('debug', `market disk cache store parsed: bytes=${formatBytes(Buffer.byteLength(content))}, entries=${Object.keys(store.entries).length}, lastUsed=${store.lastUsed ?? '-'}, parse=${parseElapsed}ms, endpoints=${formatCacheEntries(store.entries)}`)
       const cache = this.pickDiskCache()
       if (!cache) {
         this.log('debug', `skip market disk cache because no cached endpoint matches candidates: ${Object.keys(store.entries).join(', ')}`)
@@ -676,6 +829,7 @@ class MarketProvider extends BaseMarketProvider {
         source: 'disk-cache',
         endpoint: cache.endpoint,
         preferredEndpoint: this.getPreferredEndpoint(),
+        fallbackReason: undefined,
         size: cache.size,
         wireSize: cache.wireSize,
         contentEncoding: cache.contentEncoding,
@@ -693,6 +847,7 @@ class MarketProvider extends BaseMarketProvider {
         },
       }, 'initial')
       this.log('debug', `loaded market index from disk cache: ${this.scanner.total}/${cache.result.objects.length} objects, endpoint=${cache.endpoint}, cachedAt=${new Date(cache.fetchedAt).toISOString()}, entries=${Object.keys(this.cacheEntries).length}, elapsed=${Date.now() - start}ms`)
+      this.log('info', `market disk cache loaded: endpoint=${cache.endpoint}, objects=${this.scanner.total}, cachedAt=${formatTime(cache.fetchedAt)}, age=${formatAge(Date.now() - cache.fetchedAt)}, entries=${Object.keys(this.cacheEntries).length}, elapsed=${Date.now() - start}ms, size=${formatBytes(cache.size)}, wireSize=${formatBytes(cache.wireSize)}, encoding=${cache.contentEncoding ?? 'identity'}`)
       return true
     } catch (error) {
       if ((error as any)?.code !== 'ENOENT') {
@@ -706,15 +861,24 @@ class MarketProvider extends BaseMarketProvider {
 
   private pickDiskCache() {
     const endpoints = this.getEndpointCandidates()
+    const primary = this.cacheEntries[this.config.endpoint]
+    this.log('debug', `pick market disk cache: preferred=${this.config.endpoint}, endpointCandidates=${endpoints.join(', ')}, cachedEntries=${formatCacheEntries(this.cacheEntries)}`)
+    if (primary && Array.isArray(primary.result?.objects)) {
+      this.log('debug', `pick market disk cache primary hit: endpoint=${primary.endpoint}, score=${this.getCacheScore(primary).toFixed(2)}, cachedAt=${formatTime(primary.fetchedAt)}, objects=${primary.result.objects.length}`)
+      return primary
+    }
     const candidates = endpoints
+      .filter(endpoint => endpoint !== this.config.endpoint)
       .map(endpoint => this.cacheEntries[endpoint])
       .filter((cache): cache is CacheFile => !!cache && Array.isArray(cache.result?.objects))
     if (!candidates.length) return
-    return candidates.sort((a, b) => {
+    const sorted = candidates.sort((a, b) => {
       const delta = this.getCacheScore(b) - this.getCacheScore(a)
       if (delta) return delta
       return b.fetchedAt - a.fetchedAt
-    })[0]
+    })
+    this.log('debug', `pick market disk cache fallback hit: endpoint=${sorted[0].endpoint}, candidates=${sorted.map(cache => `${cache.endpoint} score=${this.getCacheScore(cache).toFixed(2)} age=${formatAge(Date.now() - cache.fetchedAt)} objects=${cache.result.objects.length}`).join(' | ')}`)
+    return sorted[0]
   }
 
   private getCacheScore(cache: CacheFile) {
@@ -743,6 +907,7 @@ class MarketProvider extends BaseMarketProvider {
       lastUsed: entry.endpoint,
     }
     this.cacheEntries = cache.entries
+    this.log('debug', `schedule market disk cache write: endpoint=${entry.endpoint}, objects=${result.objects.length}, entries=${Object.keys(cache.entries).length}, file=${this.cacheFile}, hash=${shortHash(entry.hash) ?? '-'}, size=${formatBytes(entry.size)}, wireSize=${formatBytes(entry.wireSize)}, encoding=${entry.contentEncoding ?? 'identity'}`)
     this.cacheWriteTimer = setTimeout(() => {
       this.cacheWriteTimer = undefined
       void this.writeDiskCache(cache)
@@ -756,11 +921,14 @@ class MarketProvider extends BaseMarketProvider {
       .sort((a, b) => {
         if (a.endpoint === lastUsed) return -1
         if (b.endpoint === lastUsed) return 1
+        if (a.endpoint === this.config.endpoint) return -1
+        if (b.endpoint === this.config.endpoint) return 1
         const delta = this.getCacheScore(b) - this.getCacheScore(a)
         if (delta) return delta
         return b.fetchedAt - a.fetchedAt
       })
       .slice(0, MAX_CACHE_ENTRIES)
+    this.log('debug', `prune market disk cache entries: lastUsed=${lastUsed}, kept=${entries.map(entry => `${entry.endpoint} score=${this.getCacheScore(entry).toFixed(2)} age=${formatAge(Date.now() - entry.fetchedAt)} objects=${entry.result.objects.length}`).join(' | ')}`)
     return Object.fromEntries(entries.map(entry => [entry.endpoint, entry]))
   }
 
@@ -776,11 +944,29 @@ class MarketProvider extends BaseMarketProvider {
     }
   }
 
-  private refreshInBackground(serial: number) {
-    if (this.backgroundTask) return
-    this.backgroundTask = this.refreshIndexInBackground(serial).finally(() => {
+  private refreshInBackground(serial: number, reason = 'background') {
+    if (this.backgroundTask && this.backgroundSerial === serial) {
+      this.log('debug', `skip ${reason} market refresh because background task is already running, serial=${serial}`)
+      return false
+    }
+    if (this.backgroundTask) {
+      this.log('debug', `replace stale background market refresh, oldSerial=${this.backgroundSerial ?? 'unknown'}, serial=${serial}, reason=${reason}`)
+    }
+    this.log('debug', `${reason} market refresh started, serial=${serial}`)
+    this.log('info', `${reason} market refresh started: serial=${serial}, endpoint=${this.config.endpoint}, autoRoute=${this.config.autoRoute !== false}`)
+    const task = this.refreshIndexInBackground(serial).finally(() => {
+      if (this.backgroundTask !== task) return
       this.backgroundTask = undefined
+      this.backgroundSerial = undefined
+      void this.notifyMarketRefresh()
     })
+    this.backgroundTask = task
+    this.backgroundSerial = serial
+    return true
+  }
+
+  private notifyMarketRefresh() {
+    return this.ctx.get('console')?.refresh('market')
   }
 
   private async refreshIndexInBackground(serial: number) {
@@ -802,6 +988,7 @@ class MarketProvider extends BaseMarketProvider {
         source: result.source,
         endpoint: result.endpoint,
         preferredEndpoint: result.preferredEndpoint,
+        fallbackReason: result.fallbackReason,
         candidates: result.candidates,
         size: result.size,
         wireSize: result.wireSize,
@@ -816,6 +1003,20 @@ class MarketProvider extends BaseMarketProvider {
       }, 'refresh')
       await this.ctx.get('console')?.refresh('market')
       this.log('debug', `background market refresh completed in ${Date.now() - start}ms, endpoint=${this.endpoint}, source=${result.source}, objects=${this.scanner.total}`)
+      this.log('info', `background market refresh completed: ${formatSnapshot({
+        source: result.source,
+        endpoint: result.endpoint,
+        preferredEndpoint: result.preferredEndpoint,
+        fallbackReason: result.fallbackReason,
+        candidates: result.candidates,
+        objects: this.scanner.total,
+        size: result.size,
+        wireSize: result.wireSize,
+        contentEncoding: result.contentEncoding,
+        cachedAt: result.cachedAt,
+        validatedAt: result.validatedAt,
+        timings: result.timings,
+      })}`)
     } catch (error) {
       if (this.isStale(serial)) return
       this._error = error
@@ -828,6 +1029,7 @@ class MarketProvider extends BaseMarketProvider {
     const next: MarketPerformance = {
       ...this.debugInfo,
       ...info,
+      fallbackReason: info.fallbackReason,
       timings: {
         ...this.debugInfo?.timings,
         ...info.timings,
@@ -837,6 +1039,7 @@ class MarketProvider extends BaseMarketProvider {
     if (phase) next[phase] = { ...info }
     this.debugInfo = next
     this.log('debug', `market performance: source=${this.debugInfo.source ?? 'unknown'}, endpoint=${this.debugInfo.endpoint ?? 'unknown'}, preferred=${this.debugInfo.preferredEndpoint ?? 'unknown'}, objects=${this.debugInfo.objects ?? 0}, size=${this.debugInfo.size ?? 0}, wireSize=${this.debugInfo.wireSize ?? 'unknown'}, encoding=${this.debugInfo.contentEncoding ?? 'identity'}, timings=${formatTimings(this.debugInfo.timings)}`)
+    this.log('debug', `market route scores: ${formatRouteScores(this.debugInfo.routeScores)}`)
   }
 
   private getDebugInfo(timings?: Dict<number>) {
@@ -858,7 +1061,14 @@ class MarketProvider extends BaseMarketProvider {
   private log(level: Exclude<LogLevel, 'silent'>, message: string) {
     if (this.disposed || !this.ctx.scope.isActive) return
     if (logLevels.indexOf(this.config.logLevel ?? 'warn') < logLevels.indexOf(level)) return
-    this.ctx.logger('market')[level](message)
+    const logger = this.ctx.logger('market')
+    if (level === 'debug') {
+      // Koishi's global logger may hide debug records from the log page.
+      // When market debug is explicitly enabled, mirror them as info records.
+      logger.info(`[debug] ${message}`)
+    } else {
+      logger[level](message)
+    }
   }
 }
 
@@ -885,8 +1095,34 @@ function formatError(error: unknown) {
   return String(error)
 }
 
+function formatStack(error: unknown) {
+  if (error instanceof Error) return error.stack || error.message
+  return String(error)
+}
+
 function shortHash(hash?: string) {
   return hash?.slice(0, 12)
+}
+
+function formatTime(value?: number) {
+  if (!value) return '-'
+  return new Date(value).toISOString()
+}
+
+function formatAge(age?: number) {
+  if (age == null || !Number.isFinite(age)) return '-'
+  if (age < Time.second) return `${Math.max(0, Math.round(age))}ms`
+  if (age < Time.minute) return `${Math.round(age / Time.second)}s`
+  if (age < Time.hour) return `${Math.round(age / Time.minute)}m`
+  if (age < Time.day) return `${Math.round(age / Time.hour)}h`
+  return `${Math.round(age / Time.day)}d`
+}
+
+function formatBytes(value?: number) {
+  if (value == null || !Number.isFinite(value)) return '-'
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)}MB`
+  if (value >= 1024) return `${(value / 1024).toFixed(1)}KB`
+  return `${Math.round(value)}B`
 }
 
 function parseContentLength(value?: string | null) {
@@ -898,6 +1134,52 @@ function parseContentLength(value?: string | null) {
 function normalizeWireSize(wireSize: number | undefined, decodedSize: number) {
   if (!wireSize && decodedSize > 0) return
   return wireSize
+}
+
+function formatSnapshot(snapshot: MarketPerformanceSnapshot = {}) {
+  return [
+    `source=${snapshot.source ?? 'unknown'}`,
+    `endpoint=${snapshot.endpoint ?? 'unknown'}`,
+    `preferred=${snapshot.preferredEndpoint ?? '-'}`,
+    `fallback=${snapshot.fallbackReason ?? '-'}`,
+    `candidates=${snapshot.candidates ?? '-'}`,
+    `objects=${snapshot.objects ?? '-'}`,
+    `size=${formatBytes(snapshot.size)}`,
+    `wireSize=${formatBytes(snapshot.wireSize)}`,
+    `encoding=${snapshot.contentEncoding ?? 'identity'}`,
+    `cachedAt=${formatTime(snapshot.cachedAt)}`,
+    `validatedAt=${formatTime(snapshot.validatedAt)}`,
+    `timings=${formatTimings(snapshot.timings) || '-'}`,
+  ].join(', ')
+}
+
+function formatRouteScores(routes?: MarketPerformance['routeScores']) {
+  if (!routes?.length) return '-'
+  return routes.map(route => [
+    route.endpoint,
+    `score=${route.score}`,
+    `ok=${route.successes ?? 0}`,
+    `fail=${route.failures ?? 0}`,
+    `avg=${route.averageElapsed == null ? '-' : Math.round(route.averageElapsed) + 'ms'}`,
+    `cache=${route.cached ? 'yes' : 'no'}`,
+    `cachedAt=${formatTime(route.cachedAt)}`,
+    `encoding=${route.contentEncoding ?? 'identity'}`,
+  ].join(' ')).join(' | ')
+}
+
+function formatCacheEntries(entries: Dict<CacheFile>) {
+  const values = Object.values(entries).filter((entry): entry is CacheFile => !!entry)
+  if (!values.length) return '-'
+  return values.map(entry => [
+    entry.endpoint,
+    `objects=${entry.result?.objects?.length ?? '-'}`,
+    `cachedAt=${formatTime(entry.fetchedAt)}`,
+    `age=${formatAge(Date.now() - entry.fetchedAt)}`,
+    `hash=${shortHash(entry.hash) ?? '-'}`,
+    `size=${formatBytes(entry.size)}`,
+    `wireSize=${formatBytes(entry.wireSize)}`,
+    `encoding=${entry.contentEncoding ?? 'identity'}`,
+  ].join(' ')).join(' | ')
 }
 
 function normalizeCacheStore(value: any): CacheStore {

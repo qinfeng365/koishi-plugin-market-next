@@ -113,6 +113,17 @@ export default (ctx: Context) => {
   const config = useConfig()
   const refreshingMarket = ref(false)
   const refreshingDependencies = ref(false)
+  const pendingMarketRefreshFeedback = ref(false)
+
+  function finishMarketRefreshFeedback() {
+    if (!pendingMarketRefreshFeedback.value) return
+    pendingMarketRefreshFeedback.value = false
+    if (store.market?.stale || store.market?.error) {
+      message.error('插件市场刷新失败，已保留可用数据。')
+    } else {
+      message.success('插件市场刷新成功。')
+    }
+  }
 
   if (!global.static) {
     ctx.slot({
@@ -142,10 +153,19 @@ export default (ctx: Context) => {
       const refreshing = dependencies ? refreshingDependencies : refreshingMarket
       if (refreshing.value) return
       refreshing.value = true
+      if (!dependencies) pendingMarketRefreshFeedback.value = true
       try {
         await send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
-        message.success(dependencies ? '依赖版本已刷新。' : '插件市场已刷新。')
+        if (dependencies) {
+          message.success('依赖版本已刷新。')
+        } else {
+          message.success('插件市场刷新请求已提交。')
+          setTimeout(() => {
+            if (!store.market?.refreshing) finishMarketRefreshFeedback()
+          }, 300)
+        }
       } catch (error) {
+        if (!dependencies) pendingMarketRefreshFeedback.value = false
         console.error(error)
         message.error('刷新失败，请检查网络或日志。')
       } finally {
@@ -217,5 +237,12 @@ export default (ctx: Context) => {
         }
       }
     }, { immediate: true })
+  })
+
+  ctx.effect(() => {
+    return watch(() => store.market?.refreshing, (refreshing, previous) => {
+      if (!pendingMarketRefreshFeedback.value || refreshing || previous !== true) return
+      finishMarketRefreshFeedback()
+    })
   })
 }

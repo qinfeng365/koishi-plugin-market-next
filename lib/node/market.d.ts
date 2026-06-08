@@ -25,12 +25,16 @@ declare class MarketProvider extends BaseMarketProvider {
     private debugInfo?;
     private routeStats;
     private backgroundTask?;
+    private backgroundSerial?;
     private pendingRefreshTask?;
     private cacheWriteTimer?;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
     start(refresh?: boolean): Promise<void>;
     collect(): Promise<any>;
+    private createScanner;
+    private hasCurrentMarketData;
+    private startSoftRefresh;
     private fetchIndex;
     private getEndpointCandidates;
     private getEndpoints;
@@ -74,6 +78,7 @@ declare class MarketProvider extends BaseMarketProvider {
         refreshing?: boolean;
         loading?: boolean;
     }>;
+    private createPayload;
     private refreshAfterPrepare;
     private applyIndex;
     private applyDiskCache;
@@ -83,6 +88,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private pruneCacheEntries;
     private writeDiskCache;
     private refreshInBackground;
+    private notifyMarketRefresh;
     private refreshIndexInBackground;
     private updateDebugInfo;
     private getDebugInfo;

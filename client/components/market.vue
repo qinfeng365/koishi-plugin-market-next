@@ -92,6 +92,10 @@
 
     <k-comment v-else type="danger" class="market-error">
       <p>无法连接到插件市场。这可能是以下原因导致的：</p>
+      <p>
+        Registry：{{ store.market?.registry || loadingEndpoint }}
+        <template v-if="store.market?.error">；原因：{{ store.market.error }}</template>
+      </p>
       <ul>
         <li>无法连接到网络，请检查你的网络连接和代理设置</li>
         <li>您所用的 registry 不支持搜索功能，请考虑进行更换</li>
@@ -167,6 +171,7 @@ const debugItems = computed(() => {
     ['压缩比例', formatCompressionRatio(debug.size, debug.wireSize)],
     ['候选源', formatNumber(debug.candidates)],
     ['优先源', debug.preferredEndpoint || '-'],
+    ['回退原因', formatFallbackReason(debug.fallbackReason)],
     ['Hash', debug.hash || '-'],
     ['ETag', debug.etag || '-'],
     ['Last-Modified', debug.lastModified || '-'],
@@ -311,15 +316,25 @@ function formatDebugPhase(value: {
   timings?: Record<string, number>
   contentEncoding?: string
   wireSize?: number
+  fallbackReason?: string
 }) {
   const parts = [
     formatSource(value.source),
     shortEndpoint(value.endpoint),
   ]
+  if (value.fallbackReason) parts.push(formatFallbackReason(value.fallbackReason))
   if (value.timings?.total != null) parts.push(formatDuration(value.timings.total))
   if (value.contentEncoding) parts.push(value.contentEncoding)
   if (value.wireSize) parts.push(formatSize(value.wireSize))
   return parts.filter(Boolean).join(' / ')
+}
+
+function formatFallbackReason(value?: string) {
+  switch (value) {
+    case 'primary-failed': return '主源失败'
+    case 'primary-slow': return '主源慢'
+    default: return '-'
+  }
 }
 
 function formatSize(value?: number) {

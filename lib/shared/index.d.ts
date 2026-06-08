@@ -14,6 +14,7 @@ export interface MarketPerformanceSnapshot {
     source?: 'network' | 'disk-cache' | 'http-304' | 'hash-cache' | 'legacy';
     endpoint?: string;
     preferredEndpoint?: string;
+    fallbackReason?: 'primary-failed' | 'primary-slow';
     candidates?: number;
     size?: number;
     wireSize?: number;

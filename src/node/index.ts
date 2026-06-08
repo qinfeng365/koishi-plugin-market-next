@@ -4,7 +4,7 @@ import { gt } from 'semver'
 import { resolve } from 'path'
 import pMap from 'p-map'
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
-import Installer from './installer'
+import Installer, { loadManifest } from './installer'
 import MarketProvider from './market'
 import { applyChatLunaTool } from './chatluna'
 
@@ -89,23 +89,35 @@ function hasPluginConfig(plugins: any, shortname: string): boolean {
   return false
 }
 
+function createDisabledPluginConfig(ctx: Context, shortname: string) {
+  const plugins = ctx.loader.config?.plugins
+  if (!plugins || !ctx.loader.writable) return
+  let ident: string
+  let key: string
+  do {
+    ident = Math.random().toString(36).slice(2, 8)
+    key = `~${shortname}:${ident}`
+  } while (key in plugins)
+  plugins[key] = {}
+  return key
+}
+
 async function requestPluginRuntime(ctx: Context, name: string) {
-  await ctx.console.listeners['config/request-runtime']?.callback.call(null, name)
+  await ctx.get('console')?.listeners['config/request-runtime']?.callback.call(null, name)
 }
 
 async function ensurePluginConfig(ctx: Context, name: string) {
   if (!Scanner.isPlugin(name)) return false
-  const configWriter = (ctx.console.services as any).config
-  if (!configWriter?.unload) return false
 
   await requestPluginRuntime(ctx, name).catch(error => ctx.logger('market').warn(error))
 
   const shortname = getPluginShortname(name)
   if (hasPluginConfig(ctx.loader.config?.plugins, shortname)) return false
 
-  const ident = Math.random().toString(36).slice(2, 8)
-  await configWriter.unload('', `${shortname}:${ident}`, {})
-  ctx.logger('market').info('created default config entry for %c', name)
+  const key = createDisabledPluginConfig(ctx, shortname)
+  if (!key) return false
+  await ctx.loader.writeConfig()
+  ctx.logger('market').info('created disabled default config entry %c for %c', key, name)
   return true
 }
 
@@ -116,10 +128,17 @@ async function ensurePluginConfigs(ctx: Context, names: string[]) {
   }
   if (!changed) return false
   await Promise.all([
-    ctx.console.refresh('config'),
-    ctx.console.refresh('packages'),
+    ctx.get('console')?.refresh('config'),
+    ctx.get('console')?.refresh('packages'),
   ])
   return true
+}
+
+async function ensureInstalledPluginConfigs(ctx: Context) {
+  const manifest = loadManifest(ctx.baseDir)
+  const names = Object.keys(manifest.dependencies ?? {})
+    .filter(name => Scanner.isPlugin(name))
+  return ensurePluginConfigs(ctx, names)
 }
 
 export function apply(ctx: Context, config: Config = {}) {
@@ -154,7 +173,8 @@ export function apply(ctx: Context, config: Config = {}) {
           ...pick(session, ['sid', 'channelId', 'guildId', 'isDirect']),
           content: session.text('.success'),
         }
-        await ctx.installer.install(result)
+        await ctx.installer.install(result, undefined, () => ensurePluginConfigs(ctx, Object.keys(result)))
+        await ensurePluginConfigs(ctx, Object.keys(result))
         ctx.loader.envData.message = null
         return session.text('.success')
       })
@@ -219,7 +239,8 @@ export function apply(ctx: Context, config: Config = {}) {
         await ctx.installer.install(names.reduce((result, name) => {
           result[name] = deps[name].latest
           return result
-        }, {}))
+        }, {}), undefined, () => ensurePluginConfigs(ctx, names))
+        await ensurePluginConfigs(ctx, names)
         ctx.loader.envData.message = null
         return session.text('.success')
       })
@@ -237,11 +258,12 @@ export function apply(ctx: Context, config: Config = {}) {
     })
 
     ctx.console.addListener('market/install', async (deps, forced) => {
-      const code = await ctx.installer.install(deps, forced)
+      const installNames = Object.entries(deps)
+        .filter(([, version]) => version)
+        .map(([name]) => name)
+      const code = await ctx.installer.install(deps, forced, () => ensurePluginConfigs(ctx, installNames))
       if (!code) {
-        await ensurePluginConfigs(ctx, Object.entries(deps)
-          .filter(([, version]) => version)
-          .map(([name]) => name))
+        await ensurePluginConfigs(ctx, installNames)
       }
       await Promise.all([
         ctx.get('console')?.refresh('dependencies'),
@@ -273,5 +295,9 @@ export function apply(ctx: Context, config: Config = {}) {
     ctx.console.addListener('market/ensure-config', async (name) => {
       return ensurePluginConfig(ctx, name)
     }, { authority: 4 })
+
+    ctx.on('ready', async () => {
+      await ensureInstalledPluginConfigs(ctx).catch(error => ctx.logger('market').warn(error))
+    })
   })
 }

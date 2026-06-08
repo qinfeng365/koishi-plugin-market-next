@@ -4,6 +4,19 @@
 
 ## Unreleased
 
+- 暂无。
+
+## 3.5.5
+
+market-next 的第一个正式 release。
+
+- 重写 README，完整说明 next 定位、弱网策略、缓存策略、自动路由、安装后配置补齐、ChatLuna Tool、调试日志、CI 和发布流程。
+- 安装插件后由后端自动创建默认停用配置项，例如 `~schedule:xxxxxx: {}`，覆盖市场页安装、批量安装、指令安装和 full reload 前补配置。
+- 启动时扫描已安装但未配置的 Koishi 插件依赖，并补齐停用配置项，修复旧版本安装成功但插件配置页不显示的问题。
+- 调整安装流程：依赖变更需要 full reload 时，先执行补配置回调，再刷新 Console 数据，最后触发 full reload。
+- `search.logLevel: debug` 时，市场调试链路会以 `[debug]` 前缀写入日志页，避免被 Koishi 全局 debug 阈值吞掉。
+- Debug 日志扩展到市场源候选、路由评分、缓存条目、请求/响应头、HTTP 304、hash 命中、JSON parse、缓存裁剪、route stats 和错误 stack。
+- 依赖安装与版本刷新增加日志，记录 package manager、依赖变更、是否触发 full reload、依赖数量、invalid 数和耗时。
 - 刷新市场或依赖版本时移除全局阻塞 loading，改为只让对应刷新按钮显示旋转状态；已有缓存内容保持可操作。
 
 ## 3.5.0

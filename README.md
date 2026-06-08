@@ -1,64 +1,44 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.5.0-blue)
+![npm](https://img.shields.io/npm/v/koishi-plugin-market-next?color=3178c6)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
 
-`koishi-plugin-market-next` 是一个面向 Koishi Console 的插件市场增强版。它继承原始 market 的安装、卸载、更新、依赖管理和控制台事件接口，同时把日常使用中最影响体验的部分重新打磨：默认市场源、刷新反馈、无限滚动、筛选交互、安装后的配置补齐，以及可选的 ChatLuna 插件市场查询工具。
+`koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-仓库地址：[qinfeng365/koishi-plugin-market-next](https://github.com/qinfeng365/koishi-plugin-market-next)
+`3.5.5` 是本项目的第一个正式 release。
 
-## 目录
+## 为什么做 Next
 
-- [Next 优势](#next-优势)
-- [功能概览](#功能概览)
-- [安装与启用](#安装与启用)
-- [配置项](#配置项)
-- [ChatLuna 市场查询 Tool](#chatluna-市场查询-tool)
-- [和原版 market 的区别](#和原版-market-的区别)
-- [常见问题](#常见问题)
-- [开发](#开发)
-- [自动发布](#自动发布)
-- [发布包内容](#发布包内容)
-- [版本更新](#版本更新)
-- [许可证](#许可证)
+原始 market 的功能基础很好，但在真实使用里常见几个痛点：
 
-## Next 优势
+- 市场索引 4MB 左右，弱网下容易长时间空白。
+- 刷新按钮反馈弱，用户不知道是没点上、正在请求还是已经失败。
+- 网络正常时也可能因为 registry、镜像、跨源缓存或超时策略显示 `failed to fetch`。
+- 市场索引加载和依赖版本刷新相互影响，npm registry 慢会拖住市场页。
+- 分页和筛选容易停在空页。
+- 插件下载后还要去依赖页或配置页手动补配置。
+- 调试信息主要在前端面板里，日志页不够好排查用户环境。
 
-原始 market 的核心能力仍然有用，但它在一些高频场景里容易让用户误判状态：网络正常却显示 `failed to fetch`、刷新按钮没有反馈、市场打开慢、分页停在空页、安装后还要去依赖页找“配置”。`market-next` 的目标不是推翻 Koishi 的插件管理链路，而是在保持兼容的前提下，让市场页面更像一个真正可用的插件管理中心。
+market-next 的目标不是破坏 Koishi 原有管理链路，而是在兼容原接口的前提下，让插件市场更像一个稳定的插件管理中心。
 
-这一版主要改进了这些地方：
+## 主要特性
 
-- **默认使用大陆更友好的市场索引**：`https://registry.koishi.t4wefan.pub/index.json`。
-- **当前源异常时自动回退**：按延迟、成功率、失败惩罚、缓存可用性和配置偏好综合排序候选源。
-- **刷新有明确反馈**：手动刷新会进入 loading，并在完成或失败时提示。
-- **首屏加载更稳**：市场索引加载不再等待依赖刷新完成，避免被 npm registry、本地依赖扫描或包元数据刷新拖住。
-- **列表浏览更自然**：使用无限滚动加载更多插件，减少分页带来的空页和跳转成本。
-- **筛选行为更清楚**：分类可以再次点击取消，关键词或筛选变化后会重置列表位置。
-- **失败原因更可读**：市场加载失败时尽量展示实际 registry 和错误原因，而不是只给一个笼统的 fetch 失败。
-- **缓存更有判断力**：多源缓存优先显示后，后台刷新会按源分别利用 ETag、Last-Modified 和内容 hash 判断索引是否变化，未变化时跳过重复 JSON 解析。
-- **弱网少做无用功**：市场索引刷新与依赖版本刷新解耦，自动路由不会因为慢源“成功过”就持续抬高它。
-- **配置页不等市场**：插件配置页扩展改为局部数据可用即显示，市场索引未完成时也不会整体隐藏依赖、详情和缺失插件提示。
-- **慢在哪里能看见**：`search.logLevel: debug` 时，市场页会拆分首屏与后台刷新，并显示下载、压缩方式、传输大小、路由评分、缓存读取、JSON parse、索引映射、前端筛选和虚拟滚动耗时。
-- **安装后自动尝试补配置**：安装完成后等待 config 插件识别新包，再自动调用配置补齐逻辑，减少手动去依赖页点“配置”的次数。
-- **AI 可以查市场**：可选注册 ChatLuna 只读工具，让 AI 按关键词、分类、状态、创建/更新时间、评分、下载量等条件查询插件。
+- 默认市场索引：`https://registry.koishi.t4wefan.pub/index.json`。
+- 缓存优先显示：有本地缓存时先显示旧数据，后台再校验最新索引。
+- 默认源优先自动路由：用户配置的 `search.endpoint` 永远是主源，备用源只在主源失败或明显超时时接管。
+- 多源缓存：不同市场源分别保存 ETag、Last-Modified、hash、压缩信息和索引数据。
+- HTTP 304 / hash 命中：索引未变化时复用旧缓存，减少重复 JSON 解析。
+- 无限滚动和虚拟窗口：减少分页空页和大量卡片同步渲染。
+- 市场刷新软化：手动刷新不清空当前列表，页面保持可操作。
+- 依赖刷新解耦：市场索引加载不再被 npm 包元数据刷新拖住。
+- 安装后自动补配置：新安装插件会自动创建默认停用配置项，例如 `~schedule:xxxxxx: {}`。
+- 更完整的错误提示：页面显示实际 registry、缓存状态、stale 状态和失败原因。
+- 日志页诊断增强：`search.logLevel: debug` 时，关键调试信息会以 `[debug]` 前缀写入日志页。
+- 可选 ChatLuna Tool：让 ChatLuna / AI 查询 Koishi 插件市场，支持搜索、推荐、最近新增、热门、风险状态和对比。
 
-## 功能概览
-
-- 浏览 Koishi 插件市场。
-- 搜索插件名、短名、简介和关键词。
-- 按分类、认证状态、风险状态、废弃状态等信息筛选。
-- 无限滚动加载市场插件。
-- 安装、更新、卸载插件。
-- 查看版本、评分、月下载量、创建时间、更新时间、维护者、npm 链接和 homepage / repository 链接。
-- 检查依赖版本和 peer dependency 兼容结果。
-- 支持批量模式、移除配置确认和 Gravatar 镜像配置。
-- 支持多源缓存优先显示、后台校验和 debug 性能面板。
-- 安装后自动尝试创建插件配置节点。
-- 可选启用 ChatLuna 插件市场查询工具。
-
-## 安装与启用
+## 安装
 
 在 Koishi 项目目录安装：
 
@@ -66,20 +46,11 @@
 npm install koishi-plugin-market-next
 ```
 
-推荐在 Koishi Console 的插件页面启用。手写配置时，插件键名以你的 Koishi loader 生成结果为准，通常可以写成：
+然后在 Koishi Console 的插件配置页启用 `market-next`。
 
-```yaml
-plugins:
-  market-next:
-    search:
-      endpoint: https://registry.koishi.t4wefan.pub/index.json
-```
+如果同时安装了原始 `@koishijs/plugin-market`，建议只启用其中一个。market-next 为了保持 Console 事件兼容，内部服务名仍使用 `market`。
 
-如果你已经启用了原始 market，建议只保留一个市场插件。`market-next` 为了兼容原有控制台页面和事件，内部插件名仍沿用 `market`。
-
-## 配置项
-
-常用配置：
+## 基础配置
 
 ```yaml
 plugins:
@@ -96,36 +67,32 @@ plugins:
     chatlunaTool: false
 ```
 
+### 配置说明
+
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `registry.endpoint` | 跟随当前 npm 配置 | 安装插件时使用的软件源。 |
-| `registry.timeout` | `5s` | 获取 npm 包元数据的超时时间。 |
-| `registry.autoRoute` | `true` | 获取依赖版本失败时是否自动尝试备用 npm 源。 |
-| `registry.retry` | `1` | 每个 npm 源获取版本失败后的重试次数。 |
+| `search.endpoint` | `https://registry.koishi.t4wefan.pub/index.json` | 市场索引地址。 |
+| `search.timeout` | `30s` | 市场索引请求超时。 |
+| `search.proxyAgent` | 空 | 市场索引请求代理。 |
+| `search.autoRoute` | `true` | 主市场源失败或明显超时时自动尝试备用市场源。 |
+| `search.logLevel` | `warn` | 市场索引日志级别：`silent`、`error`、`warn`、`info`、`debug`。 |
+| `registry.endpoint` | 跟随 npm 配置 | 安装插件和获取 npm 包元数据的软件源。 |
+| `registry.timeout` | `5s` | npm 包元数据请求超时。 |
+| `registry.autoRoute` | `true` | npm 包元数据失败时自动尝试备用 npm 源。 |
+| `registry.retry` | `1` | 每个 npm 源失败后的重试次数。 |
 | `registry.concurrency` | `4` | 批量获取依赖版本时的最大并发数。 |
-| `search.endpoint` | `https://registry.koishi.t4wefan.pub/index.json` | 插件市场索引地址。 |
-| `search.timeout` | `30s` | 获取市场索引的超时时间。 |
-| `search.proxyAgent` | 空 | 请求市场索引时使用的代理。 |
-| `search.autoRoute` | `true` | 当前市场源失败时是否自动尝试备用市场源。 |
-| `search.logLevel` | `warn` | 市场后端日志级别：`silent`、`error`、`warn`、`info`、`debug`。 |
-| `chatlunaTool` | `false` | 是否启用 ChatLuna 插件市场查询工具。 |
+| `chatlunaTool` | `false` | 是否注册 ChatLuna 插件市场查询工具。 |
 
-可选市场索引：
+## 市场源和自动路由
 
-```yaml
-plugins:
-  market-next:
-    search:
-      endpoint: https://registry.koishi.chat/index.json
-```
+market-next 区分两类源：
 
-软件源和市场索引是两件事：
+- `search.endpoint`：市场页面和 ChatLuna Tool 使用的插件索引。
+- `registry.endpoint`：安装、更新插件时使用的 npm registry。
 
-- `search.endpoint` 决定市场页面和 ChatLuna Tool 从哪里读取插件列表。
-- `registry.endpoint` 决定安装、更新插件时从哪个 npm registry 下载包。
-- `registry.autoRoute` 只影响 npm 包元数据和依赖版本获取；`search.autoRoute` 只影响市场索引获取。
+`search.autoRoute` 不会改写用户配置。主源始终优先，备用源只在主源失败或超过阈值仍未返回时参与竞速。
 
-当 `search.endpoint` 获取失败时，`market-next` 会自动尝试以下市场索引，不会把 fallback 写入你的配置文件：
+内置市场备用源：
 
 - `https://registry.koishi.t4wefan.pub/index.json`
 - `https://gitee.com/shangxueink/koishi-registry-aggregator/raw/gh-pages/market.json`
@@ -134,7 +101,7 @@ plugins:
 - `https://koishi.itzdrli.cc`
 - `https://registry.koishi.chat/index.json`
 
-当 `registry.endpoint` 获取 npm 包元数据失败时，`registry.autoRoute` 会尝试以下 npm 源：
+内置 npm 元数据备用源：
 
 - `https://registry.npmmirror.com`
 - `https://mirrors.cloud.tencent.com/npm`
@@ -143,17 +110,44 @@ plugins:
 
 更多社区镜像可参考 [Koishi 论坛镜像一览](https://forum.koishi.xyz/t/topic/4000)。
 
-测试单一市场源时可以关闭自动路由：
+## 缓存策略
+
+market-next 会把市场索引缓存到 Koishi 实例目录下的 `cache/market-next-index.json`。
+
+缓存策略：
+
+- 最多保留 3 个市场源缓存。
+- 主源缓存优先用于首屏。
+- 主源缓存不可用时，备用源缓存按路由评分、缓存新鲜度和最近使用情况选择。
+- 后台刷新成功后写回对应源缓存。
+- 支持 ETag、Last-Modified 和内容 hash。
+- HTTP 304 或 hash 未变化时复用旧索引。
+- 网络失败但已有旧 payload 时，页面继续显示旧数据并标记 stale。
+
+这套策略的目的不是永远显示旧市场，而是让弱网用户先能操作，再在后台确认数据是否更新。
+
+## 安装后配置补齐
+
+通过 market-next 安装插件后，后端会尝试自动创建停用配置项：
 
 ```yaml
 plugins:
-  market-next:
-    search:
-      endpoint: https://registry.koishi.chat/index.json
-      autoRoute: false
+  ~schedule:abc123: {}
 ```
 
-排查加载、fallback 或缓存回退问题时可以提高日志级别：
+这样插件会出现在“插件配置”页面，但默认不会启用。用户可以进入配置页检查配置后再手动启用。
+
+这条链路覆盖：
+
+- 市场页安装。
+- 批量安装。
+- `plugin.install` 指令安装。
+- full reload 前的补配置。
+- 启动时扫描已安装但未配置的插件并补齐。
+
+## 调试日志
+
+打开详细诊断：
 
 ```yaml
 plugins:
@@ -162,298 +156,151 @@ plugins:
       logLevel: debug
 ```
 
-`debug` 级别会额外在市场页显示性能面板，并在后端日志输出分段耗时；面板中的“解压大小”是 JSON 文本大小，“传输大小”来自响应头 `Content-Length`，压缩流或分块响应没有该响应头时会显示为空。默认 `warn` 不会输出这些诊断日志。
+debug 模式会在日志页写入 `[debug] ...` 记录。这样即使 Koishi 全局 logger 不显示原生 `logger.debug()`，也能在日志页看到完整链路。
 
-市场搜索输入已做 120ms 防抖，并设置 500ms 最大等待上限；连续输入时不会每个字符都触发完整筛选，但长时间连续输入也会定期同步结果。
+常见诊断内容包括：
 
-## ChatLuna 市场查询 Tool
+- 市场源候选列表。
+- 每个源的 route score、成功/失败次数、平均耗时、缓存命中。
+- 磁盘缓存条目、缓存时间、hash、压缩方式、大小。
+- 请求头和响应头。
+- HTTP 304、hash-cache、network 三种结果。
+- JSON parse 耗时。
+- 首屏缓存和后台刷新耗时。
+- fallback 原因：主源失败或主源慢。
+- 安装依赖时的 package manager、变更包、是否触发 full reload。
+- 依赖版本刷新总数、已安装数、invalid 数和耗时。
 
-开启 `chatlunaTool` 后，如果当前 Koishi 同时安装并启用了 ChatLuna，本插件会注册只读工具：
+示例日志：
+
+```text
+[debug] market route scores before fetch: ...
+[debug] market response headers: endpoint=..., status=304, request=276ms, ...
+[debug] market disk cache store parsed: entries=2, ...
+[debug] route success updated: endpoint=..., score=..., average=...
+```
+
+## ChatLuna 插件市场查询 Tool
+
+开启：
+
+```yaml
+plugins:
+  market-next:
+    chatlunaTool: true
+```
+
+如果当前 Koishi 同时启用了 ChatLuna，本插件会注册只读工具：
 
 ```text
 koishi_plugin_market_search
 ```
 
-它只读取市场索引，不会安装插件、卸载插件、写配置或修改 `package.json`。
+工具只查询市场，不安装、不卸载、不写配置、不改 `package.json`。
 
-为移除旧版 LangSmith 带来的高危 audit 项，`3.4.1` 起 ChatLuna Tool 使用 `@langchain/core` 1.x；该依赖要求 Node.js 20 或更高版本。较新的 Koishi Desktop / Node 22 环境可以直接使用。
+支持能力：
 
-支持的输入：
-
-| 参数 | 说明 |
-| --- | --- |
-| `intent` | 查询意图：`search`、`recommend`、`recent`、`popular`、`risk`、`compare`。省略时会根据参数自动推断。 |
-| `query` | 关键词搜索，匹配插件名、短名、描述和 keywords。 |
-| `requirements` | 用户自然语言需求，例如“找一个好用的 onebot 适配器”。 |
-| `names` | 插件包名或短名列表，用于精确查询或对比。 |
-| `category` | 分类过滤，例如 `adapter`、`ai`、`tool`、`game`、`webui`。支持数组、单个字符串或逗号分隔字符串。 |
-| `status` | 状态过滤：`verified`、`insecure`、`preview`、`portable`、`deprecated`。支持数组、单个字符串或逗号分隔字符串。 |
-| `createdAfter` / `createdBefore` | 创建时间范围，支持 `YYYY-MM-DD` 或 ISO 日期。 |
-| `updatedAfter` / `updatedBefore` | 更新时间范围。 |
-| `createdWithinDays` | 最近新增，例如 `30` 表示最近 30 天新增。 |
-| `updatedWithinDays` | 最近更新。 |
-| `sort` | `relevance`、`rating`、`downloads`、`created`、`updated`。 |
-| `order` | `asc` 或 `desc`。 |
-| `limit` | 返回数量，范围 1 到 50，默认 10。 |
-| `includeHidden` | 是否包含隐藏插件。 |
-| `includeDeprecated` | 是否包含废弃插件。 |
+- 关键词搜索。
+- 插件推荐。
+- 最近新增。
+- 最近更新。
+- 热门插件。
+- 分类筛选。
+- 认证、风险、预览、可移植、废弃状态筛选。
+- 按插件名精确查询或对比。
+- 返回 JSON，包含结果、筛选条件、摘要和后续查询建议。
 
 示例：
 
 ```json
 {
-  "query": "onebot",
-  "sort": "downloads",
-  "limit": 10
-}
-```
-
-```json
-{
   "intent": "recommend",
-  "requirements": "找一个稳定的 AI 聊天插件",
-  "status": "verified"
+  "requirements": "找一个稳定的 OneBot 适配器",
+  "status": "verified",
+  "limit": 5
 }
 ```
 
-```json
-{
-  "intent": "compare",
-  "names": ["koishi-plugin-adapter-onebot"]
-}
-```
+## 兼容接口
 
-工具返回 JSON 字符串，包含 `summary`、`results`、`filters` 和 `nextQueries`。工具会在进程内缓存市场索引 10 分钟。请求失败但已有旧缓存时，会返回 `stale: true` 的旧结果并标注失败原因；请求失败且没有缓存时，会返回 JSON 错误对象。
+market-next 不移除原有 Console 事件：
 
-## 和原版 market 的区别
+- `market/refresh`
+- `market/install`
+- `market/registry`
+- `market/package`
 
-| 场景 | 原版 market | market-next |
-| --- | --- | --- |
-| 默认市场索引 | 官方源为主 | 默认 t4wefan 镜像 |
-| 市场源异常 | 等待当前源超时或失败 | 当前源失败后自动 fallback |
-| 刷新按钮 | 反馈不明显 | loading、成功、失败都有反馈 |
-| 网络错误 | 容易只看到 `failed to fetch` | 展示 registry 和错误原因 |
-| 浏览方式 | 分页 | 无限滚动 |
-| 分类筛选 | 再次点击可能无法取消 | 可切换、可取消 |
-| 搜索/筛选变化 | 可能停在空页 | 自动回到列表起点 |
-| 首屏加载 | 可能被依赖刷新拖慢 | 市场索引和依赖刷新解耦 |
-| 缓存校验 | 不明显 | 缓存优先显示，后台校验未变化时跳过重复解析 |
-| 性能诊断 | 主要看日志猜测 | debug 模式显示后端和前端分段耗时 |
-| 安装后配置 | 常需要去依赖页手动点配置 | 自动尝试补配置节点 |
-| AI 查询 | 不支持 | 可选 ChatLuna Tool |
+新增事件：
 
-## 常见问题
+- `market/refresh-dependencies`
+- `market/ensure-config`
 
-### 插件市场加载很久
-
-先检查 `search.endpoint` 是否能访问。默认地址是：
-
-```text
-https://registry.koishi.t4wefan.pub/index.json
-```
-
-如果该镜像在你的网络环境里不稳定，可以切换到官方源：
-
-```yaml
-plugins:
-  market-next:
-    search:
-      endpoint: https://registry.koishi.chat/index.json
-```
-
-也可以适当提高超时时间：
-
-```yaml
-plugins:
-  market-next:
-    search:
-      timeout: 60s
-```
-
-### 刷新 WebUI 后市场才显示
-
-这通常表示后端已经拿到市场索引，但第一次 Console 连接时数据没有及时同步到前端，或者依赖刷新、前端过滤占用了较长时间。`3.4.0` 会优先返回缓存或市场索引，并在当前源失败时尝试备用源；手动刷新时也会重新读取本地 `package.json` 并清理旧的依赖版本请求状态。
-
-### 缓存真的有用吗
-
-有用，但它解决的是两类问题：打开市场时先显示旧索引，避免白屏；后台校验发现索引没变时，跳过重复 JSON 解析和缓存写盘。它不能解决首次安装后的冷启动下载，也不能让一个特别慢的源变快。冷启动仍然依赖源质量、网络和索引体积。
-
-### 网络正常但显示 failed to fetch
-
-常见原因包括：
-
-- 当前 `search.endpoint` 返回慢或临时不可用。
-- 浏览器侧 Console 连接尚未拿到后端同步数据。
-- 代理配置只影响 npm 下载源，没有影响市场索引请求。
-- 服务端能访问网络，但浏览器页面状态没有及时刷新。
-
-可以先点市场刷新按钮；如果仍失败，再切换 `search.endpoint` 或提高 `search.timeout`。
-
-### 安装后还是看不到配置
-
-配置页面是否出现可配置项，最终取决于 config 插件是否已经识别到新安装的插件，以及该插件本身是否声明了配置 Schema。`market-next` 会在安装成功后等待包信息同步，再自动尝试补配置节点；如果插件需要重载后才暴露 Schema，仍可能需要手动重载一次或进入依赖页处理。
-
-### ChatLuna 没有出现工具
-
-确认以下条件：
-
-- 已安装并启用 `koishi-plugin-chatluna`。
-- `chatlunaTool` 设置为 `true`。
-- ChatLuna 当前运行环境支持工具调用。
-- 修改配置后已经重载 market 插件或重启 Koishi。
+配置兼容原 market 的 `market.override`、`bulkMode`、`removeConfig`、`gravatar` 等前端配置。
 
 ## 开发
 
-本项目是 Koishi + TypeScript 插件，包含后端服务、Console 前端扩展和共享类型。
+安装依赖：
 
 ```bash
-npm install
+npm ci
+```
+
+构建：
+
+```bash
+npm run build
+```
+
+检查发布包内容：
+
+```bash
+npm run check:package
+```
+
+安全审计：
+
+```bash
 npm run audit:package
 npm run audit:high
-npm run build
+```
+
+dry-run 打包：
+
+```bash
 npm pack --dry-run
 ```
 
-脚本：
+## CI 和发布
 
-| 命令 | 说明 |
-| --- | --- |
-| `npm run audit:package` | 审计插件自身发布依赖树，排除 Koishi peer runtime。 |
-| `npm run audit:high` | 审计完整安装树的高危及严重漏洞。 |
-| `npm run build` | 生成 TypeScript 声明、后端 bundle 和前端 `dist`。 |
-| `npm run build:dts` | 只生成 TypeScript 声明。 |
-| `npm run build:js` | 只运行 JS / Console 构建。 |
-| `npm pack --dry-run` | 检查发布包内容。 |
+仓库包含两个 GitHub Actions workflow：
 
-项目结构：
+- `CI`：普通 push 和 pull request 运行安装、审计、构建和包内容检查。
+- `Publish to npm`：仅在 `v*` tag 或手动触发时发布 npm。
 
-```text
-src/node/        Koishi 后端入口、安装器、市场数据、ChatLuna Tool
-src/browser/     浏览器侧 market provider
-src/shared/      Console DataService 共享类型
-client/          Koishi Console 前端页面与组件
-dist/            Console 前端构建产物
-lib/             后端与类型构建产物
-```
+发布要求：
 
-## 自动发布
+- tag 版本必须等于 `package.json` 版本。
+- 手动发布只能在默认分支执行。
+- 发布前检查 npm 是否已经存在同版本。
+- 使用 npm Trusted Publishing，不需要 `NPM_TOKEN`。
 
-仓库内置两个 GitHub Actions workflows：
+## 3.5.5 Release Notes
 
-- `.github/workflows/ci.yml`：普通 push 和 pull request 运行 `npm ci`、`npm run audit:package`、`npm run audit:high`、`npm run build` 和 `npm run check:package`，只验证，不发布。
-- `.github/workflows/publish.yml`：`v*` tag 或手动触发时运行同样的校验，然后通过 npm Trusted Publishing 发布到 npm。
+`3.5.5` 是 market-next 的第一个正式 release。
 
-首次使用前，需要在 npm 包设置里添加 Trusted Publisher：
+这一版包含：
 
-- Package：`koishi-plugin-market-next`
-- Repository：`qinfeng365/koishi-plugin-market-next`
-- Workflow：`publish.yml`
-- Environment：留空
-
-发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
-
-```bash
-git tag v3.5.0
-git push origin v3.5.0
-```
-
-也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
-
-当前安全策略分两层：`npm run audit:package` 要求插件自身发布依赖树没有已知漏洞；`npm run audit:high` 要求完整安装树没有高危或严重漏洞。`npm run check:package` 会检查发布包里是否包含 Console 所需的 `dist/index.js`、`dist/index.css` 和 `dist/style.css`，并确认两份 CSS 内容一致。完整 `npm audit` 中剩余的中危来自 Koishi peer runtime 的 Cordis / `file-type` 链路，npm 给出的修复路径会降级 Koishi 或跨 Cordis 主版本，因此不强行处理，避免为了 audit 破坏插件兼容性。
-
-## 发布包内容
-
-`package.json` 的 `files` 字段会发布：
-
-- `lib`
-- `dist`
-- `src`
-- `scripts`
-
-同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
-
-## 版本更新
-
-### 3.5.0
-
-- 全面调整市场运行策略：市场索引刷新与依赖版本刷新解耦，避免 npm registry 慢请求拖住市场刷新。
-- 自动路由评分改为按延迟、成功率、失败惩罚、缓存可用性和小幅配置偏好综合排序，慢但成功的源不再被持续抬高。
-- 市场索引缓存改为多源缓存，兼容旧单缓存文件；后台刷新某个源成功时不再覆盖其他源的首屏缓存优势。
-- 每个市场源独立使用自己的 ETag、Last-Modified 和 hash 缓存校验信息，避免跨源复用条件校验状态。
-- Debug 路由评分增加候选源缓存标记和缓存时间，方便判断某个源被排序靠前是因为网络表现还是缓存可用。
-- 插件配置页扩展改为局部数据可用即显示，不再因为市场索引未加载就整体隐藏依赖、详情、缺失插件和选择器扩展。
-
-### 3.4.9
-
-- CI 增加发布包内容断言，要求构建产物和 dry-run tarball 同时包含 `dist/index.css` 与 `dist/style.css`，并检查两份 CSS 内容一致。
-- 安装插件成功后由后端自动创建默认的停用配置节点，使新插件能出现在“插件配置”页面；前端保留等待同步与兜底创建逻辑。
-
-### 3.4.8
-
-- 修复 3.4.3 起构建链路升级后只产出 `dist/index.css`，但 Koishi Console 目录入口仍只自动加载 `dist/style.css`，导致市场页面 JS 正常但样式未加载、图标按 SVG 原始尺寸撑爆页面的问题。
-- 构建产物同时保留 `dist/index.css` 与 `dist/style.css`，兼容 `KOISHI_BASE` 静态入口和常规插件目录入口。
-
-### 3.4.7
-
-- 修复移动端 / 部分 WebView 下市场 SVG 图标没有正确继承 scoped CSS，导致筛选、搜索、关闭等图标按原始尺寸撑爆页面的问题。
-- 市场页增加 `.market-icon` 全局尺寸兜底，搜索框与筛选栏图标改用穿透选择器约束尺寸。
-
-### 3.4.6
-
-- ChatLuna Tool 优化：增强工具描述，让模型更容易在插件搜索、推荐、对比、最近新增/更新、热门和风险查询场景调用市场工具。
-- ChatLuna Tool 输入增加 `intent`、`requirements`、`names`，并允许 `category`、`status`、`names` 使用数组、单字符串或逗号分隔字符串。
-- ChatLuna Tool 输出从 Markdown 列表改为 JSON 字符串，包含 `summary`、`filters`、`results`、`nextQueries` 和 stale/error 信息。
-- ChatLuna Tool 注册增加成功、失败和注销诊断日志。
-- 弱网优化：市场冷启动无缓存时先返回 loading payload，页面显示当前 registry、超时和自动路由状态，后端请求完成后自动刷新市场数据。
-
-### 3.4.5
-
-- CI 和发布 workflow 增加 `audit:package`，要求 market-next 自身发布依赖树排除 peer runtime 后为 0 漏洞。
-- 保留完整安装树的高危 audit 门禁，继续阻止 high / critical 漏洞进入发布。
-- README 补充 Koishi peer runtime 中危的来源和边界，避免把上游运行时链路误判为 market-next 发布包本体漏洞。
-
-### 3.4.4
-
-- 安全审计：通过 npm override 将 `@koishijs/plugin-console` 链路中的 `uuid` 收敛到 `11.1.1` 以上。
-- 完整 `npm audit` 从 14 个中危降到 13 个中危；高危与严重漏洞保持为 0。
-- 剩余中危来自 Koishi / Cordis 的 `file-type` 上游链路，未使用会破坏兼容或降级 Console 的强制修复。
-
-### 3.4.0
-
-- 市场索引缓存增加 ETag、Last-Modified 和内容 hash 元信息。
-- 自动路由竞速在命中最快源后会取消其他候选源请求，减少弱网下的额外带宽占用。
-- 后台刷新命中 HTTP 304 或相同 hash 时复用已有索引，跳过重复 JSON 解析和缓存写盘。
-- `search.logLevel: debug` 时，市场页显示 debug 性能面板。
-- debug 面板展示后端下载、缓存读取、JSON parse、索引映射、payload 构建，以及前端排序、筛选和虚拟滚动耗时。
-- 详细性能、路由和缓存回退日志仅在 debug 级别输出，默认日志不增加噪音。
-- 后台刷新缓存时，刷新菜单图标会显示旋转状态，避免看起来没有反馈。
-
-### 3.3.4
-
-- 依赖版本获取新增 loading/error 状态，避免请求中误显示“版本获取失败”。
-- npm registry 版本元数据获取增加备用源自动路由、失败重试和批量并发限制。
-- 自动路由镜像列表参考 Koishi 论坛镜像一览，并按实测可用性补充 Gitee 聚合、itzdrli 备用、腾讯 npm、cnpm 等源。
-- 依赖页和安装弹窗会区分超时、网络失败、镜像未同步、元数据异常等原因。
-- 手动刷新会重新读取本地 `package.json`，清理旧版本请求状态，并重新同步依赖、版本和插件状态。
-
-### 3.3.2
-
-- 增加本地市场索引缓存优先显示，打开市场时可先显示旧数据并在后台刷新。
-- 使用缓存或旧 payload 时，在市场页面内显示固定提示。
-- 自动路由改为并发竞速，当前源和备用源同时尝试，优先使用最快返回的有效市场索引。
-- 市场列表加入虚拟滚动窗口，减少大量插件卡片同时渲染造成的前端卡顿。
-- 修复插件 reload / dispose 后旧请求继续写回导致的上下文错误。
-- 扩展 debug 日志，输出 endpoint、耗时、fallback、缓存、patch 进度等关键链路。
-
-### 3.3.1
-
-- 新增市场搜索输入防抖，降低输入时的前端重算频率。
-- 新增 `search.logLevel` 多级日志配置。
-- 新增 `search.autoRoute` 开关，可关闭备用市场源自动回退。
-- 修复刷新按钮反馈不清晰的问题。
-
-完整历史记录见 [CHANGELOG.md](./CHANGELOG.md)。
+- 缓存优先显示和后台刷新。
+- 默认源优先的自动路由。
+- 多源缓存、ETag、Last-Modified、hash 校验。
+- 无限滚动和虚拟滚动窗口。
+- 市场索引加载与依赖版本刷新解耦。
+- 弱网 loading payload 和 stale 旧数据提示。
+- 安装后自动创建停用配置项。
+- 详细日志页诊断，debug 模式输出 `[debug]` 链路记录。
+- ChatLuna 插件市场查询 Tool。
+- CI、发布 workflow 和包内容检查。
 
 ## 许可证
 
-AGPL-3.0
+本项目使用 AGPL-3.0 许可证。
