@@ -132,10 +132,19 @@ async function waitForInstalledPackage(name: string) {
   }
 }
 
+async function waitForInstalledConfig(ctx: Context, name: string) {
+  for (let index = 0; index < 40; index++) {
+    if (ctx.configWriter?.get(name)?.length) return true
+    await sleep(250)
+  }
+  return false
+}
+
 export async function ensureInstalledConfig(ctx: Context, name: string, silent = true) {
   if (!ctx.configWriter || !name) return
   await send('market/ensure-config', name).catch(console.error)
   await waitForInstalledPackage(name)
+  if (await waitForInstalledConfig(ctx, name)) return
   if (ctx.configWriter.get(name)?.length) return
   ctx.configWriter.ensure(name, silent)
 }

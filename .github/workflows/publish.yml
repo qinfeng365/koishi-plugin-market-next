@@ -77,7 +77,7 @@ jobs:
         run: npm run build
 
       - name: Check package contents
-        run: npm pack --dry-run
+        run: npm run check:package
 
       - name: Publish
         run: npm publish

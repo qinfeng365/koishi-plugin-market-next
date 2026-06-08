@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.8-blue)
+![Version](https://img.shields.io/badge/version-3.4.9-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -339,7 +339,7 @@ lib/             后端与类型构建产物
 
 仓库内置两个 GitHub Actions workflows：
 
-- `.github/workflows/ci.yml`：普通 push 和 pull request 运行 `npm ci`、`npm run audit:package`、`npm run audit:high`、`npm run build` 和 `npm pack --dry-run`，只验证，不发布。
+- `.github/workflows/ci.yml`：普通 push 和 pull request 运行 `npm ci`、`npm run audit:package`、`npm run audit:high`、`npm run build` 和 `npm run check:package`，只验证，不发布。
 - `.github/workflows/publish.yml`：`v*` tag 或手动触发时运行同样的校验，然后通过 npm Trusted Publishing 发布到 npm。
 
 首次使用前，需要在 npm 包设置里添加 Trusted Publisher：
@@ -352,13 +352,13 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.8
-git push origin v3.4.8
+git tag v3.4.9
+git push origin v3.4.9
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
 
-当前安全策略分两层：`npm run audit:package` 要求插件自身发布依赖树没有已知漏洞；`npm run audit:high` 要求完整安装树没有高危或严重漏洞。完整 `npm audit` 中剩余的中危来自 Koishi peer runtime 的 Cordis / `file-type` 链路，npm 给出的修复路径会降级 Koishi 或跨 Cordis 主版本，因此不强行处理，避免为了 audit 破坏插件兼容性。
+当前安全策略分两层：`npm run audit:package` 要求插件自身发布依赖树没有已知漏洞；`npm run audit:high` 要求完整安装树没有高危或严重漏洞。`npm run check:package` 会检查发布包里是否包含 Console 所需的 `dist/index.js`、`dist/index.css` 和 `dist/style.css`，并确认两份 CSS 内容一致。完整 `npm audit` 中剩余的中危来自 Koishi peer runtime 的 Cordis / `file-type` 链路，npm 给出的修复路径会降级 Koishi 或跨 Cordis 主版本，因此不强行处理，避免为了 audit 破坏插件兼容性。
 
 ## 发布包内容
 
@@ -367,10 +367,16 @@ git push origin v3.4.8
 - `lib`
 - `dist`
 - `src`
+- `scripts`
 
 同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
 
 ## 版本更新
+
+### 3.4.9
+
+- CI 增加发布包内容断言，要求构建产物和 dry-run tarball 同时包含 `dist/index.css` 与 `dist/style.css`，并检查两份 CSS 内容一致。
+- 安装插件成功后由后端自动创建默认的停用配置节点，使新插件能出现在“插件配置”页面；前端保留等待同步与兜底创建逻辑。
 
 ### 3.4.8
 

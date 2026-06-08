@@ -1,5 +1,5 @@
 import { Context, Dict, pick, Schema } from 'koishi'
-import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
+import Scanner, { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
 import { gt } from 'semver'
 import { resolve } from 'path'
 import pMap from 'p-map'
@@ -31,7 +31,7 @@ declare module '@koishijs/console' {
     'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>
     'market/package'(name: string): Promise<Registry>
     'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>
-    'market/ensure-config'(name: string): Promise<void>
+    'market/ensure-config'(name: string): Promise<boolean>
   }
 }
 
@@ -72,6 +72,54 @@ export const Config: Schema<Config> = Schema.object({
 }).i18n({
   'zh-CN': require('./locales/schema.zh-CN'),
 })
+
+function getPluginShortname(name: string) {
+  return name.replace(/(koishi-|^@koishijs\/)plugin-/, '')
+}
+
+function hasPluginConfig(plugins: any, shortname: string): boolean {
+  for (const key in plugins || {}) {
+    if (key.startsWith('$')) continue
+    const [prefix] = key.split(':', 1)
+    const name = prefix.replace(/^~/, '')
+    if (name === shortname) return true
+    if (name === 'group' && hasPluginConfig(plugins[key], shortname)) return true
+  }
+  return false
+}
+
+async function requestPluginRuntime(ctx: Context, name: string) {
+  await ctx.console.listeners['config/request-runtime']?.callback.call(null, name)
+}
+
+async function ensurePluginConfig(ctx: Context, name: string) {
+  if (!Scanner.isPlugin(name)) return false
+  const configWriter = (ctx.console.services as any).config
+  if (!configWriter?.unload) return false
+
+  await requestPluginRuntime(ctx, name).catch(error => ctx.logger('market').warn(error))
+
+  const shortname = getPluginShortname(name)
+  if (hasPluginConfig(ctx.loader.config?.plugins, shortname)) return false
+
+  const ident = Math.random().toString(36).slice(2, 8)
+  await configWriter.unload('', `${shortname}:${ident}`, {})
+  ctx.logger('market').info('created default config entry for %c', name)
+  return true
+}
+
+async function ensurePluginConfigs(ctx: Context, names: string[]) {
+  let changed = false
+  for (const name of names) {
+    if (await ensurePluginConfig(ctx, name)) changed = true
+  }
+  if (!changed) return false
+  await Promise.all([
+    ctx.console.refresh('config'),
+    ctx.console.refresh('packages'),
+  ])
+  return true
+}
 
 export function apply(ctx: Context, config: Config = {}) {
   if (!ctx.loader?.writable) {
@@ -189,10 +237,16 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.console.addListener('market/install', async (deps, forced) => {
       const code = await ctx.installer.install(deps, forced)
+      if (!code) {
+        await ensurePluginConfigs(ctx, Object.entries(deps)
+          .filter(([, version]) => version)
+          .map(([name]) => name))
+      }
       await Promise.all([
         ctx.get('console')?.refresh('dependencies'),
         ctx.get('console')?.refresh('registry'),
         ctx.get('console')?.refresh('packages'),
+        ctx.get('console')?.refresh('config'),
       ])
       return code
     }, { authority: 4 })
@@ -211,11 +265,7 @@ export function apply(ctx: Context, config: Config = {}) {
     }, { authority: 4 })
 
     ctx.console.addListener('market/ensure-config', async (name) => {
-      await ctx.get('console')?.listeners['config/request-runtime']?.callback.call(null, name)
-      await Promise.all([
-        ctx.get('console')?.refresh('packages'),
-        ctx.get('console')?.refresh('config'),
-      ])
+      return ensurePluginConfig(ctx, name)
     }, { authority: 4 })
   })
 }

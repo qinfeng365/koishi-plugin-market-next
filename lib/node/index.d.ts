@@ -22,7 +22,7 @@ declare module '@koishijs/console' {
         'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>;
         'market/package'(name: string): Promise<Registry>;
         'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>;
-        'market/ensure-config'(name: string): Promise<void>;
+        'market/ensure-config'(name: string): Promise<boolean>;
     }
 }
 export declare const name = "market";

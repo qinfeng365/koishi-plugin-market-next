@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Manage your bots and plugins with console",
-  "version": "3.4.8",
+  "version": "3.4.9",
   "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
   "repository": {
     "type": "git",
@@ -17,7 +17,8 @@
     "audit:high": "npm audit --audit-level=high",
     "build": "tsc -p tsconfig.json && node build.mjs",
     "build:dts": "tsc -p tsconfig.json",
-    "build:js": "node build.mjs"
+    "build:js": "node build.mjs",
+    "check:package": "node scripts/check-package.mjs"
   },
   "exports": {
     ".": {
@@ -35,6 +36,7 @@
     "lib",
     "dist",
     "src",
+    "scripts",
     "CHANGELOG.md"
   ],
   "license": "AGPL-3.0",

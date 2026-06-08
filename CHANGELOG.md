@@ -2,6 +2,11 @@
 
 本文件记录 `koishi-plugin-market-next` 已发布到 npm 的版本差异。
 
+## 3.4.9
+
+- CI 增加发布包内容断言，要求构建产物和 dry-run tarball 同时包含 `dist/index.css` 与 `dist/style.css`，并检查两份 CSS 内容一致。
+- 安装插件成功后由后端自动创建默认的停用配置节点，使新插件能出现在“插件配置”页面；前端保留等待同步与兜底创建逻辑。
+
 ## 3.4.8
 
 - 修复 3.4.3 起构建链路升级后只产出 `dist/index.css`，但 Koishi Console 目录入口仍只自动加载 `dist/style.css`，导致市场页面 JS 正常但样式未加载、图标按 SVG 原始尺寸撑爆页面的问题。
