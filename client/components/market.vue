@@ -367,6 +367,17 @@ function formatNumber(value?: number) {
   min-height: 100%;
 }
 
+.page-market .market-icon {
+  display: inline-block;
+  width: auto;
+  height: 1em;
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 0 auto;
+  line-height: 1;
+  vertical-align: -0.125em;
+}
+
 .page-market .layout-left {
   .market-filter-group {
     padding: 0 1.5rem;

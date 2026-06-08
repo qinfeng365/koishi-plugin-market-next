@@ -228,7 +228,10 @@ function toggleQuery(item: Badge, event: MouseEvent) {
     width: 1.125rem;
     height: 1rem;
     max-width: 1.125rem;
+    max-height: 1rem;
+    min-width: 0;
     flex: 0 0 auto;
+    line-height: 1;
   }
 
   .text, .count {

@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.6-blue)
+![Version](https://img.shields.io/badge/version-3.4.7-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -352,8 +352,8 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.6
-git push origin v3.4.6
+git tag v3.4.7
+git push origin v3.4.7
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
@@ -371,6 +371,11 @@ git push origin v3.4.6
 同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
 
 ## 版本更新
+
+### 3.4.7
+
+- 修复移动端 / 部分 WebView 下市场 SVG 图标没有正确继承 scoped CSS，导致筛选、搜索、关闭等图标按原始尺寸撑爆页面的问题。
+- 市场页增加 `.market-icon` 全局尺寸兜底，搜索框与筛选栏图标改用穿透选择器约束尺寸。
 
 ### 3.4.6
 

@@ -151,16 +151,21 @@ if (import.meta.hot) {
   height: 2.5rem;
   cursor: pointer;
 
-  .market-icon {
+  :deep(.market-icon) {
+    display: block;
+    width: 1rem;
     height: 1rem;
+    max-width: 1rem;
+    max-height: 1rem;
     opacity: 0.5;
+    flex: 0 0 auto;
   }
 
-  &:hover .market-icon.search {
+  &:hover :deep(.market-icon.search) {
     display: none;
   }
 
-  &:not(:hover) .market-icon.close {
+  &:not(:hover) :deep(.market-icon.close) {
     display: none;
   }
 }
