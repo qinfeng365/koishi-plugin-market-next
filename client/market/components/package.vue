@@ -16,7 +16,7 @@
         <div class="bottom">
           <el-tooltip :content="Math.max(Math.min(data.rating ?? 0, 5), 0).toFixed(1)" placement="right">
             <div class="rating">
-              <market-icon v-for="(_, index) in Array(5).fill(null)" :key="index" :name="index + 0.5 < data.rating ? 'star-full' : 'star-empty'"></market-icon>
+              <market-icon v-for="index in starIndexes" :key="index" :name="index + 0.5 < data.rating ? 'star-full' : 'star-empty'"></market-icon>
             </div>
           </el-tooltip>
         </div>
@@ -54,7 +54,7 @@
       <div class="avatars">
         <el-tooltip v-for="user in getUsers(data)" :key="user.email || user.username || user.name" :content="user.name || user.username || user.email" placement="top">
           <span class="avatar" @click.stop.prevent="user.email && $emit('query', 'email:' + user.email)">
-            <img :src="getAvatar(user)">
+            <img :src="getAvatar(user)" loading="lazy" decoding="async">
           </span>
         </el-tooltip>
       </div>
@@ -83,6 +83,7 @@ const props = defineProps<{
 const config = inject(kConfig, {})
 
 const tt = useI18nText()
+const starIndexes = [0, 1, 2, 3, 4]
 
 const homepage = computed(() => {
   const { homepage, repository } = props.data.package.links
@@ -153,6 +154,9 @@ if (import.meta.hot) {
   margin: 0;
   padding: 1rem 1.25rem;
   box-sizing: border-box;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 12.5rem;
   transition: box-shadow 0.3s ease;
   box-shadow: 0 0 0 2px inset transparent;
 

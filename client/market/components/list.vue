@@ -76,6 +76,7 @@ let resizeObserver: ResizeObserver
 let observedList: HTMLElement | undefined
 let frame = 0
 let filterFrame = 0
+let lastVirtualDebugAt = 0
 let debugState = {
   timings: {} as Record<string, number>,
   total: 0,
@@ -217,7 +218,6 @@ function scheduleVirtual() {
 function updateVirtual() {
   if (!list.value) return
   const start = props.debug ? performance.now() : 0
-  measureLayout()
 
   const scrollTop = scrollParent instanceof Window ? window.scrollY : scrollParent.scrollTop
   const viewportHeight = scrollParent instanceof Window ? window.innerHeight : scrollParent.clientHeight
@@ -242,9 +242,12 @@ function updateVirtual() {
     loadMore()
   }
   if (props.debug) {
+    const now = performance.now()
+    if (now - lastVirtualDebugAt < 250) return
+    lastVirtualDebugAt = now
     emitDebug({
       timings: {
-        frontendVirtual: performance.now() - start,
+        frontendVirtual: now - start,
       },
       visible: loadedPackages.value.length,
       rendered: renderedPackages.value.length,

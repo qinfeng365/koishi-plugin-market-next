@@ -139,7 +139,7 @@ export default (ctx: Context) => {
       icon: 'activity:deps',
       order: 700,
       authority: 4,
-      fields: ['dependencies', 'registry', 'registryStatus'],
+      fields: ['config', 'dependencies', 'packages', 'registry', 'registryStatus'],
       component: Dependencies,
     })
   }
