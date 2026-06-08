@@ -1,6 +1,6 @@
 # koishi-plugin-market-next
 
-![Version](https://img.shields.io/badge/version-3.4.7-blue)
+![Version](https://img.shields.io/badge/version-3.4.8-blue)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
@@ -352,8 +352,8 @@ lib/             后端与类型构建产物
 发布新版本时先提交 `package.json`、`README.md`、`CHANGELOG.md` 等版本变更，再推送匹配版本号的 tag：
 
 ```bash
-git tag v3.4.7
-git push origin v3.4.7
+git tag v3.4.8
+git push origin v3.4.8
 ```
 
 也可以在 GitHub Actions 页面手动运行 `Publish to npm`，但输入版本必须与 `package.json` 一致，并且只能从默认分支触发。workflow 会先检查 npm 上是否已经存在同版本，存在则直接失败，避免覆盖发布。
@@ -371,6 +371,11 @@ git push origin v3.4.7
 同时 npm 会自动包含 `package.json`、`README.md` 和许可证信息。
 
 ## 版本更新
+
+### 3.4.8
+
+- 修复 3.4.3 起构建链路升级后只产出 `dist/index.css`，但 Koishi Console 目录入口仍只自动加载 `dist/style.css`，导致市场页面 JS 正常但样式未加载、图标按 SVG 原始尺寸撑爆页面的问题。
+- 构建产物同时保留 `dist/index.css` 与 `dist/style.css`，兼容 `KOISHI_BASE` 静态入口和常规插件目录入口。
 
 ### 3.4.7
 

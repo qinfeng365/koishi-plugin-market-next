@@ -1,6 +1,6 @@
 import { build } from 'esbuild'
 import { createRequire } from 'module'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync, copyFileSync } from 'fs'
 import yaml from 'js-yaml'
 
 const require = createRequire(import.meta.url)
@@ -48,3 +48,11 @@ await Promise.all([
 ])
 
 await buildClient(process.cwd())
+
+// Koishi Console directory entries still auto-load style.css only, while
+// newer client builds may emit index.css for explicit static entries.
+if (existsSync('dist/index.css')) {
+  copyFileSync('dist/index.css', 'dist/style.css')
+} else if (existsSync('dist/style.css')) {
+  copyFileSync('dist/style.css', 'dist/index.css')
+}

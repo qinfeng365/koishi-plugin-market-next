@@ -11,12 +11,23 @@ const registry: Record<string, Component> = {
 }
 
 export default defineComponent({
+  inheritAttrs: false,
   props: {
     name: String,
   },
-  render(props) {
-    return props.name ? h(registry[props.name], {
-      class: 'market-icon',
-    }) : []
+  setup(props, { attrs }) {
+    return () => {
+      const icon = props.name && registry[props.name]
+      if (!icon) return null
+      const { class: className, ...rest } = attrs
+      return h(icon, {
+        ...rest,
+        class: ['market-icon', className],
+        width: '1em',
+        height: '1em',
+        focusable: 'false',
+        'aria-hidden': 'true',
+      })
+    }
   },
 })

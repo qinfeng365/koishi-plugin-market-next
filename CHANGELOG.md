@@ -2,6 +2,11 @@
 
 本文件记录 `koishi-plugin-market-next` 已发布到 npm 的版本差异。
 
+## 3.4.8
+
+- 修复 3.4.3 起构建链路升级后只产出 `dist/index.css`，但 Koishi Console 目录入口仍只自动加载 `dist/style.css`，导致市场页面 JS 正常但样式未加载、图标按 SVG 原始尺寸撑爆页面的问题。
+- 构建产物同时保留 `dist/index.css` 与 `dist/style.css`，兼容 `KOISHI_BASE` 静态入口和常规插件目录入口。
+
 ## 3.4.7
 
 - 修复移动端 / 部分 WebView 下市场 SVG 图标没有正确继承 scoped CSS，导致筛选、搜索、关闭等图标按原始尺寸撑爆页面的问题。
