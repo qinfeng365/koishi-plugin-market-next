@@ -1,5 +1,5 @@
-import { defineComponent, h, watch } from 'vue'
-import { Context, Dict, global, loading, message, receive, router, Schema, send, store, useConfig } from '@koishijs/client'
+import { defineComponent, h, ref, watch } from 'vue'
+import { Context, Dict, global, message, receive, router, Schema, send, store, useConfig } from '@koishijs/client'
 import type { RegistryStatus } from 'koishi-plugin-market-next'
 import { showConfirm, showManual } from './components/utils'
 import extensions from './extensions'
@@ -111,6 +111,8 @@ export default (ctx: Context) => {
   })
 
   const config = useConfig()
+  const refreshingMarket = ref(false)
+  const refreshingDependencies = ref(false)
 
   if (!global.static) {
     ctx.slot({
@@ -137,9 +139,9 @@ export default (ctx: Context) => {
     async action() {
       const activity = router.currentRoute.value?.meta?.activity.id
       const dependencies = activity === 'dependencies'
-      const instance = loading({
-        text: dependencies ? '正在刷新依赖版本……' : '正在刷新插件市场……',
-      })
+      const refreshing = dependencies ? refreshingDependencies : refreshingMarket
+      if (refreshing.value) return
+      refreshing.value = true
       try {
         await send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
         message.success(dependencies ? '依赖版本已刷新。' : '插件市场已刷新。')
@@ -147,7 +149,7 @@ export default (ctx: Context) => {
         console.error(error)
         message.error('刷新失败，请检查网络或日志。')
       } finally {
-        instance.close()
+        refreshing.value = false
       }
     },
   })
@@ -173,7 +175,7 @@ export default (ctx: Context) => {
     id: '.refresh',
     icon: 'refresh',
     label: '刷新',
-    type: () => !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
+    type: () => refreshingMarket.value || !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
   }])
 
   const registryRefreshing = () => {
@@ -197,7 +199,7 @@ export default (ctx: Context) => {
     id: 'market.refresh',
     icon: 'refresh',
     label: '刷新',
-    type: () => registryRefreshing() ? 'spin disabled' : '',
+    type: () => refreshingDependencies.value || registryRefreshing() ? 'spin disabled' : '',
   }])
 
   ctx.effect(() => {
