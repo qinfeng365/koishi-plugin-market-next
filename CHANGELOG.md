@@ -6,6 +6,16 @@
 
 - 暂无。
 
+## 3.5.6-alpha.2
+
+这是面向弱网用户的第三个 alpha 测试版，继续发布到 `alpha` 渠道，不替换 `latest`。
+
+- 依赖管理页优先返回本地依赖快照，不再等待整轮 npm 元数据刷新完成；最新版本信息改为后台刷新后再推送到 Console。
+- 依赖刷新按钮反馈改为“依赖版本刷新已开始”，匹配后台刷新语义，避免用户误以为所有远端版本已经同步完成。
+- 普通包元数据请求不再死磕已选中的 `metadataEndpoint`：首选源慢或失败时会在同一个包请求内启动备用源 race，备用源胜出后立即更新 `metadataEndpoint`，避免一直优先请求 `npmmirror` 等已变慢的源。
+- 后台依赖元数据刷新失败时会记录 warning 并清理任务句柄，避免异常状态卡住下一轮刷新。
+- `audit:high` 与 `audit:package` 统一排除 peer runtime，避免 npm quick audit 把可选的 Koishi / ChatLuna 宿主依赖树误判为 invalid package tree。
+
 ## 3.5.6-alpha.1
 
 这是面向弱网用户的第二个 alpha 测试版，继续发布到 `alpha` 渠道，不替换 `latest`。

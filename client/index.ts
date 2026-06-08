@@ -157,7 +157,7 @@ export default (ctx: Context) => {
       try {
         await send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
         if (dependencies) {
-          message.success('依赖版本已刷新。')
+          message.success('依赖版本刷新已开始。')
         } else {
           message.success('插件市场刷新请求已提交。')
           setTimeout(() => {

@@ -39,6 +39,11 @@ interface RegistryEndpointResult {
   fallbackReason?: 'primary-failed' | 'primary-slow'
 }
 
+interface RegistryRouteResult extends RegistryEndpointResult {
+  attempts: number
+  lastEndpoint: string
+}
+
 export interface Dependency {
   /**
    * requested semver range
@@ -101,7 +106,9 @@ class Installer extends Service {
   private pkgTasks: Dict<Promise<Dict<Pick<RemotePackage, DependencyMetaKey>>>> = {}
   private agent = which()
   private manifest: PackageJson
-  private depTask: Promise<Dict<Dependency>>
+  private depCache: Dict<Dependency> = {}
+  private depTask?: Promise<Dict<Dependency>>
+  private depMetadataFresh = false
   private metadataEndpoint: string
   private routeProbeTask?: Promise<void>
   private routeProbeResult?: {
@@ -319,18 +326,18 @@ class Installer extends Service {
   private async fetchRegistryEndpoint(name: string, endpoint: string, serial: number, signal?: AbortSignal): Promise<RegistryEndpointResult> {
     const attemptStart = Date.now()
     try {
-      logger.debug(`probe npm registry endpoint: probe=${name}, endpoint=${endpoint}`)
+      logger.debug(`fetch npm registry endpoint: package=${name}, endpoint=${endpoint}`)
       const registry = await this.createHttp(endpoint).get(`/${name}`, { signal }) as Registry
       if (this.isStale(serial)) throw new Error('npm registry route probe stale')
       if (!registry?.versions || typeof registry.versions !== 'object') {
         throw new Error(`invalid registry metadata for ${name}`)
       }
       const elapsed = Date.now() - attemptStart
-      logger.debug(`probe npm registry endpoint succeeded: probe=${name}, endpoint=${endpoint}, elapsed=${elapsed}ms, versions=${Object.keys(registry.versions).length}`)
+      logger.debug(`fetch npm registry endpoint succeeded: package=${name}, endpoint=${endpoint}, elapsed=${elapsed}ms, versions=${Object.keys(registry.versions).length}`)
       return { endpoint, registry, elapsed }
     } catch (error) {
       const detail = this.formatRegistryError(error)
-      logger.debug(`probe npm registry endpoint failed: probe=${name}, endpoint=${endpoint}, elapsed=${Date.now() - attemptStart}ms, reason=${detail.reason}, error=${detail.error}`)
+      logger.debug(`fetch npm registry endpoint failed: package=${name}, endpoint=${endpoint}, elapsed=${Date.now() - attemptStart}ms, reason=${detail.reason}, error=${detail.error}`)
       throw error
     }
   }
@@ -421,6 +428,92 @@ class Installer extends Service {
     }))
   }
 
+  private async fetchRegistryByRoute(name: string, endpoints: string[], serial: number, onAttempt?: (endpoint: string, attempts: number) => void): Promise<RegistryRouteResult> {
+    const start = Date.now()
+    let attempts = 0
+    let lastEndpoint = endpoints[0]
+
+    const markAttempt = (endpoint: string) => {
+      attempts++
+      lastEndpoint = endpoint
+      onAttempt?.(endpoint, attempts)
+    }
+
+    if (endpoints.length === 1 || this.config.autoRoute === false) {
+      markAttempt(endpoints[0])
+      try {
+        const result = await this.fetchRegistryEndpoint(name, endpoints[0], serial)
+        this.recordRegistryRouteSuccess(result)
+        return { ...result, attempts, lastEndpoint }
+      } catch (error) {
+        const detail = this.formatRegistryError(error)
+        this.recordRegistryRouteFailure(endpoints[0], detail.reason)
+        throw error
+      }
+    }
+
+    const fallbackDelay = this.getFallbackDelay(endpoints[0])
+    logger.debug(`fetch npm registry by route: package=${name}, primary=${endpoints[0]}, fallbackCount=${endpoints.length - 1}, slowThreshold=${fallbackDelay}ms, endpoints=${endpoints.join(', ')}`)
+
+    return new Promise<RegistryRouteResult>((resolve, reject) => {
+      let settled = false
+      let failed = 0
+      let lastError: any
+      let fallbackStarted = false
+      let fallbackReason: RegistryEndpointResult['fallbackReason']
+      const controllers = endpoints.map(() => new AbortController())
+      const timer = setTimeout(() => startFallback('primary-slow'), fallbackDelay)
+
+      const settle = (result: RegistryEndpointResult, index: number) => {
+        if (settled) {
+          logger.debug(`ignore slower npm registry endpoint: package=${name}, endpoint=${result.endpoint}, elapsed=${result.elapsed}ms`)
+          return
+        }
+        settled = true
+        clearTimeout(timer)
+        controllers.forEach((controller, controllerIndex) => {
+          if (controllerIndex !== index) controller.abort(new Error('npm registry route settled'))
+        })
+        if (result.endpoint !== endpoints[0]) result.fallbackReason = fallbackReason
+        this.recordRegistryRouteSuccess(result)
+        resolve({ ...result, attempts, lastEndpoint })
+      }
+
+      const fail = (endpoint: string, index: number, error: any) => {
+        if (settled) return
+        const detail = this.formatRegistryError(error)
+        this.recordRegistryRouteFailure(endpoint, detail.reason)
+        lastError = error
+        failed++
+        if (index === 0) startFallback('primary-failed')
+        if (failed < endpoints.length) return
+        settled = true
+        clearTimeout(timer)
+        logger.debug(`all routed npm registry endpoints failed: package=${name}, count=${endpoints.length}, elapsed=${Date.now() - start}ms`)
+        reject(lastError)
+      }
+
+      const startEndpoint = (endpoint: string, index: number, waitIndex = 0) => {
+        const signal = controllers[index].signal
+        this.waitRouteTurn(waitIndex, signal).then(() => {
+          if (settled) throw new Error('npm registry route settled before request')
+          markAttempt(endpoint)
+          return this.fetchRegistryEndpoint(name, endpoint, serial, signal)
+        }).then(result => settle(result, index)).catch(error => fail(endpoint, index, error))
+      }
+
+      const startFallback = (reason: NonNullable<RegistryEndpointResult['fallbackReason']>) => {
+        if (settled || fallbackStarted) return
+        fallbackStarted = true
+        fallbackReason = reason
+        logger.debug(`npm registry fallback race started: package=${name}, reason=${reason}, count=${endpoints.length - 1}, stagger=${REGISTRY_ROUTE_STAGGER}ms`)
+        endpoints.slice(1).forEach((endpoint, fallbackIndex) => startEndpoint(endpoint, fallbackIndex + 1, fallbackIndex))
+      }
+
+      startEndpoint(endpoints[0], 0)
+    })
+  }
+
   private isStale(serial: number) {
     return serial !== this.serial || !this.ctx.scope.isActive
   }
@@ -475,48 +568,37 @@ class Installer extends Service {
       return probe.registry
     }
 
-    const endpoints = this.getRegistryEndpoints()
-    logger.debug(`registry metadata candidates for ${name}: endpoints=${endpoints.join(', ')}, retry=${maxRetry}, concurrency=${this.config.concurrency ?? 4}`)
-
-    for (const endpoint of endpoints) {
-      const http = endpoint === this.endpoint ? this.http : this.createHttp(endpoint)
-      for (let retry = 0; retry <= maxRetry; retry++) {
+    for (let retry = 0; retry <= maxRetry; retry++) {
+      const endpoints = this.getRegistryEndpoints()
+      logger.debug(`registry metadata candidates for ${name}: endpoints=${endpoints.join(', ')}, retry=${retry + 1}/${maxRetry + 1}, concurrency=${this.config.concurrency ?? 4}`)
+      try {
+        const result = await this.fetchRegistryByRoute(name, endpoints, serial, (endpoint) => {
+          attempts++
+          lastEndpoint = endpoint
+          this.setRegistryStatus(name, { loading: true, endpoint, attempts }, serial)
+        })
         if (this.isStale(serial)) return
-        attempts++
-        lastEndpoint = endpoint
-        this.setRegistryStatus(name, { loading: true, endpoint, attempts }, serial)
-        const attemptStart = Date.now()
-        try {
-          logger.debug(`fetch registry metadata for ${name} from ${endpoint}, attempt=${retry + 1}/${maxRetry + 1}`)
-          const registry = await http.get(`/${name}`) as Registry
-          if (this.isStale(serial)) return
-          if (!registry?.versions || typeof registry.versions !== 'object') {
-            throw new Error(`invalid registry metadata for ${name}`)
-          }
-          if (endpoint !== this.metadataEndpoint) {
-            logger.debug(`fallback npm registry endpoint for ${name}: ${endpoint}`)
-            logger.info(`npm registry fallback selected for ${name}: endpoint=${endpoint}, previous=${this.metadataEndpoint}`)
-            this.metadataEndpoint = endpoint
-          }
-          this.recordRegistryRouteSuccess({ endpoint, registry, elapsed: Date.now() - attemptStart })
-          this.setRegistryStatus(name, {
-            loading: false,
-            error: undefined,
-            reason: undefined,
-            endpoint,
-            attempts,
-            elapsed: Date.now() - start,
-          }, serial)
-          logger.debug(`loaded registry metadata for ${name} from ${endpoint} in ${Date.now() - attemptStart}ms, versions=${Object.keys(registry.versions).length}`)
-          return registry
-        } catch (error) {
-          lastError = error
-          const detail = this.formatRegistryError(error)
-          this.recordRegistryRouteFailure(endpoint, detail.reason)
-          logger.debug(`failed registry metadata for ${name} from ${endpoint} in ${Date.now() - attemptStart}ms, attempt=${retry + 1}/${maxRetry + 1}: ${detail.error}`)
-          if (detail.reason === 'not-found') break
-          if (retry < maxRetry) await sleep(300 * (retry + 1))
+        if (result.endpoint !== this.metadataEndpoint) {
+          logger.debug(`routed npm registry endpoint for ${name}: ${result.endpoint}`)
+          logger.info(`npm registry route selected for ${name}: endpoint=${result.endpoint}, previous=${this.metadataEndpoint}, reason=${result.fallbackReason ?? 'same-priority'}, elapsed=${result.elapsed}ms`)
+          this.metadataEndpoint = result.endpoint
         }
+        this.setRegistryStatus(name, {
+          loading: false,
+          error: undefined,
+          reason: undefined,
+          endpoint: result.endpoint,
+          attempts,
+          elapsed: Date.now() - start,
+        }, serial)
+        logger.debug(`loaded registry metadata for ${name} from ${result.endpoint} in ${result.elapsed}ms, attempts=${attempts}, versions=${Object.keys(result.registry.versions).length}`)
+        return result.registry
+      } catch (error) {
+        lastError = error
+        const detail = this.formatRegistryError(error)
+        logger.debug(`failed routed registry metadata for ${name}, attempt=${retry + 1}/${maxRetry + 1}, endpoint=${lastEndpoint}, attempts=${attempts}: ${detail.error}`)
+        if (detail.reason === 'not-found') break
+        if (retry < maxRetry) await sleep(300 * (retry + 1))
       }
     }
 
@@ -588,24 +670,18 @@ class Installer extends Service {
     return this.pkgTasks[name]
   }
 
-  private async _getDeps() {
+  private getLocalDepsSnapshot() {
     const start = Date.now()
     const result = valueMap(this.manifest.dependencies, (request) => {
       return { request: request.replace(/^[~^]/, '') } as Dependency
     })
     const names = Object.keys(result)
-    logger.debug(`refresh dependency metadata started: total=${names.length}, concurrency=${this.config.concurrency ?? 4}, registry=${this.endpoint}, autoRoute=${this.config.autoRoute !== false}`)
-    const probeName = pickMetadataProbe(names)
-    if (probeName) await this.ensureMetadataEndpoint(probeName, this.serial)
-    logger.debug(`refresh dependency metadata route ready: probe=${probeName ?? '-'}, selected=${this.metadataEndpoint}, configured=${this.endpoint}, probed=${!!this.routeProbeResult}`)
-    await pMap(names, async (name) => {
+    for (const name of names) {
       try {
-        // some dependencies may be left with no local installation
         const meta = loadManifest(name)
         result[name].resolved = meta.version
         result[name].workspace = meta.$workspace
         logger.debug(`local dependency resolved: ${name}@${meta.version}, workspace=${!!meta.$workspace}, request=${result[name].request}`)
-        if (meta.$workspace) return
       } catch {
         logger.debug(`local dependency not found before metadata fetch: ${name}, request=${result[name].request}`)
       }
@@ -615,7 +691,29 @@ class Installer extends Service {
         logger.debug(`dependency request is not exact semver: ${name}, request=${result[name].request}`)
       }
 
+      const previous = this.depCache?.[name]
+      if (previous?.latest && previous.request === result[name].request && previous.resolved === result[name].resolved) {
+        result[name].latest = previous.latest
+      }
+    }
+    const installed = Object.values(result).filter(dep => dep.resolved).length
+    const invalid = Object.values(result).filter(dep => dep.invalid).length
+    logger.info(`dependency local snapshot ready: total=${names.length}, installed=${installed}, invalid=${invalid}, elapsed=${Date.now() - start}ms`)
+    return result
+  }
+
+  private async _refreshDependencyMetadata(result = this.depCache, serial = this.serial) {
+    const start = Date.now()
+    const names = Object.keys(result)
+    const targets = names.filter((name) => !result[name].workspace && !result[name].invalid)
+    logger.debug(`refresh dependency metadata started: total=${names.length}, targets=${targets.length}, concurrency=${this.config.concurrency ?? 4}, registry=${this.endpoint}, autoRoute=${this.config.autoRoute !== false}`)
+    const probeName = pickMetadataProbe(targets)
+    if (probeName) await this.ensureMetadataEndpoint(probeName, this.serial)
+    logger.debug(`refresh dependency metadata route ready: probe=${probeName ?? '-'}, selected=${this.metadataEndpoint}, configured=${this.endpoint}, probed=${!!this.routeProbeResult}`)
+    await pMap(targets, async (name) => {
+      if (this.isStale(serial)) return
       const versions = await this.getPackage(name)
+      if (this.isStale(serial)) return
       if (versions) {
         result[name].latest = Object.keys(versions)[0]
         logger.debug(`dependency latest resolved: ${name}, resolved=${result[name].resolved ?? '-'}, latest=${result[name].latest}, versions=${Object.keys(versions).length}`)
@@ -623,14 +721,36 @@ class Installer extends Service {
         logger.debug(`dependency latest unresolved: ${name}, resolved=${result[name].resolved ?? '-'}, request=${result[name].request}`)
       }
     }, { concurrency: this.config.concurrency ?? 4 })
-    const installed = Object.values(result).filter(dep => dep.resolved).length
-    const invalid = Object.values(result).filter(dep => dep.invalid).length
-    logger.info(`dependency metadata refresh completed: total=${Object.keys(result).length}, installed=${installed}, invalid=${invalid}, registry=${this.metadataEndpoint}, elapsed=${Date.now() - start}ms`)
+    logger.info(`dependency metadata refresh completed: total=${names.length}, targets=${targets.length}, registry=${this.metadataEndpoint}, elapsed=${Date.now() - start}ms`)
+    if (!this.isStale(serial)) {
+      this.depMetadataFresh = true
+      this.ctx.get('console')?.refresh('dependencies')
+    }
     return result
   }
 
-  getDeps() {
-    return this.depTask ||= this._getDeps()
+  refreshDependencyMetadata(wait = false) {
+    if (this.depMetadataFresh) return wait ? Promise.resolve(this.depCache) : undefined
+    if (!this.depTask) {
+      const task = this._refreshDependencyMetadata(this.depCache, this.serial)
+      this.depTask = task
+      task.then(() => {
+        if (this.depTask === task) this.depTask = undefined
+      }, (error) => {
+        if (this.depTask === task) this.depTask = undefined
+        logger.warn(`dependency metadata refresh failed: ${error instanceof Error ? error.message : error}`)
+      })
+    }
+    return wait ? this.depTask : undefined
+  }
+
+  getDeps(options: Installer.GetDepsOptions = {}) {
+    if (!Object.keys(this.depCache).length) {
+      this.depCache = this.getLocalDepsSnapshot()
+    }
+    if (options.metadata) return this.refreshDependencyMetadata(true)
+    if (options.background !== false) this.refreshDependencyMetadata(false)
+    return this.depCache
   }
 
   async refreshData() {
@@ -642,7 +762,7 @@ class Installer extends Service {
     ])
   }
 
-  async refresh(refresh = false) {
+  async refresh(refresh = false, waitMetadata = false) {
     const start = Date.now()
     this.serial++
     await this.resetEndpoint()
@@ -651,10 +771,14 @@ class Installer extends Service {
     this.fullCache = {}
     this.tempCache = {}
     this.clearRegistryStatus()
-    this.depTask = this._getDeps()
+    this.depTask = undefined
+    this.depMetadataFresh = false
+    this.depCache = this.getLocalDepsSnapshot()
+    const metadataTask = this.refreshDependencyMetadata(true)
     if (!refresh) return
     await this.refreshData()
-    logger.info(`dependency refresh requested by console: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, elapsed=${Date.now() - start}ms`)
+    if (waitMetadata) await metadataTask
+    logger.info(`dependency refresh requested by console: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, waitMetadata=${waitMetadata}, elapsed=${Date.now() - start}ms`)
   }
 
   async exec(args: string[]) {
@@ -799,6 +923,11 @@ class Installer extends Service {
 }
 
 namespace Installer {
+  export interface GetDepsOptions {
+    metadata?: boolean
+    background?: boolean
+  }
+
   export interface Config {
     endpoint?: string
     timeout?: number

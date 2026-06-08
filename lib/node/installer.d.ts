@@ -42,7 +42,9 @@ declare class Installer extends Service {
     private pkgTasks;
     private agent;
     private manifest;
-    private depTask;
+    private depCache;
+    private depTask?;
+    private depMetadataFresh;
     private metadataEndpoint;
     private routeProbeTask?;
     private routeProbeResult?;
@@ -74,6 +76,7 @@ declare class Installer extends Service {
     private recordRegistryRouteFailure;
     private getFallbackDelay;
     private getRegistryRouteScores;
+    private fetchRegistryByRoute;
     private isStale;
     private setRegistryStatus;
     private clearRegistryStatus;
@@ -82,10 +85,12 @@ declare class Installer extends Service {
     private _getPackage;
     setPackage(name: string, versions: RemotePackage[]): void;
     getPackage(name: string): Promise<Dict<Pick<RemotePackage, DependencyMetaKey>>>;
-    private _getDeps;
-    getDeps(): Promise<Dict<Dependency>>;
+    private getLocalDepsSnapshot;
+    private _refreshDependencyMetadata;
+    refreshDependencyMetadata(wait?: boolean): Promise<Dict<Dependency>>;
+    getDeps(options?: Installer.GetDepsOptions): Dict<Dependency> | Promise<Dict<Dependency>>;
     refreshData(): Promise<void>;
-    refresh(refresh?: boolean): Promise<void>;
+    refresh(refresh?: boolean, waitMetadata?: boolean): Promise<void>;
     exec(args: string[]): Promise<number>;
     override(deps: Dict<string>): Promise<void>;
     private _install;
@@ -93,6 +98,10 @@ declare class Installer extends Service {
     install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>): Promise<number>;
 }
 declare namespace Installer {
+    interface GetDepsOptions {
+        metadata?: boolean;
+        background?: boolean;
+    }
     interface Config {
         endpoint?: string;
         timeout?: number;

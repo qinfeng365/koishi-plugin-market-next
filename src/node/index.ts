@@ -223,8 +223,8 @@ export function apply(ctx: Context, config: Config = {}) {
         }
 
         // refresh dependencies
-        await ctx.installer.refresh(true)
-        const deps = await ctx.installer.getDeps()
+        await ctx.installer.refresh(true, true)
+        const deps = await ctx.installer.getDeps({ background: false })
         names = await getPackages(names)
         names = names.filter((name) => {
           const { latest, resolved, invalid } = deps[name]

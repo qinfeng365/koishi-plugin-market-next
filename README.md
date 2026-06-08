@@ -7,7 +7,7 @@
 
 `koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.1` 是弱网依赖版本刷新策略的 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
+`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.2` 是弱网依赖版本刷新策略的当前 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
 
 ## 为什么做 Next
 
@@ -60,7 +60,7 @@ npm install koishi-plugin-market-next@alpha
 也可以固定安装某个 alpha 版本：
 
 ```bash
-npm install koishi-plugin-market-next@3.5.6-alpha.1
+npm install koishi-plugin-market-next@3.5.6-alpha.2
 ```
 
 ## 基础配置
@@ -127,7 +127,7 @@ market-next 区分两类源：
 
 依赖管理页显示“可更新版本”时，请求的不是 4MB 左右的市场索引，而是每个依赖包自己的 npm 元数据，例如 `https://registry.npmjs.org/koishi-plugin-xxx`。如果弱网环境下每个包都分别尝试多个 npm 源，132 个依赖就可能放大成大量超时等待。
 
-`3.5.6-alpha.1` 起，依赖版本刷新会先进行一次 npm registry route probe：
+`3.5.6` alpha 系列中，依赖版本刷新会先进行一次 npm registry route probe：
 
 - 代表包选择顺序：`koishi`、`@koishijs/plugin-console`、第一个 Koishi 插件包、第一个普通依赖。
 - 当前 `registry.endpoint` 始终作为主源先请求。
@@ -139,6 +139,7 @@ market-next 区分两类源：
 - probe 包自身的返回结果会直接复用，避免同一个包重复请求一次。
 - 本轮后续 `getPackage()` / `market/registry` 请求优先走选中的源。
 - 如果选中的备用源后续连续失败且分数低于主源，会自动回退到主源优先。
+- 单个包请求也会执行慢源接管：首选源超时或失败时，备用源可在同一个请求内胜出并更新当前 `metadataEndpoint`。
 - 这个选择只保存在进程内，不写入用户配置；下次刷新会重新判断。
 - 如果 route probe 全部失败，会回到原有的逐包重试和备用源 fallback 行为。
 - `registry.autoRoute: false` 时只请求 `registry.endpoint`，不会访问任何备用 npm 源。
@@ -304,6 +305,8 @@ npm run audit:package
 npm run audit:high
 ```
 
+两个审计脚本都会排除 peer runtime；Koishi / Console / ChatLuna 由宿主环境安装，market-next 的发布门禁只检查本包实际携带的依赖树。
+
 dry-run 打包：
 
 ```bash
@@ -323,16 +326,18 @@ npm pack --dry-run
 - 手动发布只能在默认分支执行。
 - 发布前检查 npm 是否已经存在同版本。
 - 使用 npm Trusted Publishing，不需要 `NPM_TOKEN`。
-- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.1` 发布到 `alpha`，正式版本发布到 `latest`。
+- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.2` 发布到 `alpha`，正式版本发布到 `latest`。
 
 ## 3.5.6 Alpha Notes
 
-`3.5.6-alpha.1` 主要用于验证弱网环境下的依赖版本刷新性能。
+`3.5.6-alpha.2` 主要用于验证弱网环境下的依赖版本刷新性能。
 
 这一版重点关注：
 
 - npm 元数据 route probe 是否能减少依赖页“版本获取中 / 版本获取失败”的等待时间。
 - 选中源是否符合用户实际网络环境。
+- 依赖管理页是否能先显示本地依赖快照，再由后台刷新补齐最新版本。
+- 单个包请求在首选 npm 源变慢时，是否能及时让备用源接管，而不是一直死磕同一个源。
 - 日志页是否能清楚显示慢在 probe、单包请求、镜像未同步还是网络超时。
 - alpha 发布是否只更新 npm 的 `alpha` dist-tag，不影响 `latest` 用户。
 
