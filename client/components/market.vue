@@ -415,10 +415,11 @@ function formatNumber(value?: number) {
 
 .market-hint {
   width: 100%;
-  margin: 1rem 0 -0.5rem;
+  margin: 1rem 0 0.75rem;
   color: var(--el-text-color-regular);
   font-size: var(--el-font-size-base);
   font-weight: var(--el-font-weight-primary);
+  line-height: 1.5;
   transition: color 0.3s ease;
 
   .el-checkbox {

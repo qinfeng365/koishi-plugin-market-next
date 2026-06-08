@@ -44,6 +44,8 @@ declare class Installer extends Service {
     private manifest;
     private depTask;
     private metadataEndpoint;
+    private routeProbeTask?;
+    private routeProbeResult?;
     private flushData;
     private tempRegistryStatus;
     private flushRegistryStatus;
@@ -58,6 +60,9 @@ declare class Installer extends Service {
         [x: string]: string;
     }>;
     private getRegistryEndpoints;
+    private getRouteProbeEndpoints;
+    private ensureMetadataEndpoint;
+    private probeMetadataEndpoint;
     private isStale;
     private setRegistryStatus;
     private clearRegistryStatus;

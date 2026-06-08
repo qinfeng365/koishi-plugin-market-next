@@ -61,8 +61,12 @@ jobs:
             exit 1
           fi
 
+          DIST_TAG="$(node -p 'const version = require("./package.json").version; const match = version.match(/-([0-9A-Za-z]+)(?:[.-]|$)/); match ? match[1] : "latest"')"
+
           echo "PACKAGE_NAME=${PACKAGE_NAME}" >> "$GITHUB_ENV"
           echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> "$GITHUB_ENV"
+          echo "NPM_DIST_TAG=${DIST_TAG}" >> "$GITHUB_ENV"
+          echo "Publishing ${PACKAGE_NAME}@${PACKAGE_VERSION} with npm dist-tag ${DIST_TAG}."
 
       - name: Install dependencies
         run: npm ci
@@ -80,4 +84,4 @@ jobs:
         run: npm run check:package
 
       - name: Publish
-        run: npm publish
+        run: npm publish --tag "${NPM_DIST_TAG}"

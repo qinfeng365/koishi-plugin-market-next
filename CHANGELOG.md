@@ -6,6 +6,18 @@
 
 - 暂无。
 
+## 3.5.6-alpha.0
+
+这是面向弱网用户的 alpha 测试版，不会替换 `latest` 渠道。
+
+- 依赖版本刷新增加 npm registry route probe：每轮刷新先选择代表包探测可用源，再把选中的 `metadataEndpoint` 复用到后续依赖元数据请求，减少弱网下每个包重复试多个 npm 源造成的等待放大。
+- route probe 代表包选择顺序为 `koishi`、`@koishijs/plugin-console`、第一个 Koishi 插件包、第一个普通依赖；probe 包自身返回的 `Registry` payload 会被复用，避免立即重复请求同一个包。
+- route probe 使用当前 `registry.endpoint` 与内置 npm 备用源并发竞速，第一个返回有效 `versions` 对象的源胜出；如果全部失败，会保留原有逐包重试和 fallback 行为。
+- route probe 结果只保存在当前进程和当前刷新序列中，不写入用户配置，也不改变安装命令最终使用的 npm registry。
+- 依赖刷新日志补充 `npm registry route probe started/selected/failed`、`refresh dependency metadata route ready` 和完成时实际 `registry`，便于在日志页判断慢在源选择、单包请求、镜像未同步还是网络超时。
+- 修复市场页 `market-hint text-center` 下边距为负数导致首个 `package-list` 卡片在部分缩放 / WebView 下遮挡统计文本的问题。
+- 发布 workflow 会根据预发布后缀自动选择 npm dist-tag，例如 `3.5.6-alpha.0` 发布到 `alpha`，避免 alpha 版本误挂到 `latest`。
+
 ## 3.5.5
 
 market-next 的第一个正式 release。

@@ -84,6 +84,14 @@ class Installer extends Service {
   private manifest: PackageJson
   private depTask: Promise<Dict<Dependency>>
   private metadataEndpoint: string
+  private routeProbeTask?: Promise<void>
+  private routeProbeResult?: {
+    serial: number
+    name: string
+    endpoint: string
+    registry: Registry
+    elapsed: number
+  }
   private flushData: () => void
   private tempRegistryStatus: Dict<RegistryStatus> = {}
   private flushRegistryStatus: () => void
@@ -124,6 +132,8 @@ class Installer extends Service {
     const endpoint = this.config.endpoint || await getRegistry()
     this.endpoint = endpoint
     this.metadataEndpoint = endpoint
+    this.routeProbeTask = undefined
+    this.routeProbeResult = undefined
     this.http = this.createHttp(endpoint)
   }
 
@@ -154,6 +164,53 @@ class Installer extends Service {
       .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
   }
 
+  private getRouteProbeEndpoints() {
+    if (this.config.autoRoute === false) return []
+    return [this.endpoint, ...REGISTRY_FALLBACK_ENDPOINTS]
+      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
+  }
+
+  private async ensureMetadataEndpoint(name: string, serial = this.serial) {
+    const endpoints = this.getRouteProbeEndpoints()
+    if (!name || endpoints.length <= 1) return
+    if (!this.routeProbeTask) {
+      this.routeProbeTask = this.probeMetadataEndpoint(name, endpoints, serial)
+    }
+    await this.routeProbeTask
+  }
+
+  private async probeMetadataEndpoint(name: string, endpoints: string[], serial: number) {
+    const start = Date.now()
+    logger.info(`npm registry route probe started: probe=${name}, candidates=${endpoints.join(', ')}`)
+    const tasks = endpoints.map(async (endpoint) => {
+      const attemptStart = Date.now()
+      try {
+        logger.debug(`probe npm registry endpoint: probe=${name}, endpoint=${endpoint}`)
+        const registry = await this.createHttp(endpoint).get(`/${name}`) as Registry
+        if (!registry?.versions || typeof registry.versions !== 'object') {
+          throw new Error(`invalid registry metadata for ${name}`)
+        }
+        return { endpoint, registry, elapsed: Date.now() - attemptStart }
+      } catch (error) {
+        const detail = this.formatRegistryError(error)
+        logger.debug(`probe npm registry endpoint failed: probe=${name}, endpoint=${endpoint}, elapsed=${Date.now() - attemptStart}ms, reason=${detail.reason}, error=${detail.error}`)
+        throw error
+      }
+    })
+
+    try {
+      const result = await Promise.any(tasks)
+      if (this.isStale(serial)) return
+      const previous = this.metadataEndpoint
+      this.metadataEndpoint = result.endpoint
+      this.routeProbeResult = { serial, name, ...result }
+      logger.info(`npm registry route probe selected: probe=${name}, endpoint=${result.endpoint}, previous=${previous}, elapsed=${result.elapsed}ms, total=${Date.now() - start}ms`)
+    } catch (error) {
+      if (this.isStale(serial)) return
+      logger.warn(`npm registry route probe failed: probe=${name}, candidates=${endpoints.length}, elapsed=${Date.now() - start}ms`)
+    }
+  }
+
   private isStale(serial: number) {
     return serial !== this.serial || !this.ctx.scope.isActive
   }
@@ -177,7 +234,6 @@ class Installer extends Service {
 
   async getRegistry(name: string, serial = this.serial) {
     const start = Date.now()
-    const endpoints = this.getRegistryEndpoints()
     const maxRetry = Math.max(0, this.config.retry ?? 1)
     let attempts = 0
     let lastError: any
@@ -190,6 +246,26 @@ class Installer extends Service {
       attempts,
       elapsed: undefined,
     }, serial)
+
+    await this.ensureMetadataEndpoint(name, serial)
+    if (this.isStale(serial)) return
+
+    const probe = this.routeProbeResult
+    if (probe?.serial === serial && probe.name === name && probe.endpoint === this.metadataEndpoint) {
+      attempts = 1
+      this.setRegistryStatus(name, {
+        loading: false,
+        error: undefined,
+        reason: undefined,
+        endpoint: probe.endpoint,
+        attempts,
+        elapsed: Date.now() - start,
+      }, serial)
+      logger.debug(`reuse npm registry route probe payload for ${name}: endpoint=${probe.endpoint}, probeElapsed=${probe.elapsed}ms`)
+      return probe.registry
+    }
+
+    const endpoints = this.getRegistryEndpoints()
     logger.debug(`registry metadata candidates for ${name}: endpoints=${endpoints.join(', ')}, retry=${maxRetry}, concurrency=${this.config.concurrency ?? 4}`)
 
     for (const endpoint of endpoints) {
@@ -305,8 +381,12 @@ class Installer extends Service {
     const result = valueMap(this.manifest.dependencies, (request) => {
       return { request: request.replace(/^[~^]/, '') } as Dependency
     })
-    logger.debug(`refresh dependency metadata started: total=${Object.keys(result).length}, concurrency=${this.config.concurrency ?? 4}, registry=${this.endpoint}`)
-    await pMap(Object.keys(result), async (name) => {
+    const names = Object.keys(result)
+    logger.debug(`refresh dependency metadata started: total=${names.length}, concurrency=${this.config.concurrency ?? 4}, registry=${this.endpoint}, autoRoute=${this.config.autoRoute !== false}`)
+    const probeName = pickMetadataProbe(names)
+    if (probeName) await this.ensureMetadataEndpoint(probeName, this.serial)
+    logger.debug(`refresh dependency metadata route ready: probe=${probeName ?? '-'}, selected=${this.metadataEndpoint}, configured=${this.endpoint}, probed=${!!this.routeProbeResult}`)
+    await pMap(names, async (name) => {
       try {
         // some dependencies may be left with no local installation
         const meta = loadManifest(name)
@@ -333,7 +413,7 @@ class Installer extends Service {
     }, { concurrency: this.config.concurrency ?? 4 })
     const installed = Object.values(result).filter(dep => dep.resolved).length
     const invalid = Object.values(result).filter(dep => dep.invalid).length
-    logger.info(`dependency metadata refresh completed: total=${Object.keys(result).length}, installed=${installed}, invalid=${invalid}, elapsed=${Date.now() - start}ms`)
+    logger.info(`dependency metadata refresh completed: total=${Object.keys(result).length}, installed=${installed}, invalid=${invalid}, registry=${this.metadataEndpoint}, elapsed=${Date.now() - start}ms`)
     return result
   }
 
@@ -538,6 +618,13 @@ function formatLocalDeps(deps: Dict<Dependency>) {
   const entries = Object.entries(deps)
   if (!entries.length) return '(none)'
   return entries.map(([name, dep]) => `${name}{request=${dep.request || '-'},resolved=${dep.resolved ?? '-'},workspace=${!!dep.workspace}}`).join(', ')
+}
+
+function pickMetadataProbe(names: string[]) {
+  return names.find(name => name === 'koishi')
+    || names.find(name => name === '@koishijs/plugin-console')
+    || names.find(name => Scanner.isPlugin(name))
+    || names[0]
 }
 
 export default Installer

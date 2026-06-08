@@ -7,7 +7,7 @@
 
 `koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-`3.5.5` 是本项目的第一个正式 release。
+`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.0` 是弱网依赖版本刷新策略的 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
 
 ## 为什么做 Next
 
@@ -33,6 +33,7 @@ market-next 的目标不是破坏 Koishi 原有管理链路，而是在兼容原
 - 无限滚动和虚拟窗口：减少分页空页和大量卡片同步渲染。
 - 市场刷新软化：手动刷新不清空当前列表，页面保持可操作。
 - 依赖刷新解耦：市场索引加载不再被 npm 包元数据刷新拖住。
+- npm 元数据路由探测：依赖版本刷新先选一个代表包测试最快可用 npm 源，后续包复用同一轮结果。
 - 安装后自动补配置：新安装插件会自动创建默认停用配置项，例如 `~schedule:xxxxxx: {}`。
 - 更完整的错误提示：页面显示实际 registry、缓存状态、stale 状态和失败原因。
 - 日志页诊断增强：`search.logLevel: debug` 时，关键调试信息会以 `[debug]` 前缀写入日志页。
@@ -49,6 +50,18 @@ npm install koishi-plugin-market-next
 然后在 Koishi Console 的插件配置页启用 `market-next`。
 
 如果同时安装了原始 `@koishijs/plugin-market`，建议只启用其中一个。market-next 为了保持 Console 事件兼容，内部服务名仍使用 `market`。
+
+测试 alpha 渠道：
+
+```bash
+npm install koishi-plugin-market-next@alpha
+```
+
+也可以固定安装某个 alpha 版本：
+
+```bash
+npm install koishi-plugin-market-next@3.5.6-alpha.0
+```
 
 ## 基础配置
 
@@ -110,6 +123,22 @@ market-next 区分两类源：
 
 更多社区镜像可参考 [Koishi 论坛镜像一览](https://forum.koishi.xyz/t/topic/4000)。
 
+## 依赖版本刷新路由
+
+依赖管理页显示“可更新版本”时，请求的不是 4MB 左右的市场索引，而是每个依赖包自己的 npm 元数据，例如 `https://registry.npmjs.org/koishi-plugin-xxx`。如果弱网环境下每个包都分别尝试多个 npm 源，132 个依赖就可能放大成大量超时等待。
+
+`3.5.6-alpha.0` 开始，依赖版本刷新会先进行一次 npm registry route probe：
+
+- 代表包选择顺序：`koishi`、`@koishijs/plugin-console`、第一个 Koishi 插件包、第一个普通依赖。
+- 并发测试当前 `registry.endpoint` 和内置 npm 备用源。
+- 第一个返回有效 `versions` 元数据的源会成为本轮刷新使用的 `metadataEndpoint`。
+- probe 包自身的返回结果会直接复用，避免同一个包重复请求一次。
+- 本轮后续 `getPackage()` / `market/registry` 请求优先走选中的源。
+- 这个选择只保存在进程内，不写入用户配置；下次刷新会重新判断。
+- 如果 route probe 全部失败，会回到原有的逐包重试和备用源 fallback 行为。
+
+这项策略主要解决“每个插件都单独试一遍 npm 链路”的等待放大问题。它不会改变安装命令真正使用的 npm registry；安装时仍按 `registry.endpoint` 和包管理器行为执行。
+
 ## 缓存策略
 
 market-next 会把市场索引缓存到 Koishi 实例目录下的 `cache/market-next-index.json`。
@@ -170,6 +199,7 @@ debug 模式会在日志页写入 `[debug] ...` 记录。这样即使 Koishi 全
 - fallback 原因：主源失败或主源慢。
 - 安装依赖时的 package manager、变更包、是否触发 full reload。
 - 依赖版本刷新总数、已安装数、invalid 数和耗时。
+- npm registry route probe 的候选源、选中源、probe 包、失败原因和本轮实际 registry。
 
 示例日志：
 
@@ -178,6 +208,9 @@ debug 模式会在日志页写入 `[debug] ...` 记录。这样即使 Koishi 全
 [debug] market response headers: endpoint=..., status=304, request=276ms, ...
 [debug] market disk cache store parsed: entries=2, ...
 [debug] route success updated: endpoint=..., score=..., average=...
+npm registry route probe started: probe=koishi, candidates=...
+npm registry route probe selected: probe=koishi, endpoint=..., previous=..., elapsed=...
+dependency metadata refresh completed: total=132, installed=132, invalid=0, registry=..., elapsed=...
 ```
 
 ## ChatLuna 插件市场查询 Tool
@@ -283,6 +316,18 @@ npm pack --dry-run
 - 手动发布只能在默认分支执行。
 - 发布前检查 npm 是否已经存在同版本。
 - 使用 npm Trusted Publishing，不需要 `NPM_TOKEN`。
+- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.0` 发布到 `alpha`，正式版本发布到 `latest`。
+
+## 3.5.6 Alpha Notes
+
+`3.5.6-alpha.0` 主要用于验证弱网环境下的依赖版本刷新性能。
+
+这一版重点关注：
+
+- npm 元数据 route probe 是否能减少依赖页“版本获取中 / 版本获取失败”的等待时间。
+- 选中源是否符合用户实际网络环境。
+- 日志页是否能清楚显示慢在 probe、单包请求、镜像未同步还是网络超时。
+- alpha 发布是否只更新 npm 的 `alpha` dist-tag，不影响 `latest` 用户。
 
 ## 3.5.5 Release Notes
 
