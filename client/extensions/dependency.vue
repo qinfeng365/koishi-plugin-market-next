@@ -33,12 +33,12 @@ import KDepLink from './dep-link.vue'
 const env = inject<ComputedRef<EnvInfo>>('plugin:env')
 
 const getImplements = (name: string) => ({
-  ...store.market.data?.[name],
-  ...store.packages[name],
+  ...(store.market?.data?.[name] ?? {}),
+  ...(store.packages?.[name] ?? {}),
 }.manifest?.service.implements ?? [])
 
 const getAvailable = (name: string) => Object
-  .values(store.market.data ?? {})
+  .values(store.market?.data ?? {})
   .filter(data => getImplements(data.package.name).includes(name))
   .map(data => data.package.name)
 
@@ -51,4 +51,3 @@ const available = computed(() => {
 })
 
 </script>
-

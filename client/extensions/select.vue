@@ -30,7 +30,7 @@ const { t } = useMarketI18n()
 const active = ref('all')
 
 provide('plugin-select-filter', ({ name, manifest }: PackageProvider.Data) => {
-  const category = store.market.data[name]?.category || manifest?.category
+  const category = store.market?.data?.[name]?.category || manifest?.category
   return active.value === 'all' || resolveCategory(category) === active.value
 })
 

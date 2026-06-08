@@ -6,7 +6,7 @@
       :href="object.package.links.homepage"
     >插件主页</a>
     <a class="el-button" target="_blank"
-      v-if="object.package.links.npm && local.package.version"
+      v-if="object.package.links.npm && local?.package.version"
       :href="object.package.links.npm + '/v/' + local.package.version"
     >当前版本：{{ local.package.version }}</a>
     <a class="el-button" target="_blank"
@@ -30,7 +30,7 @@
   </k-comment>
 
   <!-- external -->
-  <k-comment type="warning" v-if="!local.workspace && store.dependencies && !store.dependencies[name]">
+  <k-comment type="warning" v-if="local && !local.workspace && store.dependencies && !store.dependencies[name]">
     <p>尚未将当前插件列入依赖，<span class="k-link" @click="addDependency">点击添加</span>。</p>
   </k-comment>
 </template>
@@ -47,11 +47,12 @@ const ctx = useContext()
 const name = inject<ComputedRef<string>>('plugin:name')
 
 const local = computed(() => store.packages?.[name.value])
-const object = computed(() => store.market.data?.[name.value])
+const object = computed(() => store.market?.data?.[name.value])
 const dep = computed(() => store.dependencies?.[name.value])
 const versions = computed(() => store.registry?.[name.value])
 
 async function addDependency() {
+  if (!local.value?.package.version) return
   const code = await send('market/install', { [name.value]: local.value.package.version })
   if (!code) await ensureInstalledConfig(ctx, name.value, true)
 }

@@ -20,6 +20,7 @@ declare module '@koishijs/console' {
     }
     interface Events {
         'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>;
+        'market/refresh-dependencies'(): Promise<void>;
         'market/package'(name: string): Promise<Registry>;
         'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>;
         'market/ensure-config'(name: string): Promise<boolean>;

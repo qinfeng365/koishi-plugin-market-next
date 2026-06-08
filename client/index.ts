@@ -135,12 +135,14 @@ export default (ctx: Context) => {
     shortcut: 'ctrl+r',
     disabled: () => !['market', 'dependencies'].includes(router.currentRoute.value?.meta?.activity.id),
     async action() {
+      const activity = router.currentRoute.value?.meta?.activity.id
+      const dependencies = activity === 'dependencies'
       const instance = loading({
-        text: '正在刷新插件市场与依赖版本……',
+        text: dependencies ? '正在刷新依赖版本……' : '正在刷新插件市场……',
       })
       try {
-        await send('market/refresh')
-        message.success('插件市场与依赖版本已刷新。')
+        await send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
+        message.success(dependencies ? '依赖版本已刷新。' : '插件市场已刷新。')
       } catch (error) {
         console.error(error)
         message.error('刷新失败，请检查网络或日志。')
@@ -174,6 +176,11 @@ export default (ctx: Context) => {
     type: () => !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
   }])
 
+  const registryRefreshing = () => {
+    const target = store as MarketStore
+    return Object.values(target.registryStatus ?? {}).some(status => status.loading)
+  }
+
   ctx.menu('dependencies', [{
     id: '.upgrade',
     icon: 'rocket',
@@ -190,7 +197,7 @@ export default (ctx: Context) => {
     id: 'market.refresh',
     icon: 'refresh',
     label: '刷新',
-    type: () => !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
+    type: () => registryRefreshing() ? 'spin disabled' : '',
   }])
 
   ctx.effect(() => {

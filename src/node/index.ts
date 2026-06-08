@@ -29,6 +29,7 @@ declare module '@koishijs/console' {
 
   interface Events {
     'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>
+    'market/refresh-dependencies'(): Promise<void>
     'market/package'(name: string): Promise<Registry>
     'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>
     'market/ensure-config'(name: string): Promise<boolean>
@@ -249,6 +250,11 @@ export function apply(ctx: Context, config: Config = {}) {
         ctx.get('console')?.refresh('config'),
       ])
       return code
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/refresh-dependencies', async () => {
+      await ctx.installer.refresh(true)
+      await ctx.get('console')?.refresh('config')
     }, { authority: 4 })
 
     ctx.console.addListener('market/package', async (name) => {

@@ -25,7 +25,7 @@ const fullname = computed(() => {
   const candidates = name.startsWith('@')
     ? [name.replace(/\//, '/koishi-plugin-')]
     : [`@koishijs/plugin-${name}`, `koishi-plugin-${name}`]
-  return candidates.find(name => name in store.market.data)
+  return candidates.find(name => name in (store.market?.data ?? {}))
 })
 
 function gotoMarket() {

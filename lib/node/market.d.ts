@@ -18,6 +18,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private forceRefresh;
     private indexMode;
     private cacheFile;
+    private cacheEntries;
     private cacheMeta?;
     private conditionMeta?;
     private cacheResult?;
@@ -31,6 +32,7 @@ declare class MarketProvider extends BaseMarketProvider {
     start(refresh?: boolean): Promise<void>;
     collect(): Promise<any>;
     private fetchIndex;
+    private getEndpointCandidates;
     private getEndpoints;
     private getPreferredEndpoint;
     private waitRouteTurn;
@@ -75,7 +77,10 @@ declare class MarketProvider extends BaseMarketProvider {
     private refreshAfterPrepare;
     private applyIndex;
     private applyDiskCache;
+    private pickDiskCache;
+    private getCacheScore;
     private scheduleDiskCacheWrite;
+    private pruneCacheEntries;
     private writeDiskCache;
     private refreshInBackground;
     private refreshIndexInBackground;

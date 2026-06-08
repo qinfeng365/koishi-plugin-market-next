@@ -34,6 +34,8 @@ export interface MarketRouteScore {
     averageElapsed?: number;
     lastSuccess?: number;
     contentEncoding?: string;
+    cached?: boolean;
+    cachedAt?: number;
 }
 export interface MarketPerformance extends MarketPerformanceSnapshot {
     initial?: MarketPerformanceSnapshot;
@@ -43,6 +45,7 @@ export interface MarketPerformance extends MarketPerformanceSnapshot {
 declare module '@koishijs/console' {
     interface Events {
         'market/refresh'(): Promise<void>;
+        'market/refresh-dependencies'(): Promise<void>;
     }
     namespace Console {
         interface Services {

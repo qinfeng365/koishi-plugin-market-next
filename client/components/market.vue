@@ -74,6 +74,7 @@
                 {{ shortEndpoint(route.endpoint) }} score={{ formatScore(route.score) }}
                 <template v-if="route.averageElapsed"> avg={{ formatDuration(route.averageElapsed) }}</template>
                 <template v-if="route.contentEncoding"> {{ route.contentEncoding }}</template>
+                <template v-if="route.cachedAt"> cache={{ formatTime(route.cachedAt) }}</template>
               </span>
             </div>
           </k-comment>
