@@ -7,7 +7,7 @@
 
 `koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.2` 是弱网依赖版本刷新策略的当前 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
+`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.4` 是弱网依赖版本刷新与依赖管理页体验的当前 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
 
 ## 为什么做 Next
 
@@ -60,7 +60,7 @@ npm install koishi-plugin-market-next@alpha
 也可以固定安装某个 alpha 版本：
 
 ```bash
-npm install koishi-plugin-market-next@3.5.6-alpha.2
+npm install koishi-plugin-market-next@3.5.6-alpha.4
 ```
 
 ## 基础配置
@@ -326,11 +326,11 @@ npm pack --dry-run
 - 手动发布只能在默认分支执行。
 - 发布前检查 npm 是否已经存在同版本。
 - 使用 npm Trusted Publishing，不需要 `NPM_TOKEN`。
-- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.2` 发布到 `alpha`，正式版本发布到 `latest`。
+- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.4` 发布到 `alpha`，正式版本发布到 `latest`。
 
 ## 3.5.6 Alpha Notes
 
-`3.5.6-alpha.2` 主要用于验证弱网环境下的依赖版本刷新性能。
+`3.5.6-alpha.4` 主要用于验证弱网环境下的依赖版本刷新性能，以及依赖管理页在 100+ 依赖环境下的可读性。
 
 这一版重点关注：
 
@@ -338,6 +338,10 @@ npm pack --dry-run
 - 选中源是否符合用户实际网络环境。
 - 依赖管理页是否能先显示本地依赖快照，再由后台刷新补齐最新版本。
 - 单个包请求在首选 npm 源变慢时，是否能及时让备用源接管，而不是一直死磕同一个源。
+- 依赖管理页是否能通过分组、搜索、筛选和固定底部操作条降低“全量表格”带来的眼花感。
+- 普通“已安装”卡片是否能通过插件身份标签、轻量类别色和简介行降低一屏灰卡的重复感。
+- 待应用、可更新、未配置、异常等状态是否仍然比普通已安装依赖更醒目、更容易操作。
+- 市场页和依赖页的 `Ctrl+K` / `Cmd+K` 搜索聚焦是否符合用户预期。
 - 日志页是否能清楚显示慢在 probe、单包请求、镜像未同步还是网络超时。
 - alpha 发布是否只更新 npm 的 `alpha` dist-tag，不影响 `latest` 用户。
 
