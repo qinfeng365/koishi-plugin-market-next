@@ -13,6 +13,11 @@ export interface UpdateIgnoreRule {
 
 export type IgnoredUpdates = Record<string, string | UpdateIgnoreRule | undefined>
 
+export interface UpdateIgnoreOptions {
+  duration?: number
+  count?: number
+}
+
 export interface UpdatePolicy {
   updateIgnored?: IgnoredUpdates
   updateIgnoredPackages?: string
@@ -21,11 +26,11 @@ export interface UpdatePolicy {
   updateIgnorePrerelease?: boolean
 }
 
-export function createUpdateIgnoreRule(name: string, policy?: UpdatePolicy): UpdateIgnoreRule | undefined {
+export function createUpdateIgnoreRule(name: string, policy?: UpdatePolicy, options: UpdateIgnoreOptions = {}): UpdateIgnoreRule | undefined {
   const version = getLatestVersion(name, policy)
   if (!version) return
-  const duration = Math.max(0, policy?.updateIgnoreDuration ?? 0)
-  const count = normalizeIgnoreCount(policy?.updateIgnoreVersions)
+  const duration = Math.max(0, options.duration ?? policy?.updateIgnoreDuration ?? 0)
+  const count = normalizeIgnoreCount(options.count ?? policy?.updateIgnoreVersions)
   const now = Date.now()
   return {
     version,

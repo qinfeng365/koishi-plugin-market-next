@@ -90,7 +90,7 @@
         <el-button
           v-if="showIgnoreUpdate"
           size="small"
-          @click="ignoreUpdate"
+          @click="openIgnoreDialog"
         >
           忽略此次更新
         </el-button>
@@ -114,12 +114,57 @@
       </div>
     </div>
   </article>
+
+  <el-dialog v-model="showIgnoreDialog" class="dep-ignore-dialog" destroy-on-close>
+    <template #header>忽略更新提示</template>
+    <div class="dep-ignore-body">
+      <p>
+        将忽略 <strong>{{ displayName }}</strong>
+        <template v-if="latestVersion"> 的 {{ latestVersion }} 更新提示。</template>
+      </p>
+      <el-checkbox v-model="ignorePackagePermanently">
+        永久不检测这个插件的更新
+      </el-checkbox>
+      <template v-if="!ignorePackagePermanently">
+        <label class="dep-ignore-field">
+          <span>忽略多久</span>
+          <el-radio-group v-model="ignoreDurationPreset">
+            <el-radio-button value="forever">不限时</el-radio-button>
+            <el-radio-button value="1d">1 天</el-radio-button>
+            <el-radio-button value="7d">7 天</el-radio-button>
+            <el-radio-button value="30d">30 天</el-radio-button>
+            <el-radio-button value="custom">自定义</el-radio-button>
+          </el-radio-group>
+        </label>
+        <label v-if="ignoreDurationPreset === 'custom'" class="dep-ignore-field inline">
+          <span>自定义天数</span>
+          <el-input-number v-model="ignoreCustomDays" :min="1" :max="3650" :step="1" controls-position="right"></el-input-number>
+        </label>
+        <label class="dep-ignore-field inline">
+          <span>连续忽略版本数</span>
+          <el-input-number v-model="ignoreCount" :min="1" :max="20" :step="1" controls-position="right"></el-input-number>
+        </label>
+      </template>
+      <p class="dep-ignore-note">
+        <template v-if="ignorePackagePermanently">
+          永久不检测会写入插件市场设置中的不检测更新名单，可在设置页移除。
+        </template>
+        <template v-else>
+          不限时表示不按时间过期；达到连续忽略版本数后，后续新版本会重新提示。
+        </template>
+      </p>
+    </div>
+    <template #footer>
+      <el-button @click="showIgnoreDialog = false">取消</el-button>
+      <el-button type="primary" @click="confirmIgnoreUpdate">确认忽略</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script lang="ts" setup>
 
 import { computed, ref } from 'vue'
-import { store, useConfig, useContext } from '@koishijs/client'
+import { message, store, useConfig, useContext } from '@koishijs/client'
 import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateIgnored } from '../utils'
 import { analyzeVersions, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText } from './utils'
 import { resolveCategory } from '../market/utils'
@@ -133,10 +178,16 @@ const props = defineProps<{
 }>()
 
 const removeValue = '__market_next_remove__'
+const day = 24 * 60 * 60 * 1000
 const config = useConfig()
 const ctx = useContext()
 const configuring = ref(false)
 const editing = ref(false)
+const showIgnoreDialog = ref(false)
+const ignoreDurationPreset = ref<'forever' | '1d' | '7d' | '30d' | 'custom'>('forever')
+const ignoreCustomDays = ref(7)
+const ignoreCount = ref(1)
+const ignorePackagePermanently = ref(false)
 
 const dep = computed(() => store.dependencies?.[props.name])
 const local = computed(() => store.packages?.[props.name])
@@ -380,10 +431,65 @@ function clearOverride() {
   delete config.value.market.override[props.name]
 }
 
-function ignoreUpdate() {
-  const rule = createUpdateIgnoreRule(props.name, getUpdatePolicy())
+function openIgnoreDialog() {
+  const duration = Math.max(0, getUpdatePolicy().updateIgnoreDuration ?? 0)
+  const days = Math.max(1, Math.ceil(duration / day))
+  ignoreDurationPreset.value = duration ? getDurationPreset(duration) : 'forever'
+  ignoreCustomDays.value = days
+  ignoreCount.value = normalizeDialogCount(getUpdatePolicy().updateIgnoreVersions)
+  ignorePackagePermanently.value = false
+  showIgnoreDialog.value = true
+}
+
+function confirmIgnoreUpdate() {
+  if (ignorePackagePermanently.value) {
+    addPackageToIgnoredList(props.name)
+    delete getUpdateIgnored()[props.name]
+    showIgnoreDialog.value = false
+    message.success('已加入不检测更新名单。')
+    return
+  }
+  const rule = createUpdateIgnoreRule(props.name, getUpdatePolicy(), {
+    duration: getDialogDuration(),
+    count: ignoreCount.value,
+  })
   if (!rule) return
   getUpdateIgnored()[props.name] = rule
+  showIgnoreDialog.value = false
+  message.success('已忽略更新提示。')
+}
+
+function getDurationPreset(duration: number) {
+  if (duration === day) return '1d'
+  if (duration === 7 * day) return '7d'
+  if (duration === 30 * day) return '30d'
+  return 'custom'
+}
+
+function getDialogDuration() {
+  switch (ignoreDurationPreset.value) {
+    case '1d': return day
+    case '7d': return 7 * day
+    case '30d': return 30 * day
+    case 'custom': return normalizeDialogCount(ignoreCustomDays.value, 3650) * day
+    default: return 0
+  }
+}
+
+function normalizeDialogCount(value?: number, max = 20) {
+  if (!Number.isFinite(value)) return 1
+  return Math.max(1, Math.min(max, Math.floor(value)))
+}
+
+function addPackageToIgnoredList(name: string) {
+  const names = (getUpdatePolicy().updateIgnoredPackages ?? '')
+    .split(/[\s,，;；]+/g)
+    .map(item => item.trim())
+    .filter(Boolean)
+  if (!names.some(item => item.toLowerCase() === name.toLowerCase())) {
+    names.push(name)
+  }
+  config.value.market.updateIgnoredPackages = names.join('\n')
 }
 
 function restoreUpdate() {
@@ -813,6 +919,42 @@ async function configure() {
 
   .dep-card-buttons {
     justify-content: flex-end;
+  }
+}
+
+.dep-ignore-dialog {
+  .dep-ignore-body {
+    display: grid;
+    gap: 0.85rem;
+
+    p {
+      margin: 0;
+      color: var(--fg2);
+      line-height: 1.5;
+    }
+  }
+
+  .dep-ignore-field {
+    display: grid;
+    gap: 0.38rem;
+
+    > span {
+      color: var(--fg2);
+      font-size: 0.86rem;
+    }
+
+    &.inline {
+      grid-template-columns: 8rem auto;
+      align-items: center;
+    }
+  }
+
+  .dep-ignore-note {
+    border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
+    border-radius: 6px;
+    padding: 0.52rem 0.62rem;
+    background: color-mix(in srgb, var(--k-side-bg) 78%, transparent);
+    font-size: 0.82rem;
   }
 }
 
