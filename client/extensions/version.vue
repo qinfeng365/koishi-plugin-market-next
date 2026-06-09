@@ -20,7 +20,7 @@
   </div>
 
   <!-- latest -->
-  <k-comment v-if="hasUpdate(name) && !global.static">
+  <k-comment v-if="updateAvailable && !global.static">
     <p>当前的插件版本不是最新，<router-link to="/dependencies">点击前往依赖管理</router-link>。</p>
   </k-comment>
 
@@ -37,19 +37,21 @@
 
 <script lang="ts" setup>
 
-import { global, send, store, useContext } from '@koishijs/client'
+import { global, send, store, useConfig, useContext } from '@koishijs/client'
 import { computed, inject, ComputedRef } from 'vue'
 import { hasUpdate } from '../utils'
 import type {} from '@koishijs/plugin-config'
 import { ensureInstalledConfig } from '../components/utils'
 
 const ctx = useContext()
+const config = useConfig()
 const name = inject<ComputedRef<string>>('plugin:name')
 
 const local = computed(() => store.packages?.[name.value])
 const object = computed(() => store.market?.data?.[name.value])
 const dep = computed(() => store.dependencies?.[name.value])
 const versions = computed(() => store.registry?.[name.value])
+const updateAvailable = computed(() => hasUpdate(name.value, config.value.market))
 
 async function addDependency() {
   if (!local.value?.package.version) return

@@ -1,6 +1,7 @@
 import { defineComponent, h, ref, watch } from 'vue'
 import { Context, Dict, global, message, receive, router, Schema, send, store, useConfig } from '@koishijs/client'
 import type { RegistryStatus } from 'koishi-plugin-market-next'
+import type { IgnoredUpdates } from './utils'
 import { showConfirm, showManual } from './components/utils'
 import extensions from './extensions'
 import Dependencies from './components/dependencies.vue'
@@ -22,7 +23,19 @@ interface MarketConfig {
   bulkMode?: boolean
   removeConfig?: boolean
   override?: Dict<string>
+  collapsedGroups?: Dict<boolean>
+  updateIgnored?: IgnoredUpdates
+  updateIgnoredPackages?: string
+  updateIgnoreDuration?: number
+  updateIgnoreVersions?: number
+  updateIgnorePrerelease?: boolean
   gravatar?: string
+  search?: {
+    endpoint?: string
+    timeout?: number
+    autoRoute?: boolean
+    logLevel?: string
+  }
 }
 
 type MarketStore = typeof store & {
@@ -104,7 +117,13 @@ export default (ctx: Context) => {
           Schema.const(true).description('总是'),
           Schema.const(false).description('从不'),
         ]).description('移除插件时是否移除其已经存在的配置。'),
+        updateIgnoredPackages: Schema.string().role('textarea').description('不检测更新的依赖名。每行或用逗号分隔一个包名。'),
+        updateIgnoreDuration: Schema.number().role('time').default(0).description('点击“忽略此次更新”后的默认忽略时长。0 表示不按时间过期。'),
+        updateIgnoreVersions: Schema.number().min(1).max(20).step(1).default(1).description('点击“忽略此次更新”后连续忽略几个新版本。1 表示只忽略当前最新版本。'),
+        updateIgnorePrerelease: Schema.boolean().default(false).description('手动开启后，alpha / beta / rc 等预发布版本不会被视为可更新版本。'),
         override: Schema.dict(String).hidden(),
+        collapsedGroups: Schema.dict(Boolean).hidden(),
+        updateIgnored: Schema.dict(Schema.any()).hidden(),
         gravatar: Schema.string().description('Gravatar 镜像地址。'),
       }),
     }),

@@ -37,14 +37,14 @@
           <div class="market-hint text-center">
             共搜索到 {{ hasFilter ? packages.length + ' / ' : '' }}{{ all.length }} 个插件。
           </div>
-          <k-comment v-if="store.market.stale" type="warning" class="market-stale">
+          <k-comment v-if="showMarketCacheHint && store.market.stale" type="warning" class="market-stale">
             <p>插件市场刷新失败，当前显示的是上一次成功加载的数据。</p>
             <p>
               Registry：{{ store.market.registry || '未知' }}
               <template v-if="store.market.error">；原因：{{ store.market.error }}</template>
             </p>
           </k-comment>
-          <k-comment v-else-if="store.market.cached" type="warning" class="market-stale">
+          <k-comment v-else-if="showMarketCacheHint && store.market.cached" type="warning" class="market-stale">
             <p>
               当前显示的是本地缓存的插件市场数据。
               <template v-if="store.market.refreshing">正在后台刷新最新数据……</template>
@@ -160,6 +160,8 @@ const loadingTimeout = computed(() => {
 })
 
 const loadingAutoRoute = computed(() => config.value.market?.search?.autoRoute !== false)
+
+const showMarketCacheHint = computed(() => config.value.market?.search?.logLevel !== 'silent')
 
 const debugItems = computed(() => {
   const debug = store.market?.debug

@@ -18,6 +18,7 @@
       <div class="deps-summary">
         <span>依赖 {{ summary.total }}</span>
         <span>可更新 {{ summary.updatable }}</span>
+        <span>已忽略 {{ summary.ignored }}</span>
         <span>待应用 {{ summary.pending }}</span>
         <span :class="{ warning: summary.unconfigured }">未配置 {{ summary.unconfigured }}</span>
         <span :class="{ danger: summary.errors }">异常 {{ summary.errors }}</span>
@@ -28,15 +29,28 @@
     <el-scrollbar class="body-container">
       <div class="deps-content" :class="{ pending: summary.pending }">
         <template v-if="visibleGroups.length">
-          <section v-for="group in visibleGroups" :key="group.key" :class="['deps-group', group.key]">
-            <header class="deps-group-header">
+          <section v-for="group in visibleGroups" :key="group.key" :class="['deps-group', group.key, { collapsed: group.collapsed }]">
+            <header
+              :class="['deps-group-header', { collapsible: group.collapsible }]"
+              :role="group.collapsible ? 'button' : undefined"
+              :tabindex="group.collapsible ? 0 : undefined"
+              :aria-expanded="group.collapsible ? String(!group.collapsed) : undefined"
+              @click="group.collapsible && toggleGroup(group.key)"
+              @keydown.enter.prevent="group.collapsible && toggleGroup(group.key)"
+              @keydown.space.prevent="group.collapsible && toggleGroup(group.key)"
+            >
               <div>
                 <h2>{{ group.label }}</h2>
                 <p>{{ group.description }}</p>
               </div>
-              <span>{{ group.items.length }}</span>
+              <div class="deps-group-side">
+                <span class="deps-group-count">{{ group.items.length }}</span>
+                <span v-if="group.collapsible" class="deps-group-state">
+                  {{ group.collapsed ? '展开' : '折叠' }}
+                </span>
+              </div>
             </header>
-            <div class="deps-grid">
+            <div v-if="!group.collapsed" class="deps-grid">
               <package-view
                 v-for="item in group.items"
                 :key="item.name"
@@ -69,13 +83,13 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { router, store, useConfig, useContext } from '@koishijs/client'
-import { hasUpdate } from '../utils'
+import { getLatestVersion, hasUpdate, isUpdateIgnored } from '../utils'
 import { addManual, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
 
-type FilterKey = 'all' | 'pending' | 'unconfigured' | 'updatable' | 'error' | 'workspace' | 'manual'
-type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'error' | 'workspace' | 'manual' | 'installed'
+type FilterKey = 'all' | 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'error' | 'workspace' | 'manual'
+type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'error' | 'workspace' | 'manual' | 'installed'
 
 interface DependencyItem {
   name: string
@@ -89,6 +103,8 @@ interface DependencyGroup {
   label: string
   description: string
   items: DependencyItem[]
+  collapsed: boolean
+  collapsible: boolean
 }
 
 const config = useConfig()
@@ -99,6 +115,15 @@ const searchInput = ref<{ focus?: () => void }>()
 
 function getOverride() {
   return config.value.market?.override ?? {}
+}
+
+function getCollapsedGroups() {
+  if (!config.value.market.collapsedGroups) config.value.market.collapsedGroups = {}
+  return config.value.market.collapsedGroups
+}
+
+function getUpdatePolicy() {
+  return config.value.market ?? {}
 }
 
 const names = computed(() => {
@@ -155,7 +180,8 @@ function classify(name: string): ItemKind {
   if (isUnconfigured(name)) return 'unconfigured'
   const status = getRegistryStatus(name)
   if (status?.error) return 'error'
-  if (hasUpdate(name)) return 'updatable'
+  if (isUpdateIgnored(name, getUpdatePolicy())) return 'ignored'
+  if (hasUpdate(name, getUpdatePolicy())) return 'updatable'
   return 'installed'
 }
 
@@ -182,6 +208,7 @@ const summary = computed(() => {
     updatable: items.value.filter(item => item.kind === 'updatable').length,
     pending: Object.keys(getOverride()).length,
     unconfigured: items.value.filter(item => item.kind === 'unconfigured').length,
+    ignored: items.value.filter(item => item.kind === 'ignored').length,
     errors: items.value.filter(item => item.kind === 'error').length,
     workspace: items.value.filter(item => item.kind === 'workspace').length,
     manual: items.value.filter(item => item.manual).length,
@@ -198,12 +225,13 @@ const filterOptions = computed(() => [
   { value: 'pending' as const, label: '待应用', count: summary.value.pending },
   { value: 'unconfigured' as const, label: '未配置', count: summary.value.unconfigured },
   { value: 'updatable' as const, label: '可更新', count: summary.value.updatable },
+  { value: 'ignored' as const, label: '已忽略', count: summary.value.ignored },
   { value: 'error' as const, label: '异常', count: summary.value.errors },
   { value: 'workspace' as const, label: '工作区', count: summary.value.workspace },
   { value: 'manual' as const, label: '手动添加', count: summary.value.manual },
 ])
 
-const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items'>> = {
+const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items' | 'collapsed' | 'collapsible'>> = {
   pending: {
     key: 'pending',
     label: '待应用',
@@ -213,6 +241,11 @@ const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items'>> = {
     key: 'updatable',
     label: '可更新',
     description: '存在比本地版本更新的 npm 版本。',
+  },
+  ignored: {
+    key: 'ignored',
+    label: '已忽略更新',
+    description: '已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。',
   },
   unconfigured: {
     key: 'unconfigured',
@@ -241,7 +274,22 @@ const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items'>> = {
   },
 }
 
-const groupOrder: ItemKind[] = ['pending', 'unconfigured', 'updatable', 'error', 'workspace', 'manual', 'installed']
+const groupOrder: ItemKind[] = ['pending', 'unconfigured', 'updatable', 'ignored', 'error', 'workspace', 'manual', 'installed']
+
+const collapseEnabled = computed(() => filter.value === 'all' && !keyword.value.trim())
+
+function getDefaultCollapsed(key: ItemKind) {
+  return key === 'unconfigured' || key === 'ignored'
+}
+
+function isGroupCollapsed(key: ItemKind) {
+  if (!collapseEnabled.value) return false
+  return getCollapsedGroups()[key] ?? getDefaultCollapsed(key)
+}
+
+function toggleGroup(key: ItemKind) {
+  getCollapsedGroups()[key] = !isGroupCollapsed(key)
+}
 
 const visibleGroups = computed<DependencyGroup[]>(() => {
   const word = keyword.value.trim().toLowerCase()
@@ -256,7 +304,12 @@ const visibleGroups = computed<DependencyGroup[]>(() => {
     buckets[item.kind].push(item)
   }
   return groupOrder
-    .map(key => ({ ...groupMeta[key], items: buckets[key] }))
+    .map(key => ({
+      ...groupMeta[key],
+      items: buckets[key],
+      collapsed: isGroupCollapsed(key),
+      collapsible: collapseEnabled.value,
+    }))
     .filter(group => group.items.length)
 })
 
@@ -268,9 +321,9 @@ ctx.action('dependencies.upgrade', {
   disabled: () => !updates.value.length,
   async action() {
     for (const name of updates.value) {
-      const versions = store.registry?.[name]
-      if (!versions) continue
-      config.value.market.override[name] = Object.keys(versions)[0]
+      const version = getLatestVersion(name, getUpdatePolicy())
+      if (!version) continue
+      config.value.market.override[name] = version
     }
   },
 })
@@ -405,6 +458,10 @@ ctx.action('dependencies.upgrade', {
     --group-accent: var(--k-color-success);
   }
 
+  &.ignored {
+    --group-accent: var(--fg3);
+  }
+
   &.unconfigured, &.workspace {
     --group-accent: var(--warning);
   }
@@ -415,6 +472,10 @@ ctx.action('dependencies.upgrade', {
 
   &.manual {
     --group-accent: var(--k-color-primary);
+  }
+
+  &.collapsed .deps-group-header {
+    margin-bottom: 0;
   }
 }
 
@@ -432,6 +493,19 @@ ctx.action('dependencies.upgrade', {
     linear-gradient(90deg, color-mix(in srgb, var(--group-accent) 8%, transparent), transparent 38%),
     color-mix(in srgb, var(--k-card-bg) 76%, transparent);
   overflow: hidden;
+
+  &.collapsible {
+    cursor: pointer;
+    user-select: none;
+
+    &:hover, &:focus-visible {
+      border-color: color-mix(in srgb, var(--group-accent) 32%, var(--k-color-border));
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--group-accent) 12%, transparent), transparent 42%),
+        color-mix(in srgb, var(--k-card-bg) 84%, transparent);
+      outline: none;
+    }
+  }
 
   &::before {
     content: '';
@@ -455,8 +529,14 @@ ctx.action('dependencies.upgrade', {
     line-height: 1.4;
   }
 
-  > span {
+  .deps-group-side {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .deps-group-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -469,6 +549,16 @@ ctx.action('dependencies.upgrade', {
     background: color-mix(in srgb, var(--group-accent) 9%, var(--k-card-bg));
     font-size: 0.8rem;
     font-weight: 600;
+  }
+
+  .deps-group-state {
+    height: 1.45rem;
+    border: 1px solid color-mix(in srgb, var(--k-color-border) 76%, transparent);
+    border-radius: 999px;
+    padding: 0 0.5rem;
+    color: var(--fg2);
+    background: color-mix(in srgb, var(--k-side-bg) 80%, transparent);
+    font-size: 0.76rem;
   }
 }
 

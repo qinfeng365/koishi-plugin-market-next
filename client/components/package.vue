@@ -33,7 +33,7 @@
         <strong>{{ currentText }}</strong>
       </div>
       <div v-if="showTargetMeta" class="dep-meta-item">
-        <span>{{ pending ? '待应用' : updatable ? '最新' : '目标' }}</span>
+        <span>{{ pending ? '待应用' : updatable ? '最新' : ignoredUpdate ? '已忽略' : '目标' }}</span>
         <strong :class="{ danger: pendingRemove }">{{ targetText }}</strong>
       </div>
       <div v-if="requestText" class="dep-meta-item">
@@ -88,6 +88,20 @@
           更新到最新
         </el-button>
         <el-button
+          v-if="showIgnoreUpdate"
+          size="small"
+          @click="ignoreUpdate"
+        >
+          忽略此次更新
+        </el-button>
+        <el-button
+          v-if="showRestoreUpdate"
+          size="small"
+          @click="restoreUpdate"
+        >
+          恢复提示
+        </el-button>
+        <el-button
           v-if="showConfigure"
           size="small"
           type="primary"
@@ -106,12 +120,12 @@
 
 import { computed, ref } from 'vue'
 import { store, useConfig, useContext } from '@koishijs/client'
-import { hasUpdate } from '../utils'
+import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateIgnored } from '../utils'
 import { analyzeVersions, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 
-type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'error' | 'workspace' | 'manual' | 'installed'
+type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'error' | 'workspace' | 'manual' | 'installed'
 
 const props = defineProps<{
   name: string
@@ -135,11 +149,22 @@ const data = computed(() => {
   return analyzeVersions(props.name, (name) => config.value.market.override[name])
 })
 
+function getUpdatePolicy() {
+  return config.value.market ?? {}
+}
+
+function getUpdateIgnored() {
+  if (!config.value.market.updateIgnored) config.value.market.updateIgnored = {}
+  return config.value.market.updateIgnored
+}
+
 const status = computed(() => getRegistryStatus(props.name))
 
 const latestVersion = computed(() => {
-  const versions = data.value
-  if (versions) return Object.keys(versions)[0]
+  const latest = getLatestVersion(props.name, getUpdatePolicy())
+  if (latest) return latest
+  const ignored = getIgnoredUpdateVersion(props.name, getUpdatePolicy())
+  if (ignored) return ignored
   return dep.value?.latest ?? local.value?.package.version
 })
 
@@ -151,7 +176,8 @@ const overrideValue = computed(() => {
 
 const pending = computed(() => overrideValue.value !== undefined)
 const pendingRemove = computed(() => pending.value && !overrideValue.value)
-const updatable = computed(() => !!hasUpdate(props.name))
+const ignoredUpdate = computed(() => isUpdateIgnored(props.name, getUpdatePolicy()))
+const updatable = computed(() => !!hasUpdate(props.name, getUpdatePolicy()))
 const unconfigured = computed(() => {
   return !!ctx.configWriter && !!local.value && isPluginPackage(props.name) && !ctx.configWriter.get(props.name)?.length
 })
@@ -180,6 +206,7 @@ const statusClass = computed<ItemKind>(() => {
   if (unconfigured.value) return 'unconfigured'
   if (status.value?.error) return 'error'
   if (!dep.value && !local.value) return 'manual'
+  if (ignoredUpdate.value) return 'ignored'
   if (updatable.value) return 'updatable'
   return props.kind ?? 'installed'
 })
@@ -193,6 +220,7 @@ const statusLabel = computed(() => {
   if (unconfigured.value) return '未配置'
   if (status.value?.error) return '版本异常'
   if (!dep.value && !local.value) return '手动添加'
+  if (ignoredUpdate.value) return '已忽略'
   if (updatable.value) return '可更新'
   return '已安装'
 })
@@ -204,6 +232,7 @@ const statusIcon = computed(() => {
   if (dep.value?.invalid || status.value?.error) return 'insecure'
   if (dep.value?.workspace) return 'file-archive'
   if (!dep.value) return 'search'
+  if (ignoredUpdate.value) return 'installed'
   if (updatable.value) return 'asc'
   return 'installed'
 })
@@ -225,6 +254,7 @@ const targetText = computed(() => {
   if (pendingRemove.value) return '移除依赖'
   if (overrideValue.value) return overrideValue.value
   if (updatable.value && latestVersion.value) return latestVersion.value
+  if (ignoredUpdate.value && latestVersion.value) return latestVersion.value
   if (dep.value?.workspace) return '保持工作区'
   if (latestVersion.value) return latestVersion.value
   return dep.value || local.value ? '等待版本数据' : '等待安装'
@@ -239,6 +269,7 @@ const detailText = computed(() => {
   if (unconfigured.value) return '本地已下载，但插件配置页还没有对应配置项。'
   if (status.value?.error) return getRegistryStatusText(props.name)
   if (!data.value && !dep.value?.workspace) return getRegistryStatusText(props.name)
+  if (ignoredUpdate.value) return getUpdateIgnoreText(props.name, getUpdatePolicy()) || '已忽略当前更新。'
   if (updatable.value && latestVersion.value) return `发现新版本 ${latestVersion.value}。`
   return ''
 })
@@ -309,7 +340,7 @@ const summaryText = computed(() => {
 })
 
 const showTargetMeta = computed(() => {
-  return pending.value || updatable.value || statusClass.value === 'manual' || statusClass.value === 'error'
+  return pending.value || updatable.value || ignoredUpdate.value || statusClass.value === 'manual' || statusClass.value === 'error'
 })
 
 const showDetailText = computed(() => {
@@ -329,16 +360,34 @@ const showQuickUpdate = computed(() => {
   return !pending.value && !unconfigured.value && updatable.value && !!latestVersion.value && !dep.value?.workspace
 })
 
+const showIgnoreUpdate = computed(() => {
+  return showQuickUpdate.value
+})
+
+const showRestoreUpdate = computed(() => {
+  return !pending.value && ignoredUpdate.value
+})
+
 const showConfigure = computed(() => {
   return !pending.value && unconfigured.value
 })
 
 const showCardActions = computed(() => {
-  return showVersionControl.value || showQuickUpdate.value || showConfigure.value || pending.value
+  return showVersionControl.value || showQuickUpdate.value || showIgnoreUpdate.value || showRestoreUpdate.value || showConfigure.value || pending.value
 })
 
 function clearOverride() {
   delete config.value.market.override[props.name]
+}
+
+function ignoreUpdate() {
+  const rule = createUpdateIgnoreRule(props.name, getUpdatePolicy())
+  if (!rule) return
+  getUpdateIgnored()[props.name] = rule
+}
+
+function restoreUpdate() {
+  delete getUpdateIgnored()[props.name]
 }
 
 function isPluginPackage(name: string) {
@@ -483,6 +532,11 @@ async function configure() {
     background: var(--k-color-primary);
   }
 
+  &.ignored::before {
+    --dep-accent: var(--fg3);
+    background: color-mix(in srgb, var(--fg3) 72%, transparent);
+  }
+
   &.installed {
     background:
       linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 7%, transparent), transparent 46%),
@@ -516,6 +570,10 @@ async function configure() {
 
   &.manual {
     --dep-accent: var(--k-color-primary);
+  }
+
+  &.ignored {
+    --dep-accent: var(--fg3);
   }
 }
 
@@ -630,6 +688,11 @@ async function configure() {
   &.unconfigured {
     color: var(--warning);
     background: color-mix(in srgb, var(--warning) 10%, transparent);
+  }
+
+  &.ignored {
+    color: var(--fg2);
+    background: color-mix(in srgb, var(--fg3) 10%, transparent);
   }
 }
 
