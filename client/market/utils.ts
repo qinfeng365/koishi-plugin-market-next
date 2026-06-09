@@ -89,9 +89,28 @@ interface Comparator {
   compare(a: SearchObject, b: SearchObject, words: string[]): number
 }
 
+function normalizeSearchText(value: unknown) {
+  return String(value ?? '').normalize('NFKC').toLowerCase()
+}
+
+function normalizePackageName(name: string) {
+  return normalizeSearchText(name).replace(/(koishi-|^@koishijs\/)plugin-/, '')
+}
+
+function getSearchTexts(data: SearchObject) {
+  const description = data.manifest?.description
+  const descriptions = typeof description === 'string'
+    ? [description]
+    : Object.values(description ?? {})
+  return [
+    ...(data.package.keywords ?? []),
+    ...descriptions,
+  ].map(normalizeSearchText)
+}
+
 function getSimilarity(data: SearchObject, word: string) {
-  word = word.replace('koishi-plugin-', '').replace('@koishijs/plugin-', '')
-  const shortname = data.package.name.replace(/(koishi-|^@koishijs\/)plugin-/, '')
+  word = normalizePackageName(word)
+  const shortname = normalizePackageName(data.package.name)
   if (shortname === word) return 1
   const tokens = shortname.split(/[-/_]/)
   // if (tokens[0] === word) return 0.5
@@ -99,10 +118,7 @@ function getSimilarity(data: SearchObject, word: string) {
   // if (tokens[0].startsWith(word)) return 0.3
   if (tokens.some(t => t.startsWith(word))) return 0.3
   if (tokens.some(t => t.includes(word))) return 0.2
-  return [
-    ...data.package.keywords,
-    ...Object.values(data.manifest?.description ?? {}),
-  ].some(keyword => keyword.includes(word)) ? 0.05 : 0
+  return getSearchTexts(data).some(keyword => keyword.includes(word)) ? 0.05 : 0
 }
 
 function getSimRating(data: SearchObject, words: string[]) {

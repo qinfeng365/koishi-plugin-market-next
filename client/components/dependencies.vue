@@ -1,9 +1,6 @@
 <template>
   <k-layout main="page-deps" menu="dependencies">
     <div class="deps-toolbar">
-      <div class="deps-search">
-        <el-input v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
-      </div>
       <div class="deps-filters">
         <button
           v-for="option in filterOptions"
@@ -14,6 +11,9 @@
           <span>{{ option.label }}</span>
           <strong>{{ option.count }}</strong>
         </button>
+      </div>
+      <div class="deps-search">
+        <el-input ref="searchInput" v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
       </div>
       <div class="deps-summary">
         <span>依赖 {{ summary.total }}</span>
@@ -28,7 +28,7 @@
     <el-scrollbar class="body-container">
       <div class="deps-content" :class="{ pending: summary.pending }">
         <template v-if="visibleGroups.length">
-          <section v-for="group in visibleGroups" :key="group.key" class="deps-group">
+          <section v-for="group in visibleGroups" :key="group.key" :class="['deps-group', group.key]">
             <header class="deps-group-header">
               <div>
                 <h2>{{ group.label }}</h2>
@@ -67,8 +67,8 @@
 
 <script lang="ts" setup>
 
-import { computed, onBeforeUnmount, ref, watch, WatchStopHandle } from 'vue'
-import { store, useConfig, useContext } from '@koishijs/client'
+import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
+import { router, store, useConfig, useContext } from '@koishijs/client'
 import { hasUpdate } from '../utils'
 import { addManual, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
@@ -95,6 +95,7 @@ const config = useConfig()
 const ctx = useContext()
 const keyword = ref('')
 const filter = ref<FilterKey>('all')
+const searchInput = ref<{ focus?: () => void }>()
 
 function getOverride() {
   return config.value.market?.override ?? {}
@@ -127,7 +128,22 @@ watch(() => store.market?.registry, (registry) => {
   }, { immediate: true, deep: true })
 }, { immediate: true })
 
-onBeforeUnmount(() => dispose?.())
+onMounted(() => {
+  window.addEventListener('keydown', onSearchShortcut)
+})
+
+onBeforeUnmount(() => {
+  dispose?.()
+  window.removeEventListener('keydown', onSearchShortcut)
+})
+
+function onSearchShortcut(event: KeyboardEvent) {
+  if (router.currentRoute.value?.path !== '/dependencies') return
+  if (event.key.toLowerCase() !== 'k') return
+  if (!event.ctrlKey && !event.metaKey) return
+  event.preventDefault()
+  searchInput.value?.focus?.()
+}
 
 function classify(name: string): ItemKind {
   const dep = store.dependencies?.[name]
@@ -281,19 +297,24 @@ ctx.action('dependencies.upgrade', {
 .deps-toolbar {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: minmax(220px, 320px) 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
   gap: 0.75rem 1rem;
   padding: 1rem var(--card-margin);
   border-bottom: 1px solid var(--k-color-border);
-  background: var(--k-card-bg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--k-side-bg) 56%, transparent), transparent),
+    var(--k-card-bg);
 }
 
 .deps-search {
+  justify-self: end;
+  width: 100%;
   min-width: 0;
 }
 
 .deps-filters {
   display: flex;
+  min-width: 0;
   gap: 0.5rem;
   align-items: center;
   overflow-x: auto;
@@ -310,7 +331,7 @@ ctx.action('dependencies.upgrade', {
   border-radius: 6px;
   padding: 0 0.7rem;
   color: var(--fg2);
-  background: transparent;
+  background: color-mix(in srgb, var(--k-card-bg) 76%, transparent);
   cursor: pointer;
   white-space: nowrap;
   transition: 0.2s ease;
@@ -323,7 +344,9 @@ ctx.action('dependencies.upgrade', {
   &.active {
     color: var(--k-color-primary);
     border-color: var(--k-color-primary);
-    background: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 12%, transparent), transparent),
+      color-mix(in srgb, var(--k-color-primary) 8%, var(--k-card-bg));
   }
 }
 
@@ -339,9 +362,10 @@ ctx.action('dependencies.upgrade', {
     display: inline-flex;
     align-items: center;
     height: 1.5rem;
+    border: 1px solid color-mix(in srgb, var(--k-color-border) 68%, transparent);
     border-radius: 6px;
     padding: 0 0.5rem;
-    background: var(--k-side-bg);
+    background: color-mix(in srgb, var(--k-side-bg) 84%, transparent);
   }
 
   .danger {
@@ -358,7 +382,7 @@ ctx.action('dependencies.upgrade', {
 }
 
 .deps-content {
-  padding: 0.85rem var(--card-margin);
+  padding: 0.75rem var(--card-margin);
   padding-bottom: var(--card-margin);
 
   &.pending {
@@ -367,19 +391,59 @@ ctx.action('dependencies.upgrade', {
 }
 
 .deps-group + .deps-group {
-  margin-top: 1.15rem;
+  margin-top: 1rem;
+}
+
+.deps-group {
+  --group-accent: var(--fg3);
+
+  &.pending {
+    --group-accent: var(--k-color-primary);
+  }
+
+  &.updatable {
+    --group-accent: var(--k-color-success);
+  }
+
+  &.unconfigured, &.workspace {
+    --group-accent: var(--warning);
+  }
+
+  &.error {
+    --group-accent: var(--danger);
+  }
+
+  &.manual {
+    --group-accent: var(--k-color-primary);
+  }
 }
 
 .deps-group-header {
+  position: relative;
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 1rem;
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
+  border-radius: 8px;
+  padding: 0.46rem 0.62rem 0.5rem 0.78rem;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--group-accent) 8%, transparent), transparent 38%),
+    color-mix(in srgb, var(--k-card-bg) 76%, transparent);
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--group-accent);
+  }
 
   h2 {
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.96rem;
     line-height: 1.4;
     font-weight: 600;
   }
@@ -387,20 +451,31 @@ ctx.action('dependencies.upgrade', {
   p {
     margin: 0.125rem 0 0;
     color: var(--fg2);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     line-height: 1.4;
   }
 
   > span {
-    color: var(--fg2);
-    font-size: 0.875rem;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.45rem;
+    border: 1px solid color-mix(in srgb, var(--group-accent) 24%, var(--k-color-border));
+    border-radius: 999px;
+    padding: 0 0.45rem;
+    color: var(--group-accent);
+    background: color-mix(in srgb, var(--group-accent) 9%, var(--k-card-bg));
+    font-size: 0.8rem;
+    font-weight: 600;
   }
 }
 
 .deps-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 0.5rem;
 }
 
 .deps-apply-bar {

@@ -1,35 +1,70 @@
 <template>
-  <article :class="['dep-package-card', statusClass]">
-    <div class="dep-card-main">
-      <div class="dep-card-header">
-        <div class="dep-title">
+  <article :class="['dep-package-card', statusClass]" :style="cardStyle">
+    <div class="dep-status-mark" aria-hidden="true">
+      <market-icon :name="markIcon"></market-icon>
+    </div>
+    <div class="dep-card-header">
+      <div class="dep-title">
+        <div class="dep-title-line">
           <h3 :title="name">{{ displayName }}</h3>
-          <span :class="['dep-badge', statusClass]">
-            <market-icon :name="statusIcon"></market-icon>
+          <span v-if="showIdentityPill" class="dep-kind-pill">
+            <market-icon :name="identityIcon"></market-icon>
+            {{ identityText }}
+          </span>
+          <span v-if="showStatusBadge" :class="['dep-badge', statusClass]">
+            <market-icon :name="badgeIcon"></market-icon>
             {{ statusLabel }}
           </span>
         </div>
-        <el-button v-if="canModify" size="small" @click="active = name">修改</el-button>
+        <span class="dep-full-name" :title="name">{{ name }}</span>
       </div>
+      <el-button v-if="showEditToggle" size="small" @click="editing = !editing">
+        {{ editing ? '收起' : '修改' }}
+      </el-button>
+    </div>
 
-      <p :class="['dep-status-text', { danger: statusClass === 'error' }]">{{ detailText }}</p>
+    <p v-if="summaryText" class="dep-summary-text" :title="summaryText">
+      {{ summaryText }}
+    </p>
 
-      <div class="dep-versions">
-        <div class="dep-version-cell">
-          <span>当前</span>
-          <strong>{{ currentText }}</strong>
-        </div>
-        <div class="dep-version-arrow" aria-hidden="true">→</div>
-        <div class="dep-version-cell">
-          <span>{{ pending ? '待应用' : '目标' }}</span>
-          <strong :class="{ danger: pendingRemove }">{{ targetText }}</strong>
-        </div>
+    <div class="dep-meta-row">
+      <div class="dep-meta-item">
+        <span>当前</span>
+        <strong>{{ currentText }}</strong>
+      </div>
+      <div v-if="showTargetMeta" class="dep-meta-item">
+        <span>{{ pending ? '待应用' : updatable ? '最新' : '目标' }}</span>
+        <strong :class="{ danger: pendingRemove }">{{ targetText }}</strong>
+      </div>
+      <div v-if="requestText" class="dep-meta-item">
+        <span>范围</span>
+        <strong>{{ requestText }}</strong>
+      </div>
+      <div v-if="showIdentityMeta" class="dep-meta-item dep-meta-kind">
+        <span>类型</span>
+        <strong>{{ identityText }}</strong>
+      </div>
+      <div v-if="showConfigMeta" class="dep-meta-item">
+        <span>配置</span>
+        <strong :class="{ warning: unconfigured }">{{ configText }}</strong>
+      </div>
+      <div v-if="showSourceMeta" class="dep-meta-item">
+        <span>来源</span>
+        <strong>{{ sourceText }}</strong>
+      </div>
+      <div v-if="versionSourceText" class="dep-meta-item">
+        <span>版本源</span>
+        <strong>{{ versionSourceText }}</strong>
       </div>
     </div>
 
-    <div class="dep-card-actions">
+    <p v-if="showDetailText" :class="['dep-status-text', { danger: statusClass === 'error' }]">
+      {{ detailText }}
+    </p>
+
+    <div v-if="showCardActions" class="dep-card-actions">
       <el-select
-        v-if="data"
+        v-if="showVersionControl && data"
         v-model="selectedVersion"
         size="small"
         :class="{ pending }"
@@ -41,7 +76,7 @@
           <span :class="[result, 'theme-color', 'dot-hint']"></span>
         </el-option>
       </el-select>
-      <span v-else class="dep-muted">{{ compactStatusText }}</span>
+      <span v-else-if="showVersionControl" class="dep-muted">{{ compactStatusText }}</span>
 
       <div class="dep-card-buttons">
         <el-button
@@ -71,8 +106,9 @@
 
 import { computed, ref } from 'vue'
 import { store, useConfig, useContext } from '@koishijs/client'
-import { active, hasUpdate } from '../utils'
+import { hasUpdate } from '../utils'
 import { analyzeVersions, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText } from './utils'
+import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 
 type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'error' | 'workspace' | 'manual' | 'installed'
@@ -86,9 +122,11 @@ const removeValue = '__market_next_remove__'
 const config = useConfig()
 const ctx = useContext()
 const configuring = ref(false)
+const editing = ref(false)
 
 const dep = computed(() => store.dependencies?.[props.name])
 const local = computed(() => store.packages?.[props.name])
+const marketData = computed(() => store.market?.data?.[props.name])
 
 const displayName = computed(() => formatPackageDisplayName(props.name))
 
@@ -170,6 +208,13 @@ const statusIcon = computed(() => {
   return 'installed'
 })
 
+const badgeIcon = computed(() => statusIcon.value)
+
+const markIcon = computed(() => {
+  if (statusClass.value === 'installed') return identityIcon.value
+  return statusIcon.value
+})
+
 const currentText = computed(() => {
   if (!dep.value) return local.value?.package.version ?? '未安装'
   if (dep.value.workspace) return dep.value.resolved ? `${dep.value.resolved} / 工作区` : '工作区'
@@ -195,7 +240,7 @@ const detailText = computed(() => {
   if (status.value?.error) return getRegistryStatusText(props.name)
   if (!data.value && !dep.value?.workspace) return getRegistryStatusText(props.name)
   if (updatable.value && latestVersion.value) return `发现新版本 ${latestVersion.value}。`
-  return '当前没有需要处理的版本变更。'
+  return ''
 })
 
 const compactStatusText = computed(() => {
@@ -204,8 +249,80 @@ const compactStatusText = computed(() => {
   return status.value?.loading || !status.value ? '正在获取版本数据' : '暂无版本数据'
 })
 
-const canModify = computed(() => {
-  return !!(dep.value?.workspace || data.value)
+const configText = computed(() => {
+  if (!isPluginPackage(props.name)) return '非插件'
+  if (!ctx.configWriter) return '未知'
+  if (!local.value) return pending.value ? '待安装' : '未加载'
+  return unconfigured.value ? '未配置' : '已配置'
+})
+
+const sourceText = computed(() => {
+  if (dep.value?.workspace || local.value?.workspace) return '工作区'
+  if (pending.value && !dep.value) return '待安装'
+  if (!dep.value && local.value) return '本地'
+  if (!dep.value) return '手动'
+  return 'package.json'
+})
+
+const requestText = computed(() => {
+  if (!dep.value?.request) return ''
+  if (dep.value.request === dep.value.resolved) return ''
+  return dep.value.request
+})
+
+const versionSourceText = computed(() => {
+  if (statusClass.value === 'installed' && !editing.value) return ''
+  if (dep.value?.workspace) return ''
+  if (status.value?.endpoint) return formatEndpoint(status.value.endpoint)
+  if (status.value?.loading) return '获取中'
+  if (!data.value && dep.value) return '等待'
+  return ''
+})
+
+const identity = computed(() => resolveIdentity(props.name))
+
+const identityText = computed(() => identity.value.label)
+const identityIcon = computed(() => identity.value.icon)
+
+const cardStyle = computed(() => {
+  if (statusClass.value !== 'installed') return {}
+  return {
+    '--dep-accent': identity.value.color,
+  }
+})
+
+const showIdentityPill = computed(() => statusClass.value === 'installed')
+
+const showIdentityMeta = computed(() => statusClass.value !== 'installed')
+
+const showStatusBadge = computed(() => statusClass.value !== 'installed')
+
+const showConfigMeta = computed(() => statusClass.value !== 'installed' || configText.value !== '已配置')
+
+const showSourceMeta = computed(() => statusClass.value !== 'installed' || sourceText.value !== 'package.json')
+
+const summaryText = computed(() => {
+  if (statusClass.value !== 'installed') return ''
+  return pickDescription(marketData.value?.manifest?.description)
+    || pickDescription(marketData.value?.package?.description)
+    || pickDescription(local.value?.package?.description)
+})
+
+const showTargetMeta = computed(() => {
+  return pending.value || updatable.value || statusClass.value === 'manual' || statusClass.value === 'error'
+})
+
+const showDetailText = computed(() => {
+  return !!detailText.value && statusClass.value !== 'installed'
+})
+
+const showVersionControl = computed(() => {
+  if (!data.value && !status.value?.error) return false
+  return editing.value || pending.value || updatable.value || statusClass.value === 'error' || statusClass.value === 'manual'
+})
+
+const showEditToggle = computed(() => {
+  return !!data.value && !pending.value && !updatable.value && statusClass.value !== 'error' && statusClass.value !== 'manual'
 })
 
 const showQuickUpdate = computed(() => {
@@ -214,6 +331,10 @@ const showQuickUpdate = computed(() => {
 
 const showConfigure = computed(() => {
   return !pending.value && unconfigured.value
+})
+
+const showCardActions = computed(() => {
+  return showVersionControl.value || showQuickUpdate.value || showConfigure.value || pending.value
 })
 
 function clearOverride() {
@@ -234,6 +355,62 @@ function formatPackageDisplayName(name: string) {
   return name
 }
 
+function pickDescription(value: unknown) {
+  if (typeof value === 'string') return value.trim()
+  if (!value || typeof value !== 'object') return ''
+  const object = value as Record<string, unknown>
+  for (const key of ['zh-CN', 'zh', 'en-US', 'en']) {
+    const text = object[key]
+    if (typeof text === 'string' && text.trim()) return text.trim()
+  }
+  const fallback = Object.values(object).find(item => typeof item === 'string' && item.trim())
+  return typeof fallback === 'string' ? fallback.trim() : ''
+}
+
+function resolveIdentity(name: string) {
+  const data = store.market?.data?.[name]
+  const category = resolveCategory(data?.category)
+  const normalized = name.toLowerCase()
+  if (/adapter[-/]/.test(normalized) || normalized.includes('adapter-')) return identityMap.adapter
+  if (/database|sqlite|mysql|mongo|postgres|redis/.test(normalized)) return identityMap.database
+  if (/console|config|insight|market|status|telemetry/.test(normalized)) return identityMap.webui
+  if (/loader|server|koishi$|core|sandbox/.test(normalized)) return identityMap.core
+  if (/command|schedule|cron|help|echo|logger|locales/.test(normalized)) return identityMap.general
+  if (/chatluna|openai|ai|llm|gpt|claude|gemini/.test(normalized)) return identityMap.ai
+  if (/image|canvas|puppeteer|screenshot/.test(normalized)) return identityMap.image
+  if (/rss|media|music|video|bilibili|news/.test(normalized)) return identityMap.media
+  if (/game|chess|mahjong/.test(normalized)) return identityMap.game
+  return identityMap[category] ?? identityMap.other
+}
+
+const identityMap: Record<string, { label: string, icon: string, color: string }> = {
+  adapter: { label: '适配器', icon: 'solid:adapter', color: '#4d8df7' },
+  database: { label: '数据库', icon: 'solid:tool', color: '#21a67a' },
+  webui: { label: '控制台', icon: 'solid:webui', color: '#8b6cf6' },
+  core: { label: '核心', icon: 'solid:core', color: '#d89b32' },
+  general: { label: '通用', icon: 'solid:general', color: '#6b8cff' },
+  extension: { label: '扩展', icon: 'solid:extension', color: '#5c9ded' },
+  manage: { label: '管理', icon: 'solid:manage', color: '#26a0a7' },
+  preset: { label: '预设', icon: 'solid:preset', color: '#9b74df' },
+  image: { label: '图片', icon: 'solid:image', color: '#d66aa8' },
+  media: { label: '资讯', icon: 'solid:media', color: '#3e9fbb' },
+  tool: { label: '工具', icon: 'solid:tool', color: '#54966f' },
+  life: { label: '生活', icon: 'solid:life', color: '#8da44b' },
+  ai: { label: 'AI', icon: 'solid:ai', color: '#b66be8' },
+  meme: { label: '趣味', icon: 'solid:meme', color: '#d98445' },
+  game: { label: '游戏', icon: 'solid:game', color: '#df6b5f' },
+  gametool: { label: '游戏辅助', icon: 'solid:gametool', color: '#c77745' },
+  other: { label: '插件', icon: 'solid:other', color: '#778294' },
+}
+
+function formatEndpoint(endpoint: string) {
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return endpoint
+  }
+}
+
 async function configure() {
   configuring.value = true
   try {
@@ -248,23 +425,24 @@ async function configure() {
 <style lang="scss" scoped>
 
 .dep-package-card {
+  --dep-accent: var(--fg3);
+  --dep-accent-soft: color-mix(in srgb, var(--dep-accent) 8%, transparent);
+  --dep-accent-border: color-mix(in srgb, var(--dep-accent) 26%, var(--k-color-border));
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 8.75rem;
-  border: 1px solid var(--k-color-border);
+  min-height: 6.15rem;
+  border: 1px solid color-mix(in srgb, var(--k-color-border) 86%, transparent);
   border-radius: 8px;
-  padding: 0.7rem 0.82rem 0.78rem;
-  background: var(--k-card-bg);
-  box-shadow: var(--k-card-shadow);
+  padding: 0.68rem 0.76rem 0.72rem 3.25rem;
+  background:
+    linear-gradient(90deg, var(--dep-accent-soft), transparent 42%),
+    var(--k-card-bg);
   overflow: hidden;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
 
   &:hover {
-    border-color: color-mix(in srgb, currentColor 18%, var(--k-color-border));
-    box-shadow: var(--k-card-shadow), 0 6px 18px rgb(0 0 0 / 7%);
-    transform: translateY(-1px);
+    border-color: var(--dep-accent-border);
   }
 
   &::before {
@@ -272,47 +450,110 @@ async function configure() {
     position: absolute;
     inset: 0 auto 0 0;
     width: 3px;
-    background: var(--fg3);
+    background: transparent;
   }
 
   &.pending::before {
+    --dep-accent: var(--k-color-primary);
     background: var(--k-color-primary);
   }
 
   &.updatable::before {
+    --dep-accent: var(--k-color-success);
     background: var(--k-color-success);
   }
 
   &.error::before {
+    --dep-accent: var(--danger);
     background: var(--danger);
   }
 
   &.workspace::before {
+    --dep-accent: var(--warning);
     background: var(--warning);
   }
 
   &.unconfigured::before {
+    --dep-accent: var(--warning);
     background: var(--warning);
+  }
+
+  &.manual::before {
+    --dep-accent: var(--k-color-primary);
+    background: var(--k-color-primary);
+  }
+
+  &.installed {
+    background:
+      linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 7%, transparent), transparent 46%),
+      var(--k-card-bg);
+
+    &::before {
+      background: color-mix(in srgb, var(--dep-accent) 72%, transparent);
+    }
+  }
+
+  &.pending {
+    --dep-accent: var(--k-color-primary);
+  }
+
+  &.updatable {
+    --dep-accent: var(--k-color-success);
+  }
+
+  &.error {
+    --dep-accent: var(--danger);
+    border-color: var(--dep-accent-border);
+  }
+
+  &.unconfigured {
+    --dep-accent: var(--warning);
+  }
+
+  &.workspace {
+    --dep-accent: var(--warning);
+  }
+
+  &.manual {
+    --dep-accent: var(--k-color-primary);
   }
 }
 
-.dep-card-main {
-  min-width: 0;
+.dep-status-mark {
+  position: absolute;
+  left: 0.85rem;
+  top: 0.78rem;
+  display: grid;
+  place-items: center;
+  width: 1.72rem;
+  height: 1.72rem;
+  border: 1px solid color-mix(in srgb, var(--dep-accent) 18%, var(--k-color-border));
+  border-radius: 8px;
+  color: var(--dep-accent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dep-accent) 11%, transparent), transparent),
+    var(--k-side-bg);
+
+  .market-icon {
+    width: 0.92rem;
+    height: 0.92rem;
+  }
 }
 
 .dep-card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.55rem;
+  gap: 0.6rem;
 }
 
 .dep-title {
+  flex: 1 1 auto;
   min-width: 0;
 
   h3 {
     margin: 0;
-    font-size: 0.93rem;
+    font-size: 0.92rem;
     line-height: 1.3;
     font-weight: 600;
     overflow: hidden;
@@ -321,15 +562,43 @@ async function configure() {
   }
 }
 
+.dep-title-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.dep-full-name {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--fg3);
+  font-size: 0.73rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dep-summary-text {
+  margin: 0.38rem 0 0;
+  color: var(--fg2);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dep-badge {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.25rem;
-  height: 1.2rem;
-  margin-top: 0.25rem;
+  height: 1.15rem;
   border-radius: 6px;
-  padding: 0 0.38rem;
-  font-size: 0.72rem;
+  padding: 0 0.36rem;
+  font-size: 0.7rem;
   color: var(--fg2);
   background: var(--k-side-bg);
 
@@ -341,14 +610,17 @@ async function configure() {
 
   &.pending {
     color: var(--k-color-primary);
+    background: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
   }
 
   &.updatable {
     color: var(--k-color-success);
+    background: color-mix(in srgb, var(--k-color-success) 10%, transparent);
   }
 
   &.error {
     color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 9%, transparent);
   }
 
   &.workspace {
@@ -357,14 +629,75 @@ async function configure() {
 
   &.unconfigured {
     color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+  }
+}
+
+.dep-kind-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.24rem;
+  height: 1.16rem;
+  border: 1px solid color-mix(in srgb, var(--dep-accent) 22%, var(--k-color-border));
+  border-radius: 6px;
+  padding: 0 0.38rem;
+  color: var(--dep-accent);
+  background: color-mix(in srgb, var(--dep-accent) 9%, transparent);
+  font-size: 0.7rem;
+  font-weight: 500;
+
+  .market-icon {
+    width: 0.78rem;
+    height: 0.78rem;
+    flex: 0 0 auto;
+  }
+}
+
+.dep-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.45rem;
+  margin-top: 0.5rem;
+}
+
+.dep-meta-item {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
+  border-radius: 6px;
+  padding: 0.16rem 0.42rem;
+  background: color-mix(in srgb, var(--k-side-bg) 88%, transparent);
+  font-size: 0.76rem;
+  line-height: 1.35;
+
+  span {
+    flex: 0 0 auto;
+    color: var(--fg3);
+  }
+
+  strong {
+    min-width: 0;
+    color: var(--fg1);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+
+    &.danger {
+      color: var(--danger);
+    }
+
+    &.warning {
+      color: var(--warning);
+    }
   }
 }
 
 .dep-status-text {
-  min-height: 1.35em;
-  margin: 0.45rem 0 0;
+  margin: 0.42rem 0 0;
   color: var(--fg2);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
 
@@ -373,57 +706,14 @@ async function configure() {
   }
 }
 
-.dep-versions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 0.42rem;
-  align-items: stretch;
-  margin-top: 0.55rem;
-
-  .dep-version-cell {
-    min-width: 0;
-    border-radius: 6px;
-    padding: 0.42rem 0.5rem;
-    background: var(--k-side-bg);
-  }
-
-  .dep-version-arrow {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.15rem;
-    color: var(--fg3);
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-
-  span {
-    display: block;
-    color: var(--fg2);
-    font-size: 0.7rem;
-    line-height: 1.3;
-  }
-
-  strong {
-    display: block;
-    margin-top: 0.12rem;
-    font-size: 0.84rem;
-    line-height: 1.28;
-    font-weight: 600;
-    overflow-wrap: anywhere;
-
-    &.danger {
-      color: var(--danger);
-    }
-  }
-}
-
 .dep-card-actions {
   display: flex;
-  gap: 0.45rem;
+  gap: 0.5rem;
   align-items: center;
   justify-content: space-between;
-  margin-top: 0.62rem;
+  margin-top: 0.56rem;
+  border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 76%, transparent);
+  padding-top: 0.52rem;
 
   .el-select {
     flex: 1 1 auto;
@@ -434,7 +724,7 @@ async function configure() {
 .dep-card-buttons {
   display: flex;
   flex: 0 0 auto;
-  gap: 0.35rem;
+  gap: 0.38rem;
 }
 
 .dep-muted {
@@ -445,6 +735,14 @@ async function configure() {
 }
 
 @media (max-width: 420px) {
+  .dep-package-card {
+    padding-left: 0.76rem;
+  }
+
+  .dep-status-mark {
+    display: none;
+  }
+
   .dep-card-header, .dep-card-actions {
     align-items: stretch;
     flex-direction: column;
@@ -452,10 +750,6 @@ async function configure() {
 
   .dep-card-buttons {
     justify-content: flex-end;
-  }
-
-  .dep-versions {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   }
 }
 

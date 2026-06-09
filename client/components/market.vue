@@ -33,7 +33,7 @@
         @debug="updateClientDebug"
         @update:page="scrollToTop">
         <template #header="{ hasFilter, all, packages }">
-          <market-search v-model="words"></market-search>
+          <market-search ref="searchBox" v-model="words"></market-search>
           <div class="market-hint text-center">
             共搜索到 {{ hasFilter ? packages.length + ' / ' : '' }}{{ all.length }} 个插件。
           </div>
@@ -125,6 +125,7 @@ provide(kConfig, {
 })
 
 const root = ref()
+const searchBox = ref<{ focus?: () => void }>()
 const config = useConfig()
 
 const words = ref<string[]>([''])
@@ -229,9 +230,23 @@ watch(marketLoading, (loading) => {
   if (loading) scheduleLoadingWarning()
 }, { immediate: true })
 
-onMounted(scheduleLoadingWarning)
+onMounted(() => {
+  scheduleLoadingWarning()
+  window.addEventListener('keydown', onSearchShortcut)
+})
 
-onUnmounted(() => clearTimeout(loadingTimer))
+onUnmounted(() => {
+  clearTimeout(loadingTimer)
+  window.removeEventListener('keydown', onSearchShortcut)
+})
+
+function onSearchShortcut(event: KeyboardEvent) {
+  if (router.currentRoute.value?.path !== '/market') return
+  if (event.key.toLowerCase() !== 'k') return
+  if (!event.ctrlKey && !event.metaKey) return
+  event.preventDefault()
+  searchBox.value?.focus?.()
+}
 
 function scheduleLoadingWarning() {
   clearTimeout(loadingTimer)

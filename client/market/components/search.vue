@@ -93,6 +93,12 @@ function onClear() {
   emit('update:modelValue', words.value)
 }
 
+function focus() {
+  input.value?.focus()
+}
+
+defineExpose({ focus })
+
 const { t, setLocaleMessage } = useI18n({
   messages: {
     'zh-CN': zhCN,
