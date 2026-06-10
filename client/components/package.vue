@@ -2,7 +2,7 @@
   <article
     :class="['dep-package-card', statusClass, { expandable: canExpandCard, expanded: editing }]"
     :style="cardStyle"
-    @click="openCardActions"
+    @click="toggleCardActions"
   >
     <div class="dep-status-mark" aria-hidden="true">
       <market-icon :name="markIcon"></market-icon>
@@ -452,9 +452,9 @@ const showCardActions = computed(() => {
   return showVersionControl.value || showQuickUpdate.value || showIgnoreUpdate.value || showRestoreUpdate.value || showConfigure.value || showRemoveDependency.value || pending.value
 })
 
-function openCardActions() {
+function toggleCardActions() {
   if (!canExpandCard.value) return
-  editing.value = true
+  editing.value = !editing.value
 }
 
 function clearOverride() {

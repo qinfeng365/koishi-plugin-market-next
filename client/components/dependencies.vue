@@ -11,6 +11,13 @@
           <span>{{ option.label }}</span>
           <strong>{{ option.count }}</strong>
         </button>
+        <button
+          :class="['deps-filter', 'toggle', { active: prereleaseBlocked }]"
+          @click="togglePrereleaseFilter"
+        >
+          <span>屏蔽预览版</span>
+          <strong>{{ prereleaseBlocked ? '开' : '关' }}</strong>
+        </button>
       </div>
       <div class="deps-search">
         <el-input ref="searchInput" v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
@@ -202,6 +209,8 @@ const items = computed<DependencyItem[]>(() => names.value.map(name => ({
 
 const updates = computed(() => items.value.filter(item => item.kind === 'updatable').map(item => item.name))
 
+const prereleaseBlocked = computed(() => !!config.value.market?.updateIgnorePrerelease)
+
 const summary = computed(() => {
   return {
     total: items.value.length,
@@ -315,6 +324,10 @@ const visibleGroups = computed<DependencyGroup[]>(() => {
 
 function clearChanges() {
   config.value.market.override = {}
+}
+
+function togglePrereleaseFilter() {
+  config.value.market.updateIgnorePrerelease = !prereleaseBlocked.value
 }
 
 ctx.action('dependencies.upgrade', {
