@@ -34,6 +34,8 @@ export interface Config {
     search?: MarketProvider.Config;
     chatlunaTool?: boolean;
     frontendMode?: 'performance' | 'polished';
+    depsLayout?: 'grid' | 'list';
+    marketLayout?: 'grid' | 'list';
 }
 export declare const Config: Schema<Config>;
 export declare function apply(ctx: Context, config?: Config): void;

@@ -5,6 +5,7 @@ import { gt, prerelease, valid } from 'semver'
 export const active = ref('')
 
 export type FrontendMode = 'performance' | 'polished'
+export type LayoutMode = 'grid' | 'list'
 
 export interface UpdateIgnoreRule {
   version?: string
@@ -33,6 +34,20 @@ export function getFrontendMode(config?: { market?: { frontendMode?: FrontendMod
   if (pluginConfig?.frontendMode === 'polished') return 'polished'
   if (pluginConfig?.frontendMode === 'performance') return 'performance'
   return config?.market?.frontendMode === 'polished' ? 'polished' : 'performance'
+}
+
+export function getDepsLayout(config?: { market?: { depsLayout?: LayoutMode } }): LayoutMode {
+  const pluginConfig = findMarketNextConfig((store as any).config?.plugins)
+  if (pluginConfig?.depsLayout === 'list') return 'list'
+  if (pluginConfig?.depsLayout === 'grid') return 'grid'
+  return config?.market?.depsLayout === 'list' ? 'list' : 'grid'
+}
+
+export function getMarketLayout(config?: { market?: { marketLayout?: LayoutMode } }): LayoutMode {
+  const pluginConfig = findMarketNextConfig((store as any).config?.plugins)
+  if (pluginConfig?.marketLayout === 'list') return 'list'
+  if (pluginConfig?.marketLayout === 'grid') return 'grid'
+  return config?.market?.marketLayout === 'list' ? 'list' : 'grid'
 }
 
 export function createUpdateIgnoreRule(name: string, policy?: UpdatePolicy, options: UpdateIgnoreOptions = {}): UpdateIgnoreRule | undefined {

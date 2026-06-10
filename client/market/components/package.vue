@@ -1,5 +1,5 @@
 <template>
-  <a class="market-package flex flex-col gap-3" target="_blank" :href="homepage">
+  <a :class="['market-package flex gap-3', config.layout === 'list' ? 'list-mode flex-row' : 'flex-col']" target="_blank" :href="homepage">
     <div class="header flex flex-row gap-4">
       <div :class="['left', 'shrink-0', 'flex', 'flex-row', 'justify-center', 'items-center', 'cat-' + resolveCategory(data.category)]">
         <market-icon :name="'outline:' + resolveCategory(data.category)"></market-icon>
@@ -349,6 +349,39 @@ if (import.meta.hot) {
         vertical-align: middle;
       }
     }
+  }
+}
+
+.market-package.list-mode {
+  max-width: 100%;
+  height: auto;
+  min-height: 4rem;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  contain-intrinsic-size: 4rem;
+
+  .header {
+    flex: 0 0 auto;
+    gap: 0.75rem;
+
+    .main {
+      display: none;
+    }
+  }
+
+  .desc {
+    flex: 1 1 auto;
+    -webkit-line-clamp: 1;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  .footer {
+    flex: 0 0 auto;
+    height: auto;
+    margin-bottom: 0;
+    font-size: 12px;
+    white-space: nowrap;
   }
 }
 

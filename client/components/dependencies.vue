@@ -1,37 +1,33 @@
 <template>
-  <k-layout main="page-deps" :class="modeClass" menu="dependencies">
+  <k-layout main="page-deps" :class="[modeClass, layoutClass]" menu="dependencies">
     <div class="deps-toolbar">
-      <div class="deps-filters">
-        <button
-          v-for="option in filterOptions"
-          :key="option.value"
-          :class="['deps-filter', { active: filter === option.value }]"
-          @click="filter = option.value"
-        >
-          <span>{{ option.label }}</span>
-          <strong>{{ option.count }}</strong>
-        </button>
-      </div>
-      <div class="deps-search-tools">
+      <div class="deps-toolbar-row">
+        <el-select v-model="filter" size="small" class="deps-filter-select">
+          <el-option
+            v-for="option in filterOptions"
+            :key="option.value"
+            :value="option.value"
+            :label="option.label + (option.count ? ' (' + option.count + ')' : '')"
+          ></el-option>
+        </el-select>
         <button
           :class="['deps-filter', 'deps-prerelease-toggle', { active: prereleaseBlocked }]"
           @click="togglePrereleaseFilter"
         >
-          <span>屏蔽预览版</span>
-          <strong>{{ prereleaseBlocked ? '开' : '关' }}</strong>
+          <market-icon name="tag"></market-icon>
+          <span>屏蔽预览</span>
         </button>
         <div class="deps-search">
           <el-input ref="searchInput" v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
         </div>
-      </div>
-      <div class="deps-summary">
-        <span>依赖 {{ summary.total }}</span>
-        <span>可更新 {{ summary.updatable }}</span>
-        <span>已忽略 {{ summary.ignored }}</span>
-        <span>待应用 {{ summary.pending }}</span>
-        <span :class="{ warning: summary.unconfigured }">未配置 {{ summary.unconfigured }}</span>
-        <span :class="{ danger: summary.errors }">异常 {{ summary.errors }}</span>
-        <span v-if="refreshing" class="loading">正在获取版本</span>
+        <div class="deps-summary">
+          <span v-if="summary.pending" class="primary">待 {{ summary.pending }}</span>
+          <span v-if="summary.updatable" class="success">更 {{ summary.updatable }}</span>
+          <span v-if="summary.unconfigured" class="warning">配 {{ summary.unconfigured }}</span>
+          <span v-if="summary.errors" class="danger">误 {{ summary.errors }}</span>
+          <span v-if="summary.invalid" class="warning">无效 {{ summary.invalid }}</span>
+          <span v-if="refreshing" class="loading">获取中</span>
+        </div>
       </div>
     </div>
 
@@ -54,9 +50,11 @@
               </div>
               <div class="deps-group-side">
                 <span class="deps-group-count">{{ group.items.length }}</span>
-                <span v-if="group.collapsible" class="deps-group-state">
-                  {{ group.collapsed ? '展开' : '折叠' }}
-                </span>
+                <market-icon
+                  v-if="group.collapsible"
+                  :class="['deps-group-chevron', { collapsed: group.collapsed }]"
+                  name="asc"
+                ></market-icon>
               </div>
             </header>
             <div v-if="!group.collapsed" class="deps-grid">
@@ -92,13 +90,13 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { router, store, useConfig, useContext } from '@koishijs/client'
-import { getFrontendMode, getLatestVersion, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
+import { getFrontendMode, getDepsLayout, getLatestVersion, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
 import { addManual, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
 
-type FilterKey = 'all' | 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'error' | 'workspace' | 'manual'
-type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'error' | 'workspace' | 'manual' | 'installed'
+type FilterKey = 'all' | 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual'
+type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
 
 interface DependencyItem {
   name: string
@@ -122,7 +120,9 @@ const keyword = ref('')
 const filter = ref<FilterKey>('all')
 const searchInput = ref<{ focus?: () => void }>()
 const frontendMode = computed(() => getFrontendMode(config.value))
+const depsLayout = computed(() => getDepsLayout(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
+const layoutClass = computed(() => `deps-layout-${depsLayout.value}`)
 
 function getOverride() {
   return config.value.market?.override ?? {}
@@ -188,10 +188,11 @@ function classify(name: string): ItemKind {
   if (pending) return 'pending'
   if (!dep) return isUnconfigured(name) ? 'unconfigured' : 'manual'
   if (dep.workspace) return 'workspace'
+  if (dep.invalid) return 'invalid'
   if (isUnconfigured(name)) return 'unconfigured'
   const status = getRegistryStatus(name)
   if (status?.error) return 'error'
-  if (isUpdateCheckDisabled(name, getUpdatePolicy())) return 'ignored'
+  if (isUpdateCheckDisabled(name, getUpdatePolicy())) return 'check-disabled'
   if (isUpdateIgnored(name, getUpdatePolicy())) return 'ignored'
   if (hasUpdate(name, getUpdatePolicy())) return 'updatable'
   return 'installed'
@@ -223,6 +224,8 @@ const summary = computed(() => {
     pending: Object.keys(getOverride()).length,
     unconfigured: items.value.filter(item => item.kind === 'unconfigured').length,
     ignored: items.value.filter(item => item.kind === 'ignored').length,
+    checkDisabled: items.value.filter(item => item.kind === 'check-disabled').length,
+    invalid: items.value.filter(item => item.kind === 'invalid').length,
     errors: items.value.filter(item => item.kind === 'error').length,
     workspace: items.value.filter(item => item.kind === 'workspace').length,
     manual: items.value.filter(item => item.manual).length,
@@ -240,55 +243,27 @@ const filterOptions = computed(() => [
   { value: 'unconfigured' as const, label: '未配置', count: summary.value.unconfigured },
   { value: 'updatable' as const, label: '可更新', count: summary.value.updatable },
   { value: 'ignored' as const, label: '已忽略', count: summary.value.ignored },
-  { value: 'error' as const, label: '异常', count: summary.value.errors },
+  { value: 'check-disabled' as const, label: '不检测', count: summary.value.checkDisabled },
+  { value: 'invalid' as const, label: '不支持', count: summary.value.invalid },
+  { value: 'error' as const, label: '版本异常', count: summary.value.errors },
   { value: 'workspace' as const, label: '工作区', count: summary.value.workspace },
   { value: 'manual' as const, label: '手动添加', count: summary.value.manual },
 ])
 
 const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items' | 'collapsed' | 'collapsible'>> = {
-  pending: {
-    key: 'pending',
-    label: '待应用',
-    description: '这些变更已经暂存，确认后才会真正安装、更新或卸载。',
-  },
-  updatable: {
-    key: 'updatable',
-    label: '可更新',
-    description: '存在比本地版本更新的 npm 版本。',
-  },
-  ignored: {
-    key: 'ignored',
-    label: '已忽略更新',
-    description: '已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。',
-  },
-  unconfigured: {
-    key: 'unconfigured',
-    label: '已下载未配置',
-    description: '依赖已安装到本地，但插件配置页里还没有对应的配置项。',
-  },
-  error: {
-    key: 'error',
-    label: '版本异常',
-    description: 'npm 元数据暂时不可用，可能是网络、超时或镜像未同步。',
-  },
-  workspace: {
-    key: 'workspace',
-    label: '工作区',
-    description: '来自当前工作区的本地依赖，不参与远端版本更新。',
-  },
-  manual: {
-    key: 'manual',
-    label: '手动添加',
-    description: '已加入待安装列表，但当前尚未安装到本地。',
-  },
-  installed: {
-    key: 'installed',
-    label: '已安装',
-    description: '已安装且当前没有明确需要处理的依赖。',
-  },
+  pending: { key: 'pending', label: '待应用', description: '这些变更已经暂存，确认后才会真正安装、更新或卸载。' },
+  updatable: { key: 'updatable', label: '可更新', description: '存在比本地版本更新的 npm 版本。' },
+  ignored: { key: 'ignored', label: '已忽略更新', description: '已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。' },
+  'check-disabled': { key: 'check-disabled', label: '不检测更新', description: '已加入永久不检测更新名单，不会收到版本提示。' },
+  unconfigured: { key: 'unconfigured', label: '已下载未配置', description: '依赖已安装到本地，但插件配置页里还没有对应的配置项。' },
+  invalid: { key: 'invalid', label: '不支持', description: '当前依赖版本区间语法暂不支持自动版本管理，需手动处理。' },
+  error: { key: 'error', label: '版本异常', description: 'npm 元数据暂时不可用，可能是网络、超时或镜像未同步。' },
+  workspace: { key: 'workspace', label: '工作区', description: '来自当前工作区的本地依赖，不参与远端版本更新。' },
+  manual: { key: 'manual', label: '手动添加', description: '已加入待安装列表，但当前尚未安装到本地。' },
+  installed: { key: 'installed', label: '已安装', description: '已安装且当前没有明确需要处理的依赖。' },
 }
 
-const groupOrder: ItemKind[] = ['pending', 'unconfigured', 'updatable', 'ignored', 'error', 'workspace', 'manual', 'installed']
+const groupOrder: ItemKind[] = ['pending', 'unconfigured', 'updatable', 'ignored', 'check-disabled', 'invalid', 'error', 'workspace', 'manual', 'installed']
 
 const collapseEnabled = computed(() => filter.value === 'all' && !keyword.value.trim())
 
@@ -367,23 +342,23 @@ ctx.action('dependencies.upgrade', {
 
 .deps-toolbar {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
-  gap: 0.75rem 1rem;
-  padding: 1rem var(--card-margin);
+  padding: 0.6rem var(--card-margin);
   border-bottom: 1px solid var(--k-color-border);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--k-side-bg) 56%, transparent), transparent),
     var(--k-card-bg);
 }
 
-.deps-search-tools {
-  justify-self: end;
+.deps-toolbar-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  width: 100%;
   min-width: 0;
+}
+
+.deps-filter-select {
+  flex: 0 0 auto;
+  width: 8rem;
 }
 
 .deps-search {
@@ -393,32 +368,21 @@ ctx.action('dependencies.upgrade', {
 
 .deps-prerelease-toggle {
   flex: 0 0 auto;
-}
-
-.deps-filters {
-  display: flex;
-  min-width: 0;
-  gap: 0.5rem;
-  align-items: center;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.deps-filter {
   height: 2rem;
-  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 0 0.75rem;
+  padding: 0 0.65rem;
   color: var(--fg2);
   background: color-mix(in srgb, var(--k-side-bg) 70%, transparent);
   cursor: pointer;
   white-space: nowrap;
-  font-size: 0.85rem;
-  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  font-size: 0.83rem;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+
+  .market-icon { width: 0.85rem; height: 0.85rem; flex: 0 0 auto; }
 
   &:hover {
     color: var(--fg1);
@@ -426,52 +390,37 @@ ctx.action('dependencies.upgrade', {
     border-color: color-mix(in srgb, var(--k-color-border) 80%, transparent);
   }
 
-  strong {
-    color: var(--fg1);
-    font-weight: 700;
-    font-size: 0.8rem;
-    min-width: 1ch;
-    text-align: center;
-  }
-
   &.active {
     color: var(--k-color-primary);
     border-color: color-mix(in srgb, var(--k-color-primary) 45%, transparent);
     background: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-card-bg));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--k-color-primary) 20%, transparent) inset;
-
-    strong { color: var(--k-color-primary); }
   }
 }
 
 .deps-summary {
-  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  color: var(--fg2);
-  font-size: 0.875rem;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
 
   span {
     display: inline-flex;
     align-items: center;
-    height: 1.5rem;
-    border: 1px solid color-mix(in srgb, var(--k-color-border) 68%, transparent);
-    border-radius: 6px;
-    padding: 0 0.5rem;
+    height: 1.4rem;
+    border-radius: 5px;
+    padding: 0 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 500;
     background: color-mix(in srgb, var(--k-side-bg) 84%, transparent);
-  }
+    border: 1px solid color-mix(in srgb, var(--k-color-border) 60%, transparent);
+    color: var(--fg2);
 
-  .danger {
-    color: var(--danger);
-  }
-
-  .warning {
-    color: var(--warning);
-  }
-
-  .loading {
-    color: var(--k-color-primary);
+    &.primary { color: var(--k-color-primary); background: color-mix(in srgb, var(--k-color-primary) 10%, transparent); border-color: color-mix(in srgb, var(--k-color-primary) 25%, transparent); }
+    &.success { color: var(--k-color-success); background: color-mix(in srgb, var(--k-color-success) 10%, transparent); border-color: color-mix(in srgb, var(--k-color-success) 25%, transparent); }
+    &.warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); border-color: color-mix(in srgb, var(--warning) 25%, transparent); }
+    &.danger  { color: var(--danger);  background: color-mix(in srgb, var(--danger)  10%, transparent); border-color: color-mix(in srgb, var(--danger)  25%, transparent); }
+    &.loading { color: var(--k-color-primary); font-style: italic; }
   }
 }
 
@@ -491,29 +440,13 @@ ctx.action('dependencies.upgrade', {
 .deps-group {
   --group-accent: var(--fg3);
 
-  &.pending {
-    --group-accent: var(--k-color-primary);
-  }
-
-  &.updatable {
-    --group-accent: var(--k-color-success);
-  }
-
-  &.ignored {
-    --group-accent: var(--fg3);
-  }
-
-  &.unconfigured, &.workspace {
-    --group-accent: var(--warning);
-  }
-
-  &.error {
-    --group-accent: var(--danger);
-  }
-
-  &.manual {
-    --group-accent: var(--k-color-primary);
-  }
+  &.pending  { --group-accent: var(--k-color-primary); }
+  &.updatable { --group-accent: var(--k-color-success); }
+  &.ignored, &.check-disabled { --group-accent: var(--fg3); }
+  &.unconfigured, &.workspace { --group-accent: var(--warning); }
+  &.invalid  { --group-accent: var(--warning); }
+  &.error    { --group-accent: var(--danger); }
+  &.manual   { --group-accent: var(--k-color-primary); }
 
   &.collapsed .deps-group-header {
     margin-bottom: 0;
@@ -592,14 +525,16 @@ ctx.action('dependencies.upgrade', {
     font-weight: 600;
   }
 
-  .deps-group-state {
-    height: 1.45rem;
-    border: 1px solid color-mix(in srgb, var(--k-color-border) 76%, transparent);
-    border-radius: 999px;
-    padding: 0 0.5rem;
-    color: var(--fg2);
-    background: color-mix(in srgb, var(--k-side-bg) 80%, transparent);
-    font-size: 0.76rem;
+  .deps-group-chevron {
+    width: 1rem;
+    height: 1rem;
+    color: var(--fg3);
+    transition: transform 0.2s ease;
+    transform: rotate(180deg);
+
+    &.collapsed {
+      transform: rotate(0deg);
+    }
   }
 }
 
@@ -608,6 +543,10 @@ ctx.action('dependencies.upgrade', {
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   align-items: start;
   gap: 0.5rem;
+}
+
+.deps-layout-list .deps-grid {
+  grid-template-columns: 1fr;
 }
 
 .deps-apply-bar {
@@ -666,7 +605,7 @@ ctx.action('dependencies.upgrade', {
     backdrop-filter: blur(14px) saturate(1.12);
   }
 
-  .deps-filter,
+  .deps-prerelease-toggle,
   .deps-summary span {
     border-color: color-mix(in srgb, var(--k-color-border) 64%, transparent);
     background: color-mix(in srgb, var(--k-side-bg) 72%, transparent);
@@ -674,14 +613,14 @@ ctx.action('dependencies.upgrade', {
     transition: color 0.18s var(--deps-polished-ease), background 0.18s var(--deps-polished-ease), border-color 0.18s var(--deps-polished-ease), box-shadow 0.18s var(--deps-polished-ease), transform 0.18s var(--deps-polished-ease);
   }
 
-  .deps-filter:hover {
+  .deps-prerelease-toggle:hover {
     border-color: color-mix(in srgb, var(--k-color-primary) 40%, var(--k-color-border));
     background: color-mix(in srgb, var(--k-card-bg) 92%, transparent);
     box-shadow: 0 8px 20px rgb(0 0 0 / 12%);
     transform: translateY(-2px);
   }
 
-  .deps-filter.active {
+  .deps-prerelease-toggle.active {
     box-shadow: 0 10px 24px color-mix(in srgb, var(--k-color-primary) 18%, transparent), inset 0 1px 0 rgb(255 255 255 / 10%);
   }
 
@@ -874,7 +813,7 @@ ctx.action('dependencies.upgrade', {
       animation: none;
     }
 
-    .deps-filter,
+    .deps-prerelease-toggle,
     .deps-group-header,
     .dep-package-card {
       transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;

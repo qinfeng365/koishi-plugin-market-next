@@ -1,7 +1,7 @@
 <template>
   <slot name="header" v-bind="{ all, packages, hasFilter: hasFilter(modelValue) }"></slot>
   <template v-if="packages.length">
-    <div ref="list" :class="['package-list', { settled }]">
+    <div ref="list" :class="['package-list', { settled }, config.layout === 'list' ? 'list-layout' : '']">
       <div v-if="topSpacer" class="virtual-spacer" :style="{ height: topSpacer + 'px' }"></div>
       <market-package
         v-for="data in renderedPackages"
@@ -296,6 +296,10 @@ function onQuery(word: string) {
   gap: var(--card-margin);
   justify-items: center;
   flex: 1 0 auto;
+
+  &.list-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .virtual-spacer {

@@ -184,7 +184,7 @@ import { analyzeVersions, ensureInstalledConfig, expandedDependency, getRegistry
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 
-type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'error' | 'workspace' | 'manual' | 'installed'
+type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
 
 const props = defineProps<{
   name: string
@@ -270,11 +270,12 @@ const selectedVersion = computed({
 
 const statusClass = computed<ItemKind>(() => {
   if (pending.value) return 'pending'
-  if (dep.value?.invalid) return 'error'
   if (dep.value?.workspace) return 'workspace'
+  if (dep.value?.invalid) return 'invalid'
   if (unconfigured.value) return 'unconfigured'
   if (status.value?.error) return 'error'
   if (!dep.value && !local.value) return 'manual'
+  if (updateCheckDisabled.value) return 'check-disabled'
   if (ignoredUpdate.value) return 'ignored'
   if (updatable.value) return 'updatable'
   return props.kind ?? 'installed'
@@ -284,8 +285,8 @@ const statusLabel = computed(() => {
   if (pendingRemove.value) return '待卸载'
   if (pending.value && dep.value) return '待应用'
   if (pending.value) return '待安装'
-  if (dep.value?.invalid) return '暂不支持'
   if (dep.value?.workspace) return '工作区'
+  if (dep.value?.invalid) return '不支持'
   if (unconfigured.value) return '未配置'
   if (status.value?.error) return '版本异常'
   if (!dep.value && !local.value) return '手动添加'
@@ -299,9 +300,11 @@ const statusIcon = computed(() => {
   if (pendingRemove.value) return 'close'
   if (pending.value) return 'tag'
   if (unconfigured.value) return 'preview'
-  if (dep.value?.invalid || status.value?.error) return 'insecure'
+  if (dep.value?.invalid) return 'insecure'
+  if (status.value?.error) return 'insecure'
   if (dep.value?.workspace) return 'file-archive'
   if (!dep.value) return 'search'
+  if (updateCheckDisabled.value) return 'installed'
   if (ignoredUpdate.value) return 'installed'
   if (updatable.value) return 'asc'
   return 'installed'
@@ -346,8 +349,8 @@ const detailText = computed(() => {
   if (pendingRemove.value) return '此依赖将在应用更改后从 package.json 中移除。'
   if (pending.value && dep.value) return '此依赖已有暂存的版本变更，应用后生效。'
   if (pending.value) return '此依赖已加入待安装列表，应用后会安装到本地。'
-  if (dep.value?.invalid) return '当前依赖版本区间暂不支持自动判断。'
   if (dep.value?.workspace) return '本地工作区依赖，不参与 npm registry 版本更新。'
+  if (dep.value?.invalid) return '版本区间语法暂不支持自动版本管理，请手动修改 package.json。'
   if (unconfigured.value) return '本地已下载，但插件配置页还没有对应配置项。'
   if (status.value?.error) return getRegistryStatusText(props.name)
   if (!data.value && !dep.value?.workspace) return getRegistryStatusText(props.name)
@@ -655,10 +658,10 @@ async function configure() {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 6.15rem;
+  min-height: 5.35rem;
   border: 1px solid color-mix(in srgb, var(--k-color-border) 80%, transparent);
   border-radius: 10px;
-  padding: 0.72rem 0.82rem 0.76rem 3.6rem;
+  padding: 0.58rem 0.72rem 0.62rem 3.32rem;
   background: var(--k-card-bg);
   overflow: hidden;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
@@ -697,9 +700,10 @@ async function configure() {
   &.pending   { --dep-accent: var(--k-color-primary); }
   &.updatable { --dep-accent: var(--k-color-success); }
   &.error     { --dep-accent: var(--danger); border-color: var(--dep-accent-border); }
+  &.invalid   { --dep-accent: var(--warning); border-color: var(--dep-accent-border); }
   &.unconfigured, &.workspace { --dep-accent: var(--warning); }
   &.manual    { --dep-accent: var(--k-color-primary); }
-  &.ignored   { --dep-accent: var(--fg3); }
+  &.ignored, &.check-disabled { --dep-accent: var(--fg3); }
 
   &.installed {
     &::before { background: color-mix(in srgb, var(--dep-accent) 45%, transparent); }
@@ -718,20 +722,20 @@ async function configure() {
 
 .dep-status-mark {
   position: absolute;
-  left: 0.75rem;
-  top: 0.78rem;
+  left: 0.68rem;
+  top: 0.62rem;
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
+  width: 1.78rem;
+  height: 1.78rem;
   border: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
   border-radius: 10px;
   color: var(--dep-accent);
   background: color-mix(in srgb, var(--dep-accent) 14%, var(--k-side-bg));
 
   .market-icon {
-    width: 1.05rem;
-    height: 1.05rem;
+    width: 0.96rem;
+    height: 0.96rem;
   }
 }
 
@@ -783,7 +787,7 @@ async function configure() {
 }
 
 .dep-summary-text {
-  margin: 0.38rem 0 0;
+  margin: 0.26rem 0 0;
   color: var(--fg2);
   font-size: 0.76rem;
   line-height: 1.35;
@@ -864,8 +868,8 @@ async function configure() {
 .dep-meta-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem 0.45rem;
-  margin-top: 0.5rem;
+  gap: 0.28rem 0.36rem;
+  margin-top: 0.34rem;
 }
 
 .dep-meta-item {
@@ -875,7 +879,7 @@ async function configure() {
   gap: 0.25rem;
   border: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
   border-radius: 6px;
-  padding: 0.16rem 0.42rem;
+  padding: 0.12rem 0.36rem;
   background: color-mix(in srgb, var(--k-side-bg) 88%, transparent);
   font-size: 0.76rem;
   line-height: 1.35;
@@ -902,7 +906,7 @@ async function configure() {
 }
 
 .dep-status-text {
-  margin: 0.42rem 0 0;
+  margin: 0.32rem 0 0;
   color: var(--fg2);
   font-size: 0.78rem;
   line-height: 1.35;
@@ -918,9 +922,9 @@ async function configure() {
   gap: 0.5rem;
   align-items: center;
   justify-content: space-between;
-  margin-top: 0.56rem;
+  margin-top: 0.44rem;
   border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 76%, transparent);
-  padding-top: 0.52rem;
+  padding-top: 0.42rem;
   cursor: default;
   animation: dep-actions-in 0.18s ease;
 

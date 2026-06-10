@@ -65,6 +65,8 @@ export interface Config {
   search?: MarketProvider.Config
   chatlunaTool?: boolean
   frontendMode?: 'performance' | 'polished'
+  depsLayout?: 'grid' | 'list'
+  marketLayout?: 'grid' | 'list'
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -72,6 +74,14 @@ export const Config: Schema<Config> = Schema.object({
     Schema.const('performance').description('性能模式'),
     Schema.const('polished').description('精致模式'),
   ]).role('radio').default('performance').description('Frontend display mode.'),
+  depsLayout: Schema.union([
+    Schema.const('grid').description('网格'),
+    Schema.const('list').description('列表'),
+  ]).role('radio').default('grid').description('Dependencies page layout.'),
+  marketLayout: Schema.union([
+    Schema.const('grid').description('网格'),
+    Schema.const('list').description('列表'),
+  ]).role('radio').default('grid').description('Market page layout.'),
   registry: Installer.Config,
   search: MarketProvider.Config,
   chatlunaTool: Schema.boolean().default(false).description('Enable ChatLuna plugin market query tool.'),

@@ -1,5 +1,5 @@
 <template>
-  <k-layout main="darker" :class="['page-market', modeClass]" menu="market">
+  <k-layout main="darker" :class="['page-market', modeClass, `market-layout-${marketLayout}`]" menu="market">
     <template #left>
       <el-scrollbar>
         <market-filter v-model="words" :data="visibleData"></market-filter>
@@ -108,7 +108,7 @@
 
 import { router, store, global, useConfig } from '@koishijs/client'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { active, getFrontendMode } from '../utils'
+import { active, getFrontendMode, getMarketLayout } from '../utils'
 import { getVisible, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
 import { SearchObject } from '@koishijs/registry'
 
@@ -122,12 +122,14 @@ function installed(data: SearchObject) {
 
 provide(kConfig, {
   installed: global.static ? undefined : installed,
+  get layout() { return marketLayout.value },
 })
 
 const root = ref()
 const searchBox = ref<{ focus?: () => void }>()
 const config = useConfig()
 const frontendMode = computed(() => getFrontendMode(config.value))
+const marketLayout = computed(() => getMarketLayout(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const words = ref<string[]>([''])
