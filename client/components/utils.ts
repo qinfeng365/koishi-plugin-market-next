@@ -93,6 +93,7 @@ export async function addManual(name: string) {
 
 export const showManual = ref(false)
 export const showConfirm = ref(false)
+export const expandedDependency = ref('')
 
 interface InstallMessages {
   loadingText?: string

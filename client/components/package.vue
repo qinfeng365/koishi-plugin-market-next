@@ -75,7 +75,7 @@
       {{ detailText }}
     </p>
 
-    <div v-if="showCardActions" class="dep-card-actions" @click.stop>
+    <div v-if="showCardActions" :class="['dep-card-actions', { floating: floatingActions }]" @click.stop>
       <el-select
         v-if="showVersionControl && data"
         v-model="selectedVersion"
@@ -180,7 +180,7 @@
 import { computed, ref } from 'vue'
 import { message, store, useConfig, useContext } from '@koishijs/client'
 import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
-import { analyzeVersions, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText } from './utils'
+import { analyzeVersions, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 
@@ -196,7 +196,10 @@ const day = 24 * 60 * 60 * 1000
 const config = useConfig()
 const ctx = useContext()
 const configuring = ref(false)
-const editing = ref(false)
+const editing = computed({
+  get: () => expandedDependency.value === props.name,
+  set: (value: boolean) => expandedDependency.value = value ? props.name : '',
+})
 const showIgnoreDialog = ref(false)
 const ignoreDurationPreset = ref<'forever' | '1d' | '7d' | '30d' | 'custom'>('forever')
 const ignoreCustomDays = ref(7)
@@ -470,6 +473,10 @@ const showCardActions = computed(() => {
   return showVersionControl.value || showQuickUpdate.value || showRestoreUpdate.value || showConfigure.value || showRemoveDependency.value || pending.value
 })
 
+const floatingActions = computed(() => {
+  return editing.value && statusClass.value === 'installed'
+})
+
 function toggleCardActions() {
   if (!canExpandCard.value) return
   editing.value = !editing.value
@@ -665,8 +672,15 @@ async function configure() {
   &.expandable { cursor: pointer; }
 
   &.expanded {
+    z-index: 8;
     border-color: var(--dep-accent-border);
     box-shadow: 0 4px 14px color-mix(in srgb, var(--dep-accent) 12%, rgba(0,0,0,0.12));
+    overflow: visible;
+
+    .dep-card-buttons {
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
   }
 
   // left accent bar
@@ -914,6 +928,41 @@ async function configure() {
     flex: 1 1 auto;
     min-width: 0;
   }
+
+  &.floating {
+    position: absolute;
+    left: 0.62rem;
+    right: 0.62rem;
+    top: calc(100% - 0.22rem);
+    z-index: 12;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-top: 0;
+    border: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
+    border-radius: 8px;
+    padding: 0.54rem;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--dep-accent) 7%, transparent), transparent),
+      var(--k-card-bg);
+    box-shadow: 0 10px 26px rgb(0 0 0 / 18%);
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 1.25rem;
+      top: -5px;
+      width: 9px;
+      height: 9px;
+      border-top: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
+      border-left: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
+      background: var(--k-card-bg);
+      transform: rotate(45deg);
+    }
+
+    .dep-card-buttons {
+      justify-content: flex-end;
+    }
+  }
 }
 
 @keyframes dep-actions-in {
@@ -979,6 +1028,26 @@ async function configure() {
 
   .dep-card-buttons {
     justify-content: flex-end;
+  }
+}
+
+@media (max-width: 768px) {
+  .dep-card-actions.floating {
+    position: static;
+    display: flex;
+    margin-top: 0.56rem;
+    border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 76%, transparent);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+    padding: 0.52rem 0 0;
+    background: transparent;
+    box-shadow: none;
+
+    &::before {
+      display: none;
+    }
   }
 }
 
