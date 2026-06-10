@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-if="store.market?.registry" v-model="showConfirm" class="confirm-panel" destroy-on-close>
-    <template #header>确认安装</template>
+    <template #header>确认依赖更改</template>
     <table>
       <colgroup>
         <col width="auto">
@@ -28,12 +28,12 @@
     <template #footer>
       <div class="left">
         <el-checkbox :disabled="!hasRemove" v-model="removeConfig">
-          为新卸载的依赖删除配置
+          为卸载的插件删除配置
         </el-checkbox>
       </div>
       <div class="right">
         <el-button type="danger" @click="clear">丢弃改动</el-button>
-        <el-button type="primary" @click="confirm">确认安装</el-button>
+        <el-button type="primary" @click="confirm">应用更改</el-button>
       </div>
     </template>
   </el-dialog>
@@ -62,10 +62,18 @@ const hasRemove = computed(() => {
 function confirm() {
   showConfirm.value = false
   const override = { ...config.value.market.override }
+  const removed = Object.entries(override)
+    .filter(([, value]) => !value)
+    .map(([name]) => name)
   return install(config.value.market.override, async () => {
     await ensureInstalledConfigs(ctx, Object.entries(override)
       .filter(([, value]) => value)
       .map(([name]) => name), true)
+    if (removeConfig.value) {
+      for (const name of removed) {
+        ctx.configWriter?.remove(name)
+      }
+    }
   })
 }
 

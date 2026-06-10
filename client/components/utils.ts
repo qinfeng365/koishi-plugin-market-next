@@ -94,12 +94,19 @@ export async function addManual(name: string) {
 export const showManual = ref(false)
 export const showConfirm = ref(false)
 
-export async function install(override: Dict<string>, callback?: () => Awaitable<void>, forced?: boolean) {
+interface InstallMessages {
+  loadingText?: string
+  successText?: string
+  errorText?: string
+  timeoutText?: string
+}
+
+export async function install(override: Dict<string>, callback?: () => Awaitable<void>, forced?: boolean, messages: InstallMessages = {}) {
   const instance = loading({
-    text: '正在更新依赖……',
+    text: messages.loadingText ?? '正在更新依赖……',
   })
   const dispose = watch(socket, () => {
-    message.success('安装成功！')
+    message.success(messages.successText ?? '安装成功！')
     dispose()
     instance.close()
   })
@@ -107,14 +114,14 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
     active.value = ''
     const code = await send('market/install', override, forced)
     if (code) {
-      message.error('安装失败！')
+      message.error(messages.errorText ?? '安装失败！')
     } else {
       await callback?.()
-      message.success('安装成功！')
+      message.success(messages.successText ?? '安装成功！')
     }
   } catch (err) {
     console.error(err)
-    message.error('安装超时！')
+    message.error(messages.timeoutText ?? '安装超时！')
   } finally {
     dispose()
     instance.close()

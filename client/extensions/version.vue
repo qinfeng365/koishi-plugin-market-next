@@ -33,25 +33,68 @@
   <k-comment type="warning" v-if="local && !local.workspace && store.dependencies && !store.dependencies[name]">
     <p>尚未将当前插件列入依赖，<span class="k-link" @click="addDependency">点击添加</span>。</p>
   </k-comment>
+
+  <!-- dependency uninstall -->
+  <k-comment v-if="showDependencyUninstall" :type="pendingRemove ? 'danger' : 'warning'">
+    <div class="dependency-uninstall">
+      <div>
+        <p v-if="pendingRemove">此插件包已暂存卸载，应用依赖更改后生效。</p>
+        <p v-else>此插件包已列入依赖，可以由 market-next 卸载。</p>
+      </div>
+      <div class="dependency-uninstall__actions">
+        <el-button v-if="pendingRemove" @click="cancelPendingUninstall">取消卸载</el-button>
+        <el-button v-else type="danger" :loading="uninstalling" @click="requestUninstall">卸载插件包</el-button>
+      </div>
+    </div>
+  </k-comment>
+
+  <el-dialog v-model="showUninstallDialog" title="确认卸载插件包" destroy-on-close>
+    检测到当前插件存在配置。是否同时删除配置？
+    <template #footer>
+      <el-button @click="showUninstallDialog = false">取消</el-button>
+      <el-button type="primary" @click="uninstallDependency(false)">仅卸载插件包</el-button>
+      <el-button type="danger" @click="uninstallDependency(true)">卸载并删除配置</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script lang="ts" setup>
 
-import { global, send, store, useConfig, useContext } from '@koishijs/client'
-import { computed, inject, ComputedRef } from 'vue'
+import { global, message, send, store, useConfig, useContext } from '@koishijs/client'
+import { computed, inject, ComputedRef, ref } from 'vue'
 import { hasUpdate } from '../utils'
 import type {} from '@koishijs/plugin-config'
-import { ensureInstalledConfig } from '../components/utils'
+import { ensureInstalledConfig, install } from '../components/utils'
 
 const ctx = useContext()
 const config = useConfig()
 const name = inject<ComputedRef<string>>('plugin:name')
+const protectedDeps = new Set(['@koishijs/plugin-console', '@koishijs/plugin-config', '@koishijs/plugin-server'])
 
 const local = computed(() => store.packages?.[name.value])
 const object = computed(() => store.market?.data?.[name.value])
 const dep = computed(() => store.dependencies?.[name.value])
 const versions = computed(() => store.registry?.[name.value])
 const updateAvailable = computed(() => hasUpdate(name.value, config.value.market))
+const uninstalling = ref(false)
+const showUninstallDialog = ref(false)
+
+const pendingRemove = computed(() => {
+  const override = config.value.market?.override ?? {}
+  return Object.prototype.hasOwnProperty.call(override, name.value) && !override[name.value]
+})
+
+const hasConfigEntries = computed(() => {
+  return !!ctx.configWriter?.get(name.value)?.length
+})
+
+const showDependencyUninstall = computed(() => {
+  if (global.static || protectedDeps.has(name.value)) return false
+  if (local.value?.workspace || dep.value?.workspace) return false
+  if (pendingRemove.value) return true
+  if (store.dependencies) return !!dep.value
+  return !!local.value
+})
 
 async function addDependency() {
   if (!local.value?.package.version) return
@@ -59,8 +102,73 @@ async function addDependency() {
   if (!code) await ensureInstalledConfig(ctx, name.value, true)
 }
 
+function ensureOverride() {
+  return config.value.market.override ||= {}
+}
+
+function requestUninstall() {
+  if (!name.value || uninstalling.value) return
+  if (config.value.market.bulkMode) {
+    ensureOverride()[name.value] = ''
+    message.success('卸载插件包已暂存，应用更改后生效。')
+    return
+  }
+  if (hasConfigEntries.value && typeof config.value.market?.removeConfig !== 'boolean') {
+    showUninstallDialog.value = true
+    return
+  }
+  return uninstallDependency(config.value.market?.removeConfig === true)
+}
+
+function cancelPendingUninstall() {
+  delete ensureOverride()[name.value]
+  message.success('已取消卸载。')
+}
+
+async function uninstallDependency(removeConfig: boolean) {
+  if (!name.value || uninstalling.value) return
+  showUninstallDialog.value = false
+  uninstalling.value = true
+  try {
+    await install({ [name.value]: '' }, async () => {
+      if (removeConfig) ctx.configWriter?.remove(name.value)
+    }, undefined, {
+      loadingText: '正在卸载插件包……',
+      successText: '卸载成功！',
+      errorText: '卸载失败！',
+      timeoutText: '卸载超时！',
+    })
+  } finally {
+    uninstalling.value = false
+  }
+}
+
 </script>
 
 <style lang="scss" scoped>
+
+.dependency-uninstall {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  p {
+    margin: 0;
+  }
+}
+
+.dependency-uninstall__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .dependency-uninstall {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 
 </style>
