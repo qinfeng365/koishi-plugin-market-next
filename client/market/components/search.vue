@@ -119,9 +119,16 @@ if (import.meta.hot) {
   display: flex;
   margin: 2rem auto 0;
   width: 100%;
-  max-width: 600px;
-  border-radius: 1.5rem;
+  max-width: 640px;
+  border-radius: 2rem;
   align-items: center;
+  border: 1.5px solid var(--k-color-border);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:focus-within {
+    border-color: var(--k-color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-color-primary) 15%, transparent);
+  }
 }
 
 .search-container {
@@ -137,13 +144,17 @@ if (import.meta.hot) {
     flex: 1 1 auto;
     height: 1.25rem;
     min-width: 10rem;
-    font-size: 0.9em;
+    font-size: 0.925rem;
     padding: 0;
     box-sizing: border-box;
     color: inherit;
     background-color: transparent;
     border: none;
     outline: none;
+
+    &::placeholder {
+      color: var(--el-text-color-placeholder);
+    }
   }
 }
 
@@ -156,6 +167,12 @@ if (import.meta.hot) {
   width: 3rem;
   height: 2.5rem;
   cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+
+  &:hover {
+    opacity: 0.85;
+  }
 
   :deep(.market-icon) {
     display: block;
@@ -163,7 +180,6 @@ if (import.meta.hot) {
     height: 1rem;
     max-width: 1rem;
     max-height: 1rem;
-    opacity: 0.5;
     flex: 0 0 auto;
   }
 
@@ -178,21 +194,21 @@ if (import.meta.hot) {
 
 .search-word {
   flex: 0 0 auto;
-  display: inline-block;
-  font-size: 14px;
-  height: 1.25rem;
-  line-height: 1rem;
-  border-radius: 4px;
-  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  height: 1.375rem;
+  border-radius: 6px;
+  padding: 0 8px;
   box-sizing: border-box;
-  color: white;
+  color: var(--k-color-primary);
   font-weight: 500;
   white-space: nowrap;
-  vertical-align: baseline;
-  background-color: var(--k-fill-normal);
+  background-color: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--k-color-primary) 25%, transparent);
   cursor: pointer;
   user-select: none;
-  transition: opacity 0.3s ease, background-color 0.3s ease;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
 
   &.invalid {
     opacity: 0.5;

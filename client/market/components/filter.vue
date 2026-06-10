@@ -169,29 +169,37 @@ function toggleQuery(item: Badge, event: MouseEvent) {
 
 .market-filter-item {
   display: flex;
-  margin: 4px 0;
+  margin: 2px 0;
+  padding: 0 0.5rem;
   color: var(--k-text-normal);
-  transition: color 0.5s;
+  transition: color 0.2s, background-color 0.2s;
   align-items: center;
   z-index: 2;
-  height: 24px;
+  height: 28px;
+  border-radius: 8px;
   cursor: pointer;
 
   &:hover {
     color: var(--k-text-dark);
+    background-color: var(--k-hover-bg, rgba(128, 128, 128, 0.08));
   }
 
   &.active {
-    color: var(--k-text-active);
+    color: var(--k-color-primary);
+    background-color: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
+    font-weight: 600;
 
     &.verified, &.newborn {
       color: var(--k-color-success);
+      background-color: color-mix(in srgb, var(--k-color-success) 10%, transparent);
     }
     &.preview, &.portable {
       color: var(--k-color-warning);
+      background-color: color-mix(in srgb, var(--k-color-warning) 10%, transparent);
     }
     &.insecure {
       color: var(--k-color-danger);
+      background-color: color-mix(in srgb, var(--k-color-danger) 10%, transparent);
     }
   }
 
@@ -204,7 +212,7 @@ function toggleQuery(item: Badge, event: MouseEvent) {
     display: inline-flex;
     width: 1.75rem;
     height: 1rem;
-    margin-right: 4px;
+    margin-right: 2px;
     align-items: center;
     justify-content: center;
     overflow: hidden;
@@ -236,12 +244,14 @@ function toggleQuery(item: Badge, event: MouseEvent) {
 
   .text, .count {
     line-height: 20px;
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 500;
   }
 
   .count {
-    margin-right: 4px;
+    margin-right: 2px;
+    font-size: 12px;
+    opacity: 0.7;
   }
 
   .spacer {

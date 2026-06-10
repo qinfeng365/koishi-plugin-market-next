@@ -644,133 +644,80 @@ async function configure() {
 .dep-package-card {
   --dep-accent: var(--fg3);
   --dep-accent-soft: color-mix(in srgb, var(--dep-accent) 8%, transparent);
-  --dep-accent-border: color-mix(in srgb, var(--dep-accent) 26%, var(--k-color-border));
+  --dep-accent-border: color-mix(in srgb, var(--dep-accent) 30%, var(--k-color-border));
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 6.15rem;
-  border: 1px solid color-mix(in srgb, var(--k-color-border) 86%, transparent);
-  border-radius: 8px;
-  padding: 0.68rem 0.76rem 0.72rem 3.25rem;
-  background:
-    linear-gradient(90deg, var(--dep-accent-soft), transparent 42%),
-    var(--k-card-bg);
+  border: 1px solid color-mix(in srgb, var(--k-color-border) 80%, transparent);
+  border-radius: 10px;
+  padding: 0.72rem 0.82rem 0.76rem 3.6rem;
+  background: var(--k-card-bg);
   overflow: hidden;
-  transition: border-color 0.18s ease, background-color 0.18s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 
   &:hover {
     border-color: var(--dep-accent-border);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--dep-accent) 12%, rgba(0,0,0,0.12));
+    transform: translateY(-1px);
   }
 
-  &.expandable {
-    cursor: pointer;
-  }
+  &.expandable { cursor: pointer; }
 
   &.expanded {
     border-color: var(--dep-accent-border);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--dep-accent) 12%, rgba(0,0,0,0.12));
   }
 
+  // left accent bar
   &::before {
     content: '';
     position: absolute;
     inset: 0 auto 0 0;
     width: 3px;
-    background: transparent;
+    border-radius: 10px 0 0 10px;
+    background: color-mix(in srgb, var(--dep-accent) 55%, transparent);
   }
 
-  &.pending::before {
-    --dep-accent: var(--k-color-primary);
-    background: var(--k-color-primary);
-  }
-
-  &.updatable::before {
-    --dep-accent: var(--k-color-success);
-    background: var(--k-color-success);
-  }
-
-  &.error::before {
-    --dep-accent: var(--danger);
-    background: var(--danger);
-  }
-
-  &.workspace::before {
-    --dep-accent: var(--warning);
-    background: var(--warning);
-  }
-
-  &.unconfigured::before {
-    --dep-accent: var(--warning);
-    background: var(--warning);
-  }
-
-  &.manual::before {
-    --dep-accent: var(--k-color-primary);
-    background: var(--k-color-primary);
-  }
-
-  &.ignored::before {
-    --dep-accent: var(--fg3);
-    background: color-mix(in srgb, var(--fg3) 72%, transparent);
-  }
+  // status-specific accents
+  &.pending   { --dep-accent: var(--k-color-primary); }
+  &.updatable { --dep-accent: var(--k-color-success); }
+  &.error     { --dep-accent: var(--danger); border-color: var(--dep-accent-border); }
+  &.unconfigured, &.workspace { --dep-accent: var(--warning); }
+  &.manual    { --dep-accent: var(--k-color-primary); }
+  &.ignored   { --dep-accent: var(--fg3); }
 
   &.installed {
-    background:
-      linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 7%, transparent), transparent 46%),
-      var(--k-card-bg);
-
-    &::before {
-      background: color-mix(in srgb, var(--dep-accent) 72%, transparent);
-    }
+    &::before { background: color-mix(in srgb, var(--dep-accent) 45%, transparent); }
   }
 
-  &.pending {
-    --dep-accent: var(--k-color-primary);
-  }
-
-  &.updatable {
-    --dep-accent: var(--k-color-success);
-  }
-
-  &.error {
-    --dep-accent: var(--danger);
-    border-color: var(--dep-accent-border);
-  }
-
-  &.unconfigured {
-    --dep-accent: var(--warning);
-  }
-
-  &.workspace {
-    --dep-accent: var(--warning);
-  }
-
-  &.manual {
-    --dep-accent: var(--k-color-primary);
-  }
-
-  &.ignored {
-    --dep-accent: var(--fg3);
+  // non-installed states get a subtle accent glow on the left
+  &:not(.installed)::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 3px;
+    width: 3rem;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 8%, transparent), transparent);
+    pointer-events: none;
   }
 }
 
 .dep-status-mark {
   position: absolute;
-  left: 0.85rem;
+  left: 0.75rem;
   top: 0.78rem;
   display: grid;
   place-items: center;
-  width: 1.72rem;
-  height: 1.72rem;
-  border: 1px solid color-mix(in srgb, var(--dep-accent) 18%, var(--k-color-border));
-  border-radius: 8px;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
+  border-radius: 10px;
   color: var(--dep-accent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dep-accent) 11%, transparent), transparent),
-    var(--k-side-bg);
+  background: color-mix(in srgb, var(--dep-accent) 14%, var(--k-side-bg));
 
   .market-icon {
-    width: 0.92rem;
-    height: 0.92rem;
+    width: 1.05rem;
+    height: 1.05rem;
   }
 }
 
@@ -961,11 +908,17 @@ async function configure() {
   border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 76%, transparent);
   padding-top: 0.52rem;
   cursor: default;
+  animation: dep-actions-in 0.18s ease;
 
   .el-select {
     flex: 1 1 auto;
     min-width: 0;
   }
+}
+
+@keyframes dep-actions-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .dep-card-buttons {

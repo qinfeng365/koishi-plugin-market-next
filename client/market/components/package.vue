@@ -1,7 +1,7 @@
 <template>
   <a class="market-package flex flex-col gap-3" target="_blank" :href="homepage">
     <div class="header flex flex-row gap-4">
-      <div class="left shrink-0 flex flex-row justify-center items-center">
+      <div :class="['left', 'shrink-0', 'flex', 'flex-row', 'justify-center', 'items-center', 'cat-' + resolveCategory(data.category)]">
         <market-icon :name="'outline:' + resolveCategory(data.category)"></market-icon>
       </div>
       <div class="main flex flex-col justify-around overflow-hidden">
@@ -157,11 +157,15 @@ if (import.meta.hot) {
   contain: layout paint style;
   content-visibility: auto;
   contain-intrinsic-size: 12.5rem;
-  transition: box-shadow 0.3s ease;
-  box-shadow: 0 0 0 2px inset transparent;
+  border-radius: 12px;
+  background-color: var(--k-color-card, var(--k-card-bg));
+  border: 1px solid var(--k-color-border);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 
   &:hover {
-    box-shadow: 0 0 0 2px inset var(--k-color-primary);
+    transform: translateY(-4px);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+    border-color: var(--k-color-primary);
   }
 
   .market-icon {
@@ -179,19 +183,43 @@ if (import.meta.hot) {
     .left {
       width: 3.5rem;
       height: 3.5rem;
-      border-radius: 8px;
-      border: 1px solid var(--k-color-border);
+      border-radius: 10px;
+      border: 1px solid transparent;
       box-sizing: border-box;
 
       svg {
         height: 1.75rem;
       }
+
+      // category theme colors — use color-mix so dark theme gets muted versions automatically
+      &.cat-adapter    { --c: #38bdf8; }
+      &.cat-general    { --c: #4ade80; }
+      &.cat-extension  { --c: #a78bfa; }
+      &.cat-webui      { --c: #fb923c; }
+      &.cat-manage     { --c: #facc15; }
+      &.cat-preset     { --c: #60a5fa; }
+      &.cat-image      { --c: #f472b6; }
+      &.cat-media      { --c: #e879f9; }
+      &.cat-tool       { --c: #94a3b8; }
+      &.cat-life       { --c: #34d399; }
+      &.cat-ai         { --c: #818cf8; }
+      &.cat-meme       { --c: #fbbf24; }
+      &.cat-game       { --c: #f87171; }
+      &.cat-gametool   { --c: #c084fc; }
+      &.cat-other      { --c: #64748b; }
+
+      background: linear-gradient(135deg,
+        color-mix(in srgb, var(--c) 18%, var(--k-card-bg)),
+        color-mix(in srgb, var(--c) 10%, var(--k-card-bg))
+      );
+      border-color: color-mix(in srgb, var(--c) 35%, var(--k-color-border));
+      svg { color: var(--c); }
     }
 
     h2 {
       font-size: 1.125rem;
       margin: 0;
-      line-height: 1;
+      line-height: 1.2;
       display: flex;
       align-items: center;
 
@@ -199,48 +227,46 @@ if (import.meta.hot) {
         flex: 0 1 auto;
         line-height: 1.5rem;
         display: inline-block;
+        font-weight: 600;
+        color: var(--k-text-dark, var(--k-text-normal));
       }
 
       .icon {
-        margin-left: 0.6rem;
-        height: 1.125rem;
-        width: 1.125rem;
-        vertical-align: -2px;
-        position: relative;
-        display: inline-block;
+        margin-left: 0.5rem;
+        padding: 0 6px;
+        height: 20px;
+        line-height: 20px;
+        border-radius: 10px;
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         cursor: pointer;
+        background-color: var(--k-color-background);
+        border: 1px solid transparent;
 
         .market-icon {
-          height: 100%;
+          height: 12px;
           transition: color 0.3s ease;
           z-index: 10;
-          position: relative;
         }
 
         &.verified, &.newborn {
           color: var(--k-color-success);
+          background-color: rgba(64, 191, 122, 0.1);
+          border-color: rgba(64, 191, 122, 0.2);
         }
 
         &.preview {
           color: var(--k-color-warning);
+          background-color: rgba(230, 162, 60, 0.1);
+          border-color: rgba(230, 162, 60, 0.2);
         }
 
         &.insecure {
           color: var(--k-color-danger);
-        }
-
-        &.verified, &.insecure {
-          &::before {
-            position: absolute;
-            top: 25%;
-            left: 25%;
-            right: 25%;
-            bottom: 25%;
-            content: '';
-            z-index: 0;
-            border-radius: 100%;
-            background-color: white;
-          }
+          background-color: rgba(245, 108, 108, 0.1);
+          border-color: rgba(245, 108, 108, 0.2);
         }
       }
     }
@@ -251,6 +277,7 @@ if (import.meta.hot) {
       align-items: center;
       gap: 0 0.25rem;
       width: fit-content;
+      margin-top: 4px;
 
       .market-icon {
         color: var(--k-color-warning);
@@ -261,10 +288,11 @@ if (import.meta.hot) {
   }
 
   .desc {
-    margin: 0;
-    font-size: 15px;
+    margin: 4px 0 0;
+    font-size: 14px;
     flex: 1 1 auto;
-    line-height: 1.5;
+    line-height: 1.6;
+    color: var(--k-text-light, #666);
     overflow: hidden;
     word-break: break-word;
     text-overflow: ellipsis;
@@ -280,7 +308,8 @@ if (import.meta.hot) {
     height: 1.5rem;
     margin-bottom: -0.25rem;
     cursor: default;
-    font-size: 14px;
+    font-size: 13px;
+    color: var(--k-text-light, #888);
     transition: color 0.3s ease;
     overflow: hidden;
 

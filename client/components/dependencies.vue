@@ -408,26 +408,37 @@ ctx.action('dependencies.upgrade', {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  border: 1px solid var(--k-color-border);
-  border-radius: 6px;
-  padding: 0 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 0.75rem;
   color: var(--fg2);
-  background: color-mix(in srgb, var(--k-card-bg) 76%, transparent);
+  background: color-mix(in srgb, var(--k-side-bg) 70%, transparent);
   cursor: pointer;
   white-space: nowrap;
-  transition: 0.2s ease;
+  font-size: 0.85rem;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+
+  &:hover {
+    color: var(--fg1);
+    background: color-mix(in srgb, var(--k-side-bg) 95%, transparent);
+    border-color: color-mix(in srgb, var(--k-color-border) 80%, transparent);
+  }
 
   strong {
     color: var(--fg1);
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 0.8rem;
+    min-width: 1ch;
+    text-align: center;
   }
 
   &.active {
     color: var(--k-color-primary);
-    border-color: var(--k-color-primary);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 12%, transparent), transparent),
-      color-mix(in srgb, var(--k-color-primary) 8%, var(--k-card-bg));
+    border-color: color-mix(in srgb, var(--k-color-primary) 45%, transparent);
+    background: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-card-bg));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--k-color-primary) 20%, transparent) inset;
+
+    strong { color: var(--k-color-primary); }
   }
 }
 
