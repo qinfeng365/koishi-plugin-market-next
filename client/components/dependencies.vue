@@ -11,16 +11,18 @@
           <span>{{ option.label }}</span>
           <strong>{{ option.count }}</strong>
         </button>
+      </div>
+      <div class="deps-search-tools">
         <button
-          :class="['deps-filter', 'toggle', { active: prereleaseBlocked }]"
+          :class="['deps-filter', 'deps-prerelease-toggle', { active: prereleaseBlocked }]"
           @click="togglePrereleaseFilter"
         >
           <span>屏蔽预览版</span>
           <strong>{{ prereleaseBlocked ? '开' : '关' }}</strong>
         </button>
-      </div>
-      <div class="deps-search">
-        <el-input ref="searchInput" v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
+        <div class="deps-search">
+          <el-input ref="searchInput" v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
+        </div>
       </div>
       <div class="deps-summary">
         <span>依赖 {{ summary.total }}</span>
@@ -90,7 +92,7 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { router, store, useConfig, useContext } from '@koishijs/client'
-import { getLatestVersion, hasUpdate, isUpdateIgnored } from '../utils'
+import { getLatestVersion, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
 import { addManual, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
@@ -187,6 +189,7 @@ function classify(name: string): ItemKind {
   if (isUnconfigured(name)) return 'unconfigured'
   const status = getRegistryStatus(name)
   if (status?.error) return 'error'
+  if (isUpdateCheckDisabled(name, getUpdatePolicy())) return 'ignored'
   if (isUpdateIgnored(name, getUpdatePolicy())) return 'ignored'
   if (hasUpdate(name, getUpdatePolicy())) return 'updatable'
   return 'installed'
@@ -372,10 +375,22 @@ ctx.action('dependencies.upgrade', {
     var(--k-card-bg);
 }
 
-.deps-search {
+.deps-search-tools {
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   min-width: 0;
+}
+
+.deps-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.deps-prerelease-toggle {
+  flex: 0 0 auto;
 }
 
 .deps-filters {
@@ -616,6 +631,10 @@ ctx.action('dependencies.upgrade', {
 @media (max-width: 768px) {
   .deps-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .deps-search-tools {
+    justify-self: stretch;
   }
 
   .deps-summary {

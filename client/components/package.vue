@@ -22,9 +22,18 @@
         </div>
         <span class="dep-full-name" :title="name">{{ name }}</span>
       </div>
-      <el-button v-if="showEditToggle" size="small" @click.stop="editing = !editing">
-        {{ editing ? '收起' : '修改' }}
-      </el-button>
+      <div class="dep-header-actions" @click.stop>
+        <el-button
+          v-if="showInlineIgnoreUpdate"
+          size="small"
+          @click="openIgnoreDialog"
+        >
+          忽略更新
+        </el-button>
+        <el-button v-if="showEditToggle" size="small" @click.stop="editing = !editing">
+          {{ editing ? '收起' : '修改' }}
+        </el-button>
+      </div>
     </div>
 
     <p v-if="summaryText" class="dep-summary-text" :title="summaryText">
@@ -90,13 +99,6 @@
           @click="selectedVersion = latestVersion"
         >
           更新到最新
-        </el-button>
-        <el-button
-          v-if="showIgnoreUpdate"
-          size="small"
-          @click="openIgnoreDialog"
-        >
-          忽略此次更新
         </el-button>
         <el-button
           v-if="showRestoreUpdate"
@@ -178,7 +180,7 @@
 
 import { computed, ref } from 'vue'
 import { message, store, useConfig, useContext } from '@koishijs/client'
-import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateIgnored } from '../utils'
+import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
 import { analyzeVersions, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
@@ -240,7 +242,8 @@ const overrideValue = computed(() => {
 
 const pending = computed(() => overrideValue.value !== undefined)
 const pendingRemove = computed(() => pending.value && !overrideValue.value)
-const ignoredUpdate = computed(() => isUpdateIgnored(props.name, getUpdatePolicy()))
+const updateCheckDisabled = computed(() => isUpdateCheckDisabled(props.name, getUpdatePolicy()))
+const ignoredUpdate = computed(() => updateCheckDisabled.value || isUpdateIgnored(props.name, getUpdatePolicy()))
 const updatable = computed(() => !!hasUpdate(props.name, getUpdatePolicy()))
 const unconfigured = computed(() => {
   return !!ctx.configWriter && !!local.value && isPluginPackage(props.name) && !ctx.configWriter.get(props.name)?.length
@@ -284,6 +287,7 @@ const statusLabel = computed(() => {
   if (unconfigured.value) return '未配置'
   if (status.value?.error) return '版本异常'
   if (!dep.value && !local.value) return '手动添加'
+  if (updateCheckDisabled.value) return '不检测'
   if (ignoredUpdate.value) return '已忽略'
   if (updatable.value) return '可更新'
   return '已安装'
@@ -333,6 +337,7 @@ const detailText = computed(() => {
   if (unconfigured.value) return '本地已下载，但插件配置页还没有对应配置项。'
   if (status.value?.error) return getRegistryStatusText(props.name)
   if (!data.value && !dep.value?.workspace) return getRegistryStatusText(props.name)
+  if (updateCheckDisabled.value) return '已加入不检测更新名单；可点击“恢复提示”重新参与版本检测。'
   if (ignoredUpdate.value) return getUpdateIgnoreText(props.name, getUpdatePolicy()) || '已忽略当前更新。'
   if (updatable.value && latestVersion.value) return `发现新版本 ${latestVersion.value}。`
   return ''
@@ -428,7 +433,7 @@ const showQuickUpdate = computed(() => {
   return !pending.value && !unconfigured.value && updatable.value && !!latestVersion.value && !dep.value?.workspace
 })
 
-const showIgnoreUpdate = computed(() => {
+const showInlineIgnoreUpdate = computed(() => {
   return showQuickUpdate.value
 })
 
@@ -449,7 +454,7 @@ const showRemoveDependency = computed(() => {
 })
 
 const showCardActions = computed(() => {
-  return showVersionControl.value || showQuickUpdate.value || showIgnoreUpdate.value || showRestoreUpdate.value || showConfigure.value || showRemoveDependency.value || pending.value
+  return showVersionControl.value || showQuickUpdate.value || showRestoreUpdate.value || showConfigure.value || showRemoveDependency.value || pending.value
 })
 
 function toggleCardActions() {
@@ -528,6 +533,16 @@ function addPackageToIgnoredList(name: string) {
 
 function restoreUpdate() {
   delete getUpdateIgnored()[props.name]
+  removePackageFromIgnoredList(props.name)
+}
+
+function removePackageFromIgnoredList(name: string) {
+  const names = (getUpdatePolicy().updateIgnoredPackages ?? '')
+    .split(/[\s,，;；]+/g)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .filter(item => item.toLowerCase() !== name.toLowerCase())
+  config.value.market.updateIgnoredPackages = names.join('\n')
 }
 
 function isPluginPackage(name: string) {
@@ -753,6 +768,13 @@ async function configure() {
   gap: 0.6rem;
 }
 
+.dep-header-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
 .dep-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -958,6 +980,10 @@ async function configure() {
   .dep-card-header, .dep-card-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .dep-header-actions {
+    justify-content: flex-end;
   }
 
   .dep-card-buttons {
