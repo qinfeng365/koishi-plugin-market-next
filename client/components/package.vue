@@ -1,5 +1,9 @@
 <template>
-  <article :class="['dep-package-card', statusClass]" :style="cardStyle">
+  <article
+    :class="['dep-package-card', statusClass, { expandable: canExpandCard, expanded: editing }]"
+    :style="cardStyle"
+    @click="openCardActions"
+  >
     <div class="dep-status-mark" aria-hidden="true">
       <market-icon :name="markIcon"></market-icon>
     </div>
@@ -18,7 +22,7 @@
         </div>
         <span class="dep-full-name" :title="name">{{ name }}</span>
       </div>
-      <el-button v-if="showEditToggle" size="small" @click="editing = !editing">
+      <el-button v-if="showEditToggle" size="small" @click.stop="editing = !editing">
         {{ editing ? '收起' : '修改' }}
       </el-button>
     </div>
@@ -62,7 +66,7 @@
       {{ detailText }}
     </p>
 
-    <div v-if="showCardActions" class="dep-card-actions">
+    <div v-if="showCardActions" class="dep-card-actions" @click.stop>
       <el-select
         v-if="showVersionControl && data"
         v-model="selectedVersion"
@@ -109,6 +113,15 @@
           @click="configure"
         >
           添加配置
+        </el-button>
+        <el-button
+          v-if="showRemoveDependency"
+          size="small"
+          type="danger"
+          plain
+          @click="removeDependency"
+        >
+          卸载
         </el-button>
         <el-button v-if="pending" size="small" @click="clearOverride">取消改动</el-button>
       </div>
@@ -407,6 +420,10 @@ const showEditToggle = computed(() => {
   return !!data.value && !pending.value && !updatable.value && statusClass.value !== 'error' && statusClass.value !== 'manual'
 })
 
+const canExpandCard = computed(() => {
+  return !!data.value && !pending.value && statusClass.value !== 'error' && statusClass.value !== 'manual'
+})
+
 const showQuickUpdate = computed(() => {
   return !pending.value && !unconfigured.value && updatable.value && !!latestVersion.value && !dep.value?.workspace
 })
@@ -423,12 +440,29 @@ const showConfigure = computed(() => {
   return !pending.value && unconfigured.value
 })
 
-const showCardActions = computed(() => {
-  return showVersionControl.value || showQuickUpdate.value || showIgnoreUpdate.value || showRestoreUpdate.value || showConfigure.value || pending.value
+const showRemoveDependency = computed(() => {
+  return (editing.value || statusClass.value !== 'installed')
+    && !pending.value
+    && !!dep.value
+    && !dep.value.workspace
+    && !dep.value.invalid
 })
+
+const showCardActions = computed(() => {
+  return showVersionControl.value || showQuickUpdate.value || showIgnoreUpdate.value || showRestoreUpdate.value || showConfigure.value || showRemoveDependency.value || pending.value
+})
+
+function openCardActions() {
+  if (!canExpandCard.value) return
+  editing.value = true
+}
 
 function clearOverride() {
   delete config.value.market.override[props.name]
+}
+
+function removeDependency() {
+  selectedVersion.value = removeValue
 }
 
 function openIgnoreDialog() {
@@ -597,6 +631,14 @@ async function configure() {
   transition: border-color 0.18s ease, background-color 0.18s ease;
 
   &:hover {
+    border-color: var(--dep-accent-border);
+  }
+
+  &.expandable {
+    cursor: pointer;
+  }
+
+  &.expanded {
     border-color: var(--dep-accent-border);
   }
 
@@ -883,6 +925,7 @@ async function configure() {
   margin-top: 0.56rem;
   border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 76%, transparent);
   padding-top: 0.52rem;
+  cursor: default;
 
   .el-select {
     flex: 1 1 auto;
