@@ -216,7 +216,9 @@ function measureLayout() {
   const style = getComputedStyle(list.value)
   const gap = parseFloat(style.columnGap) || parseFloat(style.gap) || 16
   const width = list.value.clientWidth
-  columns.value = Math.max(1, Math.floor((width + gap) / (336 + gap)))
+  columns.value = config.layout === 'list'
+    ? 1
+    : Math.max(1, Math.floor((width + gap) / (336 + gap)))
   const card = list.value.querySelector<HTMLElement>('.market-package')
   rowHeight.value = (card?.offsetHeight || 202) + gap
 }
@@ -299,6 +301,7 @@ function onQuery(word: string) {
 
   &.list-layout {
     grid-template-columns: 1fr;
+    justify-items: stretch;
   }
 }
 

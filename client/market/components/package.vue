@@ -361,15 +361,38 @@ if (import.meta.hot) {
   contain-intrinsic-size: 4rem;
 
   .header {
-    flex: 0 0 auto;
+    flex: 0 0 23rem;
     gap: 0.75rem;
+    min-width: 0;
+    align-items: center;
 
     .main {
+      display: flex;
+      flex: 1 1 auto;
+      min-width: 0;
+      justify-content: center;
+    }
+
+    h2 {
+      min-width: 0;
+      font-size: 0.95rem;
+
+      .title {
+        min-width: 0;
+      }
+    }
+
+    .bottom {
       display: none;
+    }
+
+    .text-right {
+      flex: 0 0 auto;
     }
   }
 
   .desc {
+    min-width: 0;
     flex: 1 1 auto;
     -webkit-line-clamp: 1;
     margin: 0;

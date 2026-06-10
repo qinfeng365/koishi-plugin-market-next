@@ -1,5 +1,45 @@
 <template>
+  <!-- List row mode -->
+  <div v-if="props.listMode" :class="['dep-list-row', statusClass]" :style="cardStyle">
+    <div class="dep-status-mark" aria-hidden="true">
+      <market-icon :name="markIcon"></market-icon>
+    </div>
+    <div class="col-name">
+      <span class="name-display" :title="name">{{ displayName }}</span>
+      <span class="name-full" :title="name">{{ name }}</span>
+    </div>
+    <div class="col-version">{{ currentText }}</div>
+    <div class="col-latest" :class="{ 'has-update': updatable, 'pending-val': pending }">
+      {{ showTargetMeta ? targetText : '—' }}
+    </div>
+    <div class="col-actions" @click.stop>
+      <el-button v-if="showQuickUpdate" size="small" type="primary" @click="selectedVersion = latestVersion">更新</el-button>
+      <el-button v-if="showConfigure" size="small" type="primary" :loading="configuring" @click="configure">配置</el-button>
+      <el-button v-if="showInlineIgnoreUpdate" size="small" @click="openIgnoreDialog">忽略</el-button>
+      <el-button v-if="showRestoreUpdate" size="small" @click="restoreUpdate">恢复</el-button>
+      <el-select
+        v-if="showVersionControl && data && (editing || pending)"
+        v-model="selectedVersion"
+        size="small"
+        class="dep-list-select"
+        :class="{ pending }"
+      >
+        <el-option v-if="dep" :value="removeValue">移除依赖</el-option>
+        <el-option v-for="({ result }, itemVersion) in data" :key="itemVersion" :value="itemVersion">
+          {{ itemVersion }}
+          <template v-if="itemVersion === dep?.resolved">(当前)</template>
+          <span :class="[result, 'theme-color', 'dot-hint']"></span>
+        </el-option>
+      </el-select>
+      <el-button v-if="pending" size="small" @click="clearOverride">撤销</el-button>
+      <el-button v-if="showRemoveDependency" class="dep-remove-button" size="small" @click="removeDependency">卸载</el-button>
+      <el-button v-if="canExpandCard && !pending" size="small" @click.stop="editing = !editing">{{ editing ? '收起' : '版本' }}</el-button>
+    </div>
+  </div>
+
+  <!-- Card mode (default) -->
   <article
+    v-else
     :class="['dep-package-card', statusClass, { expandable: canExpandCard, expanded: editing }]"
     :style="cardStyle"
     @click="toggleCardActions"
@@ -189,6 +229,7 @@ type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'check-di
 const props = defineProps<{
   name: string
   kind?: ItemKind
+  listMode?: boolean
 }>()
 
 const removeValue = '__market_next_remove__'
@@ -465,7 +506,7 @@ const showConfigure = computed(() => {
 })
 
 const showRemoveDependency = computed(() => {
-  return (editing.value || statusClass.value !== 'installed')
+  return (props.listMode || editing.value || statusClass.value !== 'installed')
     && !pending.value
     && !!dep.value
     && !dep.value.workspace
@@ -1088,6 +1129,94 @@ async function configure() {
     padding: 0.52rem 0.62rem;
     background: color-mix(in srgb, var(--k-side-bg) 78%, transparent);
     font-size: 0.82rem;
+  }
+}
+
+// List row layout
+.dep-list-row {
+  --dep-accent: var(--fg3);
+  display: grid;
+  grid-template-columns: var(--deps-list-columns, 2rem minmax(14rem, 1fr) 8rem 9rem 24rem);
+  column-gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.32rem 0.75rem 0.32rem 0.62rem;
+  background: var(--k-card-bg);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-color-border) 50%, transparent);
+  transition: background 0.12s;
+
+  &:last-child { border-bottom: none; }
+  &:hover { background: color-mix(in srgb, var(--k-side-bg) 60%, transparent); }
+
+  .dep-status-mark {
+    position: static;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 6px;
+    margin: 0;
+    justify-self: center;
+  }
+
+  .col-name {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+
+    .name-display {
+      font-size: 0.875rem;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .name-full {
+      font-size: 0.7rem;
+      color: var(--fg3);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .col-version, .col-latest {
+    min-width: 0;
+    font-size: 0.8rem;
+    color: var(--fg2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 0.25rem;
+
+    &.has-update { color: var(--k-color-success); font-weight: 600; }
+    &.pending-val { color: var(--k-color-primary); font-weight: 600; }
+  }
+
+  .col-actions {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .dep-list-select {
+    width: 8rem;
+    flex: 0 0 8rem;
+  }
+
+  &.pending   { --dep-accent: var(--k-color-primary); background: color-mix(in srgb, var(--k-color-primary) 4%, var(--k-card-bg)); }
+  &.updatable { --dep-accent: var(--k-color-success); }
+  &.error, &.invalid { --dep-accent: var(--danger); background: color-mix(in srgb, var(--danger) 4%, var(--k-card-bg)); }
+  &.unconfigured { --dep-accent: var(--warning); background: color-mix(in srgb, var(--warning) 3%, var(--k-card-bg)); }
+
+  .dep-status-mark {
+    color: var(--dep-accent);
+    border-color: color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
+    background: color-mix(in srgb, var(--dep-accent) 12%, var(--k-side-bg));
   }
 }
 

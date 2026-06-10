@@ -58,11 +58,21 @@
               </div>
             </header>
             <div v-if="!group.collapsed" class="deps-grid">
+              <template v-if="depsLayout === 'list'">
+                <div class="deps-list-header">
+                  <span class="col-icon"></span>
+                  <span class="col-name">名称</span>
+                  <span class="col-version">已安装</span>
+                  <span class="col-latest">最新</span>
+                  <span class="col-actions">操作</span>
+                </div>
+              </template>
               <package-view
                 v-for="item in group.items"
                 :key="item.name"
                 :name="item.name"
                 :kind="item.kind"
+                :list-mode="depsLayout === 'list'"
               ></package-view>
             </div>
           </section>
@@ -546,7 +556,44 @@ ctx.action('dependencies.upgrade', {
 }
 
 .deps-layout-list .deps-grid {
-  grid-template-columns: 1fr;
+  --deps-list-columns: 2rem minmax(14rem, 1fr) 8rem 9rem 24rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.deps-list-header {
+  display: grid;
+  grid-template-columns: var(--deps-list-columns);
+  column-gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.28rem 0.75rem 0.28rem 0.62rem;
+  background: color-mix(in srgb, var(--k-side-bg) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-color-border) 60%, transparent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--fg3);
+  text-transform: uppercase;
+
+  .col-icon { width: 2rem; }
+  .col-name  { min-width: 0; }
+  .col-version, .col-latest { min-width: 0; padding: 0 0.25rem; }
+  .col-actions { min-width: 0; text-align: right; }
+}
+
+@media (max-width: 960px) {
+  .deps-layout-list .deps-grid {
+    --deps-list-columns: 2rem minmax(10rem, 1fr) 6.5rem 7rem 14rem;
+  }
 }
 
 .deps-apply-bar {
