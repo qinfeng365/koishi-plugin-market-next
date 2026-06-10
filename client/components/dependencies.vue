@@ -593,6 +593,7 @@ ctx.action('dependencies.upgrade', {
 .deps-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  align-items: start;
   gap: 0.5rem;
 }
 

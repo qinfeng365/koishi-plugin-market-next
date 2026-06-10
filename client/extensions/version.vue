@@ -1,22 +1,30 @@
 <template>
   <!-- navigation -->
-  <div class="navigation flex flex-wrap gap-x-4 gap-y-2 my-8" v-if="object">
+  <div class="navigation flex flex-wrap gap-x-4 gap-y-2 my-8" v-if="object || showDependencyUninstall">
     <a class="el-button" target="_blank"
-      v-if="object.package.links.homepage"
+      v-if="object?.package.links.homepage"
       :href="object.package.links.homepage"
     >插件主页</a>
     <a class="el-button" target="_blank"
-      v-if="object.package.links.npm && local?.package.version"
+      v-if="object?.package.links.npm && local?.package.version"
       :href="object.package.links.npm + '/v/' + local.package.version"
     >当前版本：{{ local.package.version }}</a>
     <a class="el-button" target="_blank"
-      v-if="object.package.links.repository"
+      v-if="object?.package.links.repository"
       :href="object.package.links.repository"
     >存储库</a>
     <a class="el-button" target="_blank"
-      v-if="object.package.links.bugs"
+      v-if="object?.package.links.bugs"
       :href="object.package.links.bugs"
     >问题反馈</a>
+    <el-button
+      v-if="showDependencyUninstall"
+      :class="{ 'dependency-remove-button': !pendingRemove }"
+      :loading="uninstalling"
+      @click="pendingRemove ? cancelPendingUninstall() : requestUninstall()"
+    >
+      {{ pendingRemove ? '取消卸载' : '卸载插件包' }}
+    </el-button>
   </div>
 
   <!-- latest -->
@@ -32,20 +40,6 @@
   <!-- external -->
   <k-comment type="warning" v-if="local && !local.workspace && store.dependencies && !store.dependencies[name]">
     <p>尚未将当前插件列入依赖，<span class="k-link" @click="addDependency">点击添加</span>。</p>
-  </k-comment>
-
-  <!-- dependency uninstall -->
-  <k-comment v-if="showDependencyUninstall" :type="pendingRemove ? 'danger' : 'warning'">
-    <div class="dependency-uninstall">
-      <div>
-        <p v-if="pendingRemove">此插件包已暂存卸载，应用依赖更改后生效。</p>
-        <p v-else>此插件包已列入依赖，可以由 market-next 卸载。</p>
-      </div>
-      <div class="dependency-uninstall__actions">
-        <el-button v-if="pendingRemove" @click="cancelPendingUninstall">取消卸载</el-button>
-        <el-button v-else type="danger" :loading="uninstalling" @click="requestUninstall">卸载插件包</el-button>
-      </div>
-    </div>
   </k-comment>
 
   <el-dialog v-model="showUninstallDialog" title="确认卸载插件包" destroy-on-close>
@@ -147,27 +141,28 @@ async function uninstallDependency(removeConfig: boolean) {
 
 <style lang="scss" scoped>
 
-.dependency-uninstall {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+.dependency-remove-button {
+  --remove-color: color-mix(in srgb, var(--danger) 72%, #ff9a9a);
+  --remove-border: color-mix(in srgb, var(--danger) 42%, var(--k-color-border));
+  --remove-bg: color-mix(in srgb, var(--danger) 10%, transparent);
+  --remove-bg-hover: color-mix(in srgb, var(--danger) 16%, transparent);
+  border-color: var(--remove-border);
+  color: var(--remove-color);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--danger) 8%, transparent), transparent),
+    var(--remove-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 8%, transparent);
 
-  p {
-    margin: 0;
+  &:hover, &:focus {
+    border-color: color-mix(in srgb, var(--danger) 56%, var(--k-color-border));
+    color: color-mix(in srgb, var(--danger) 84%, #ffc0c0);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--danger) 12%, transparent), transparent),
+      var(--remove-bg-hover);
   }
-}
 
-.dependency-uninstall__actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 0.5rem;
-}
-
-@media (max-width: 640px) {
-  .dependency-uninstall {
-    align-items: flex-start;
-    flex-direction: column;
+  &:active {
+    background: color-mix(in srgb, var(--danger) 20%, transparent);
   }
 }
 

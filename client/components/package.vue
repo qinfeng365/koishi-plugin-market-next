@@ -46,7 +46,7 @@
         <strong>{{ currentText }}</strong>
       </div>
       <div v-if="showTargetMeta" class="dep-meta-item">
-        <span>{{ pending ? '待应用' : updatable ? '最新' : ignoredUpdate ? '已忽略' : '目标' }}</span>
+        <span>{{ targetLabel }}</span>
         <strong :class="{ danger: pendingRemove }">{{ targetText }}</strong>
       </div>
       <div v-if="requestText" class="dep-meta-item">
@@ -118,9 +118,8 @@
         </el-button>
         <el-button
           v-if="showRemoveDependency"
+          class="dep-remove-button"
           size="small"
-          type="danger"
-          plain
           @click="removeDependency"
         >
           卸载
@@ -324,8 +323,20 @@ const targetText = computed(() => {
   if (updatable.value && latestVersion.value) return latestVersion.value
   if (ignoredUpdate.value && latestVersion.value) return latestVersion.value
   if (dep.value?.workspace) return '保持工作区'
+  if (statusClass.value === 'installed' && dep.value && !dep.value.workspace) {
+    if (dep.value.latest) return dep.value.latest
+    if (status.value?.loading) return '获取中'
+  }
   if (latestVersion.value) return latestVersion.value
   return dep.value || local.value ? '等待版本数据' : '等待安装'
+})
+
+const targetLabel = computed(() => {
+  if (pending.value) return '待应用'
+  if (updatable.value) return '最新'
+  if (ignoredUpdate.value) return '已忽略'
+  if (dep.value || local.value) return '最新'
+  return '目标'
 })
 
 const detailText = computed(() => {
@@ -409,7 +420,9 @@ const summaryText = computed(() => {
 })
 
 const showTargetMeta = computed(() => {
-  return pending.value || updatable.value || ignoredUpdate.value || statusClass.value === 'manual' || statusClass.value === 'error'
+  if (pending.value || updatable.value || ignoredUpdate.value) return true
+  if (statusClass.value === 'manual' || statusClass.value === 'error') return true
+  return !!(dep.value || local.value) && !dep.value?.workspace && !local.value?.workspace
 })
 
 const showDetailText = computed(() => {
@@ -959,6 +972,31 @@ async function configure() {
   display: flex;
   flex: 0 0 auto;
   gap: 0.38rem;
+}
+
+.dep-remove-button {
+  --remove-color: color-mix(in srgb, var(--danger) 72%, #ff9a9a);
+  --remove-border: color-mix(in srgb, var(--danger) 42%, var(--k-color-border));
+  --remove-bg: color-mix(in srgb, var(--danger) 10%, transparent);
+  --remove-bg-hover: color-mix(in srgb, var(--danger) 16%, transparent);
+  border-color: var(--remove-border);
+  color: var(--remove-color);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--danger) 8%, transparent), transparent),
+    var(--remove-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 8%, transparent);
+
+  &:hover, &:focus {
+    border-color: color-mix(in srgb, var(--danger) 56%, var(--k-color-border));
+    color: color-mix(in srgb, var(--danger) 84%, #ffc0c0);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--danger) 12%, transparent), transparent),
+      var(--remove-bg-hover);
+  }
+
+  &:active {
+    background: color-mix(in srgb, var(--danger) 20%, transparent);
+  }
 }
 
 .dep-muted {
