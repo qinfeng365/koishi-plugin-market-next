@@ -154,6 +154,7 @@ if (import.meta.hot) {
   margin: 0;
   padding: 1rem 1.25rem;
   box-sizing: border-box;
+  position: relative;
   contain: layout paint style;
   content-visibility: auto;
   contain-intrinsic-size: 12.5rem;
@@ -186,6 +187,7 @@ if (import.meta.hot) {
       border-radius: 10px;
       border: 1px solid transparent;
       box-sizing: border-box;
+      transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
 
       svg {
         height: 1.75rem;

@@ -85,6 +85,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private pickDiskCache;
     private getCacheScore;
     private scheduleDiskCacheWrite;
+    private serializeRouteStats;
     private pruneCacheEntries;
     private writeDiskCache;
     private refreshInBackground;

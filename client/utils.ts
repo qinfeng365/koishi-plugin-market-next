@@ -4,6 +4,8 @@ import { gt, prerelease, valid } from 'semver'
 
 export const active = ref('')
 
+export type FrontendMode = 'performance' | 'polished'
+
 export interface UpdateIgnoreRule {
   version?: string
   count?: number
@@ -24,6 +26,13 @@ export interface UpdatePolicy {
   updateIgnoreDuration?: number
   updateIgnoreVersions?: number
   updateIgnorePrerelease?: boolean
+}
+
+export function getFrontendMode(config?: { market?: { frontendMode?: FrontendMode } }): FrontendMode {
+  const pluginConfig = findMarketNextConfig((store as any).config?.plugins)
+  if (pluginConfig?.frontendMode === 'polished') return 'polished'
+  if (pluginConfig?.frontendMode === 'performance') return 'performance'
+  return config?.market?.frontendMode === 'polished' ? 'polished' : 'performance'
 }
 
 export function createUpdateIgnoreRule(name: string, policy?: UpdatePolicy, options: UpdateIgnoreOptions = {}): UpdateIgnoreRule | undefined {
@@ -129,4 +138,28 @@ function parsePackageList(value?: string) {
 
 function normalizeName(name?: string) {
   return (name ?? '').trim().toLowerCase()
+}
+
+function findMarketNextConfig(plugins: any): any {
+  let fallback: any
+
+  function visit(object: any): any {
+    if (!object || typeof object !== 'object') return
+    for (const rawKey of Object.keys(object)) {
+      if (rawKey.startsWith('$')) continue
+      const value = object[rawKey]
+      if (!value || typeof value !== 'object') continue
+      const disabled = rawKey.startsWith('~')
+      const key = disabled ? rawKey.slice(1) : rawKey
+      const name = key.split(':', 1)[0]
+      if (name === 'market-next' || name === 'koishi-plugin-market-next') {
+        if (!disabled) return value
+        fallback ||= value
+      }
+      const nested = visit(value)
+      if (nested) return nested
+    }
+  }
+
+  return visit(plugins) ?? fallback
 }

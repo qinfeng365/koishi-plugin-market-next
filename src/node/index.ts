@@ -64,9 +64,14 @@ export interface Config {
   registry?: Installer.Config
   search?: MarketProvider.Config
   chatlunaTool?: boolean
+  frontendMode?: 'performance' | 'polished'
 }
 
 export const Config: Schema<Config> = Schema.object({
+  frontendMode: Schema.union([
+    Schema.const('performance').description('性能模式'),
+    Schema.const('polished').description('精致模式'),
+  ]).role('radio').default('performance').description('Frontend display mode.'),
   registry: Installer.Config,
   search: MarketProvider.Config,
   chatlunaTool: Schema.boolean().default(false).description('Enable ChatLuna plugin market query tool.'),

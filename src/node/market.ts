@@ -16,8 +16,9 @@ const FALLBACK_ENDPOINTS = [
 ]
 const ROUTE_STAGGER = 120
 const FIRST_PAYLOAD_TIMEOUT = Time.second * 1.5
-const FAST_ROUTE_THRESHOLD = Time.second * 1.5
+const FAST_ROUTE_THRESHOLD = Time.second * 0.8
 const MAX_CACHE_ENTRIES = 3
+const CACHE_ENTRY_TTL = Time.day * 30
 const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
 
 type LogLevel = typeof logLevels[number]
@@ -36,10 +37,18 @@ interface CacheFile {
   result: SearchResult
 }
 
+interface PersistedRouteStats {
+  averageElapsed?: number
+  lastSuccess?: number
+  contentEncoding?: string
+  score: number
+}
+
 interface CacheStore {
   version: 2
   entries: Dict<CacheFile>
   lastUsed?: string
+  routeStats?: Dict<PersistedRouteStats>
 }
 
 type CacheMeta = Omit<CacheFile, 'result'>
@@ -801,7 +810,40 @@ class MarketProvider extends BaseMarketProvider {
       const store = normalizeCacheStore(JSON.parse(content))
       const parseElapsed = Date.now() - parseStart
       this.cacheEntries = { ...this.cacheEntries, ...store.entries }
+      if (store.routeStats) {
+        for (const [endpoint, stats] of Object.entries(store.routeStats)) {
+          if (!stats) continue
+          // restore learned performance data, reset session counters
+          this.routeStats[endpoint] = {
+            score: stats.score,
+            successes: 0,
+            failures: 0,
+            averageElapsed: stats.averageElapsed,
+            lastSuccess: stats.lastSuccess,
+            contentEncoding: stats.contentEncoding,
+          }
+        }
+        this.log('debug', `market route stats restored from disk: ${Object.keys(store.routeStats).join(', ')}`)
+      }
       this.log('debug', `market disk cache store parsed: bytes=${formatBytes(Buffer.byteLength(content))}, entries=${Object.keys(store.entries).length}, lastUsed=${store.lastUsed ?? '-'}, parse=${parseElapsed}ms, endpoints=${formatCacheEntries(store.entries)}`)
+      const staleEndpoints = Object.values(store.entries)
+        .filter((e): e is CacheFile => !!e && Date.now() - e.fetchedAt > CACHE_ENTRY_TTL)
+        .map(e => e.endpoint)
+      if (staleEndpoints.length) {
+        this.log('debug', `market disk cache has ${staleEndpoints.length} stale entries (>${CACHE_ENTRY_TTL / Time.day}d), will prune on next write: ${staleEndpoints.join(', ')}`)
+        // mark so next successful fetch triggers a write that drops them
+        this.cacheWriteTimer ??= setTimeout(() => {
+          this.cacheWriteTimer = undefined
+          if (this.conditionMeta) {
+            void this.writeDiskCache({
+              version: 2,
+              entries: this.pruneCacheEntries(this.conditionMeta.endpoint),
+              lastUsed: this.conditionMeta.endpoint,
+              routeStats: this.serializeRouteStats(),
+            })
+          }
+        }, 5000)
+      }
       const cache = this.pickDiskCache()
       if (!cache) {
         this.log('debug', `skip market disk cache because no cached endpoint matches candidates: ${Object.keys(store.entries).join(', ')}`)
@@ -905,6 +947,7 @@ class MarketProvider extends BaseMarketProvider {
       version: 2,
       entries: this.pruneCacheEntries(entry.endpoint),
       lastUsed: entry.endpoint,
+      routeStats: this.serializeRouteStats(),
     }
     this.cacheEntries = cache.entries
     this.log('debug', `schedule market disk cache write: endpoint=${entry.endpoint}, objects=${result.objects.length}, entries=${Object.keys(cache.entries).length}, file=${this.cacheFile}, hash=${shortHash(entry.hash) ?? '-'}, size=${formatBytes(entry.size)}, wireSize=${formatBytes(entry.wireSize)}, encoding=${entry.contentEncoding ?? 'identity'}`)
@@ -914,10 +957,24 @@ class MarketProvider extends BaseMarketProvider {
     }, 0)
   }
 
+  private serializeRouteStats(): Dict<PersistedRouteStats> {
+    const result: Dict<PersistedRouteStats> = {}
+    for (const [endpoint, stats] of Object.entries(this.routeStats)) {
+      if (!stats) continue
+      result[endpoint] = {
+        score: clamp(stats.score, -6, 3),
+        averageElapsed: stats.averageElapsed,
+        lastSuccess: stats.lastSuccess,
+        contentEncoding: stats.contentEncoding,
+      }
+    }
+    return result
+  }
+
   private pruneCacheEntries(lastUsed: string) {
     const entries = Object
       .values(this.cacheEntries)
-      .filter((cache): cache is CacheFile => !!cache && Array.isArray(cache.result?.objects))
+      .filter((cache): cache is CacheFile => !!cache && Array.isArray(cache.result?.objects) && Date.now() - cache.fetchedAt <= CACHE_ENTRY_TTL)
       .sort((a, b) => {
         if (a.endpoint === lastUsed) return -1
         if (b.endpoint === lastUsed) return 1

@@ -1,5 +1,5 @@
 <template>
-  <k-layout main="darker" class="page-market" menu="market">
+  <k-layout main="darker" :class="['page-market', modeClass]" menu="market">
     <template #left>
       <el-scrollbar>
         <market-filter v-model="words" :data="visibleData"></market-filter>
@@ -108,7 +108,7 @@
 
 import { router, store, global, useConfig } from '@koishijs/client'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { active } from '../utils'
+import { active, getFrontendMode } from '../utils'
 import { getVisible, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
 import { SearchObject } from '@koishijs/registry'
 
@@ -127,6 +127,8 @@ provide(kConfig, {
 const root = ref()
 const searchBox = ref<{ focus?: () => void }>()
 const config = useConfig()
+const frontendMode = computed(() => getFrontendMode(config.value))
+const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const words = ref<string[]>([''])
 
@@ -539,6 +541,265 @@ function formatNumber(value?: number) {
 .market-error.k-comment {
   margin-left: 2rem;
   margin-right: 2rem;
+}
+
+.page-market.market-mode-polished {
+  --market-polished-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --market-polished-ease-back: cubic-bezier(0.34, 1.8, 0.64, 1);
+  --market-polished-shadow: 0 28px 64px rgb(0 0 0 / 26%), 0 8px 24px rgb(0 0 0 / 14%), inset 0 1px 0 rgb(255 255 255 / 10%);
+  --market-polished-shadow-glow: 0 28px 64px rgb(0 0 0 / 26%), 0 8px 24px rgb(0 0 0 / 14%), 0 0 0 1.5px color-mix(in srgb, var(--k-color-primary) 55%, transparent), 0 0 32px color-mix(in srgb, var(--k-color-primary) 12%, transparent), inset 0 1px 0 rgb(255 255 255 / 14%);
+  --market-polished-glass: color-mix(in srgb, var(--k-card-bg) 78%, transparent);
+  --market-polished-glass-hover: color-mix(in srgb, var(--k-card-bg) 90%, transparent);
+
+  .layout-left {
+    border-right-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border));
+    background:
+      radial-gradient(ellipse 80% 40% at 50% 0%, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent),
+      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent) 0%, transparent 55%),
+      color-mix(in srgb, var(--k-side-bg) 72%, transparent);
+    backdrop-filter: blur(14px) saturate(1.16) brightness(1.02);
+
+    h2 {
+      background: linear-gradient(90deg, var(--k-color-primary), color-mix(in srgb, var(--k-color-primary) 55%, var(--el-text-color-secondary)));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      opacity: 1;
+    }
+  }
+
+  .layout-main .el-scrollbar__view {
+    animation: market-polished-enter 0.5s var(--market-polished-ease) both;
+  }
+
+  // stagger cards on initial render only — settled class added after 700ms to stop re-animating during scroll
+  .package-list:not(.settled) .market-package {
+    @for $i from 1 through 12 {
+      &:nth-child(#{$i}) {
+        animation: market-polished-card-enter 0.55s var(--market-polished-ease) #{($i - 1) * 0.045}s both;
+      }
+    }
+
+    &:nth-child(n + 13) {
+      animation: market-polished-card-enter 0.55s var(--market-polished-ease) 0.5s both;
+    }
+  }
+
+  .search-box {
+    border-color: color-mix(in srgb, var(--k-color-primary) 22%, var(--k-color-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 6%, transparent) 0%, transparent 55%),
+      var(--market-polished-glass);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 10%), inset 0 1px 0 rgb(255 255 255 / 10%);
+    backdrop-filter: blur(16px) saturate(1.18);
+    transition:
+      border-color 0.28s var(--market-polished-ease),
+      box-shadow 0.28s var(--market-polished-ease),
+      transform 0.28s var(--market-polished-ease-back);
+
+    &:focus-within {
+      border-color: color-mix(in srgb, var(--k-color-primary) 60%, var(--k-color-border));
+      box-shadow:
+        0 16px 48px rgb(0 0 0 / 14%),
+        0 0 0 3px color-mix(in srgb, var(--k-color-primary) 18%, transparent),
+        inset 0 1px 0 rgb(255 255 255 / 12%);
+      transform: translateY(-2px);
+    }
+  }
+
+  .market-hint {
+    background: linear-gradient(90deg, var(--el-text-color-regular), color-mix(in srgb, var(--k-color-primary) 60%, var(--el-text-color-regular)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .market-stale.k-comment,
+  .market-debug.k-comment,
+  .market-loading-warning.k-comment,
+  .market-error.k-comment {
+    border-color: color-mix(in srgb, var(--k-color-primary) 20%, var(--k-color-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 6%, transparent), transparent 70%),
+      var(--market-polished-glass);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 10%);
+    backdrop-filter: blur(12px) saturate(1.12);
+  }
+
+  // scrollbar
+  .el-scrollbar__bar.is-vertical .el-scrollbar__thumb {
+    background: color-mix(in srgb, var(--k-color-primary) 28%, var(--el-scrollbar-bg-color, rgba(144, 147, 153, 0.3)));
+    border-radius: 4px;
+    transition: background 0.2s var(--market-polished-ease);
+
+    &:hover { background: color-mix(in srgb, var(--k-color-primary) 55%, var(--el-scrollbar-hover-bg-color, rgba(144, 147, 153, 0.5))); }
+  }
+
+  // sidebar filter items
+  :deep(.market-filter-item) {
+    border-radius: 8px;
+    transition: color 0.18s var(--market-polished-ease), background 0.18s var(--market-polished-ease), transform 0.22s var(--market-polished-ease-back), box-shadow 0.18s var(--market-polished-ease);
+
+    &:hover {
+      background: color-mix(in srgb, var(--k-color-primary) 7%, var(--k-hover-bg, rgba(128, 128, 128, 0.08)));
+      transform: translateX(3px);
+    }
+
+    &.active {
+      background: color-mix(in srgb, var(--k-color-primary) 14%, transparent);
+      box-shadow: inset 3px 0 0 var(--k-color-primary), inset 0 1px 0 rgb(255 255 255 / 6%);
+      transform: translateX(3px);
+    }
+
+    &.active.verified, &.active.newborn { box-shadow: inset 3px 0 0 var(--k-color-success); }
+    &.active.preview, &.active.portable { box-shadow: inset 3px 0 0 var(--k-color-warning); }
+    &.active.insecure { box-shadow: inset 3px 0 0 var(--k-color-danger); }
+  }
+
+  // load-complete footer
+  .load-complete {
+    opacity: 0.55;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    position: relative;
+
+    &::before, &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 4rem;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--k-color-border) 60%, transparent));
+    }
+    &::before { right: calc(50% + 5rem); transform: rotate(180deg); }
+    &::after { left: calc(50% + 5rem); }
+  }
+
+  .market-package {
+    border-color: color-mix(in srgb, var(--k-color-primary) 10%, var(--k-color-border));
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent) 0%, transparent 50%),
+      var(--market-polished-glass);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 7%);
+    backdrop-filter: blur(10px) saturate(1.08);
+    transition:
+      transform 0.32s var(--market-polished-ease-back),
+      box-shadow 0.32s var(--market-polished-ease),
+      border-color 0.22s var(--market-polished-ease),
+      background 0.22s var(--market-polished-ease);
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--k-color-primary) 16%, transparent) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity 0.4s var(--market-polished-ease);
+      pointer-events: none;
+    }
+
+    &:hover {
+      border-color: color-mix(in srgb, var(--k-color-primary) 65%, var(--k-color-border));
+      box-shadow: var(--market-polished-shadow-glow);
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--k-color-primary) 10%, transparent) 0%, transparent 55%),
+        var(--market-polished-glass-hover);
+      transform: translateY(-10px) scale(1.016);
+
+      &::before {
+        opacity: 1;
+      }
+
+      .header .left {
+        transform: scale(1.14) rotate(-4deg);
+        box-shadow:
+          inset 0 1px 0 rgb(255 255 255 / 22%),
+          0 14px 32px color-mix(in srgb, var(--c) 50%, transparent);
+        border-color: color-mix(in srgb, var(--c) 55%, var(--k-color-border));
+      }
+
+      .title {
+        background: linear-gradient(90deg, var(--k-text-dark, var(--k-text-normal)), color-mix(in srgb, var(--k-color-primary) 50%, var(--k-text-dark, var(--k-text-normal))));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+    }
+
+    .header .left {
+      box-shadow:
+        inset 0 1px 0 rgb(255 255 255 / 10%),
+        0 6px 16px color-mix(in srgb, var(--c) 18%, transparent);
+      transition:
+        transform 0.32s var(--market-polished-ease-back),
+        box-shadow 0.32s var(--market-polished-ease),
+        border-color 0.22s var(--market-polished-ease);
+    }
+
+    .rating .market-icon {
+      filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--k-color-warning) 40%, transparent));
+    }
+
+    .footer {
+      border-top: 1px solid color-mix(in srgb, var(--k-color-border) 60%, transparent);
+      padding-top: 0.5rem;
+      margin-top: -0.25rem;
+    }
+
+    .avatars img {
+      box-shadow: 0 2px 6px rgb(0 0 0 / 18%), 0 0 0 1.5px color-mix(in srgb, var(--k-color-primary) 20%, var(--k-color-border));
+      transition: transform 0.22s var(--market-polished-ease-back), box-shadow 0.22s var(--market-polished-ease);
+
+      &:hover {
+        transform: scale(1.18) translateY(-1px);
+        box-shadow: 0 4px 10px rgb(0 0 0 / 22%), 0 0 0 2px color-mix(in srgb, var(--k-color-primary) 40%, transparent);
+      }
+    }
+  }
+}
+
+@keyframes market-polished-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes market-polished-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-market.market-mode-polished {
+    .layout-main .el-scrollbar__view,
+    .package-list .market-package {
+      animation: none;
+    }
+
+    .search-box,
+    .market-package {
+      transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+
+      &:hover,
+      &:focus-within {
+        transform: none;
+      }
+    }
+  }
 }
 
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <k-layout main="page-deps" menu="dependencies">
+  <k-layout main="page-deps" :class="modeClass" menu="dependencies">
     <div class="deps-toolbar">
       <div class="deps-filters">
         <button
@@ -74,7 +74,7 @@
     </el-scrollbar>
   </k-layout>
 
-  <div v-if="summary.pending" class="deps-apply-bar">
+  <div v-if="summary.pending" :class="['deps-apply-bar', modeClass]">
     <div>
       <strong>待应用 {{ summary.pending }} 项</strong>
       <span>更改将在确认后写入 package.json 并执行安装流程。</span>
@@ -92,7 +92,7 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { router, store, useConfig, useContext } from '@koishijs/client'
-import { getLatestVersion, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
+import { getFrontendMode, getLatestVersion, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
 import { addManual, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
@@ -121,6 +121,8 @@ const ctx = useContext()
 const keyword = ref('')
 const filter = ref<FilterKey>('all')
 const searchInput = ref<{ focus?: () => void }>()
+const frontendMode = computed(() => getFrontendMode(config.value))
+const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 function getOverride() {
   return config.value.market?.override ?? {}
@@ -640,6 +642,202 @@ ctx.action('dependencies.upgrade', {
   flex: 0 0 auto;
 }
 
+.market-mode-polished .page-deps,
+.market-mode-polished.page-deps,
+.page-deps.market-mode-polished {
+  --deps-polished-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --deps-polished-ease-back: cubic-bezier(0.34, 1.8, 0.64, 1);
+  --deps-polished-glass: color-mix(in srgb, var(--k-card-bg) 78%, transparent);
+  --deps-polished-shadow: 0 24px 56px rgb(0 0 0 / 22%), 0 8px 20px rgb(0 0 0 / 12%), inset 0 1px 0 rgb(255 255 255 / 10%);
+
+  // scrollbar
+  .el-scrollbar__bar.is-vertical .el-scrollbar__thumb {
+    background: color-mix(in srgb, var(--k-color-primary) 28%, var(--el-scrollbar-bg-color, rgba(144, 147, 153, 0.3)));
+    transition: background 0.2s var(--deps-polished-ease);
+    &:hover { background: color-mix(in srgb, var(--k-color-primary) 55%, var(--el-scrollbar-hover-bg-color, rgba(144, 147, 153, 0.5))); }
+  }
+
+  .deps-toolbar {
+    border-bottom-color: color-mix(in srgb, var(--k-color-primary) 16%, var(--k-color-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 7%, transparent), transparent 58%),
+      var(--deps-polished-glass);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 8%);
+    backdrop-filter: blur(14px) saturate(1.12);
+  }
+
+  .deps-filter,
+  .deps-summary span {
+    border-color: color-mix(in srgb, var(--k-color-border) 64%, transparent);
+    background: color-mix(in srgb, var(--k-side-bg) 72%, transparent);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+    transition: color 0.18s var(--deps-polished-ease), background 0.18s var(--deps-polished-ease), border-color 0.18s var(--deps-polished-ease), box-shadow 0.18s var(--deps-polished-ease), transform 0.18s var(--deps-polished-ease);
+  }
+
+  .deps-filter:hover {
+    border-color: color-mix(in srgb, var(--k-color-primary) 40%, var(--k-color-border));
+    background: color-mix(in srgb, var(--k-card-bg) 92%, transparent);
+    box-shadow: 0 8px 20px rgb(0 0 0 / 12%);
+    transform: translateY(-2px);
+  }
+
+  .deps-filter.active {
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--k-color-primary) 18%, transparent), inset 0 1px 0 rgb(255 255 255 / 10%);
+  }
+
+  .deps-group {
+    animation: deps-polished-enter 0.45s var(--deps-polished-ease) both;
+  }
+
+  .deps-group-header {
+    border-color: color-mix(in srgb, var(--group-accent) 22%, var(--k-color-border));
+    background:
+      linear-gradient(90deg, color-mix(in srgb, var(--group-accent) 12%, transparent), transparent 48%),
+      var(--deps-polished-glass);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 8%), inset 0 1px 0 rgb(255 255 255 / 8%);
+    backdrop-filter: blur(12px) saturate(1.12);
+    transition:
+      border-color 0.28s var(--deps-polished-ease),
+      background 0.28s var(--deps-polished-ease),
+      box-shadow 0.28s var(--deps-polished-ease),
+      transform 0.28s var(--deps-polished-ease-back);
+
+    h2 {
+      background: linear-gradient(90deg, var(--group-accent), color-mix(in srgb, var(--group-accent) 55%, var(--fg1)));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    p { opacity: 0.75; }
+
+    &::before {
+      width: 4px;
+      border-radius: 0 2px 2px 0;
+      box-shadow: 0 0 8px color-mix(in srgb, var(--group-accent) 60%, transparent);
+    }
+
+    &.collapsible:hover,
+    &.collapsible:focus-visible {
+      border-color: color-mix(in srgb, var(--group-accent) 55%, var(--k-color-border));
+      box-shadow: var(--deps-polished-shadow);
+      transform: translateY(-3px);
+    }
+  }
+
+  .deps-summary span {
+    backdrop-filter: blur(8px);
+    transition: transform 0.2s var(--deps-polished-ease-back), box-shadow 0.2s var(--deps-polished-ease);
+
+    &:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb(0 0 0 / 10%); }
+  }
+
+  .deps-search .el-input__wrapper {
+    background: var(--deps-polished-glass);
+    backdrop-filter: blur(12px) saturate(1.12);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 8%), inset 0 1px 0 rgb(255 255 255 / 8%) !important;
+    transition: box-shadow 0.24s var(--deps-polished-ease);
+
+    &.is-focus {
+      box-shadow: 0 8px 24px rgb(0 0 0 / 12%), 0 0 0 3px color-mix(in srgb, var(--k-color-primary) 18%, transparent), inset 0 1px 0 rgb(255 255 255 / 10%) !important;
+    }
+  }
+
+  .dep-package-card {
+    border-color: color-mix(in srgb, var(--dep-accent) 20%, var(--k-color-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--dep-accent) 7%, transparent), transparent 58%),
+      var(--deps-polished-glass);
+    box-shadow: 0 4px 14px rgb(0 0 0 / 8%), inset 0 1px 0 rgb(255 255 255 / 7%);
+    backdrop-filter: blur(10px) saturate(1.08);
+    transition:
+      border-color 0.28s var(--deps-polished-ease),
+      box-shadow 0.28s var(--deps-polished-ease),
+      transform 0.28s var(--deps-polished-ease-back),
+      background 0.28s var(--deps-polished-ease);
+
+    &:hover {
+      border-color: color-mix(in srgb, var(--dep-accent) 55%, var(--k-color-border));
+      box-shadow:
+        0 18px 40px color-mix(in srgb, var(--dep-accent) 14%, rgb(0 0 0 / 16%)),
+        0 0 0 1px color-mix(in srgb, var(--dep-accent) 30%, transparent),
+        inset 0 1px 0 rgb(255 255 255 / 10%);
+      transform: translateY(-5px) scale(1.01);
+    }
+
+    &.expanded {
+      box-shadow: 0 18px 40px color-mix(in srgb, var(--dep-accent) 14%, rgb(0 0 0 / 16%));
+    }
+
+    &:not(.installed)::after {
+      background: linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 14%, transparent), transparent);
+    }
+  }
+
+  .dep-status-mark,
+  .dep-kind-pill,
+  .dep-badge,
+  .dep-meta-item {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+  }
+
+  .dep-status-mark {
+    border-color: color-mix(in srgb, var(--dep-accent) 34%, var(--k-color-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--dep-accent) 16%, transparent), transparent 64%),
+      color-mix(in srgb, var(--k-side-bg) 76%, transparent);
+  }
+
+  .dep-kind-pill,
+  .dep-meta-item {
+    border-color: color-mix(in srgb, var(--dep-accent) 16%, var(--k-color-border));
+    background: color-mix(in srgb, var(--k-side-bg) 74%, transparent);
+  }
+
+  .dep-badge {
+    background: color-mix(in srgb, var(--dep-accent) 11%, var(--k-side-bg));
+  }
+
+  .dep-card-actions {
+    border-top-color: color-mix(in srgb, var(--dep-accent) 18%, var(--k-color-border));
+  }
+
+  .dep-card-actions.floating {
+    border-color: color-mix(in srgb, var(--dep-accent) 32%, var(--k-color-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--dep-accent) 8%, transparent), transparent 70%),
+      color-mix(in srgb, var(--k-card-bg) 90%, transparent);
+    box-shadow: 0 16px 38px rgb(0 0 0 / 18%), inset 0 1px 0 rgb(255 255 255 / 7%);
+    backdrop-filter: blur(14px) saturate(1.12);
+
+    &::before {
+      border-color: color-mix(in srgb, var(--dep-accent) 32%, var(--k-color-border));
+      background: color-mix(in srgb, var(--k-card-bg) 90%, transparent);
+    }
+  }
+}
+
+.deps-apply-bar.market-mode-polished {
+  border-top-color: color-mix(in srgb, var(--k-color-primary) 22%, var(--k-color-border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 64%),
+    color-mix(in srgb, var(--k-card-bg) 85%, transparent);
+  box-shadow: 0 -20px 48px rgb(0 0 0 / 20%);
+  backdrop-filter: blur(18px) saturate(1.18);
+}
+
+@keyframes deps-polished-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @media (max-width: 768px) {
   .deps-toolbar {
     grid-template-columns: 1fr;
@@ -665,6 +863,27 @@ ctx.action('dependencies.upgrade', {
 
   .deps-apply-actions {
     justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-mode-polished.page-deps,
+  .market-mode-polished .page-deps,
+  .page-deps.market-mode-polished {
+    .deps-group {
+      animation: none;
+    }
+
+    .deps-filter,
+    .deps-group-header,
+    .dep-package-card {
+      transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+
+      &:hover,
+      &:focus-visible {
+        transform: none;
+      }
+    }
   }
 }
 

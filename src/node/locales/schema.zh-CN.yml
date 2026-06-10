@@ -14,4 +14,5 @@ search:
   autoRoute: 当前市场源失败时自动尝试备用市场源。
   logLevel: 插件市场调试日志级别。silent 关闭日志，debug 输出最详细。
 
+frontendMode: 前端显示模式。性能模式保持低动效；精致模式启用更细腻的动效和高级样式。
 chatlunaTool: 启用 ChatLuna 插件市场查询工具。启用后，若当前 Koishi 同时安装了 ChatLuna，会注册只读工具 koishi_plugin_market_search。

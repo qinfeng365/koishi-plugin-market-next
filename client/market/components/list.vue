@@ -1,7 +1,7 @@
 <template>
   <slot name="header" v-bind="{ all, packages, hasFilter: hasFilter(modelValue) }"></slot>
   <template v-if="packages.length">
-    <div ref="list" class="package-list">
+    <div ref="list" :class="['package-list', { settled }]">
       <div v-if="topSpacer" class="virtual-spacer" :style="{ height: topSpacer + 'px' }"></div>
       <market-package
         v-for="data in renderedPackages"
@@ -76,6 +76,7 @@ let resizeObserver: ResizeObserver
 let observedList: HTMLElement | undefined
 let frame = 0
 let filterFrame = 0
+let settledTimer = 0
 let lastVirtualDebugAt = 0
 let debugState = {
   timings: {} as Record<string, number>,
@@ -90,6 +91,15 @@ const loadedPackages = computed(() => packages.value.slice(0, visible.value))
 const renderedPackages = computed(() => loadedPackages.value.slice(startIndex.value, endIndex.value))
 
 const hasMore = computed(() => visible.value < packages.value.length)
+
+const settled = ref(false)
+
+function markSettled() {
+  clearTimeout(settledTimer)
+  settledTimer = window.setTimeout(() => { settled.value = true }, 700)
+}
+
+watch(() => packages.value, () => { settled.value = false; markSettled() })
 
 function updateObserver() {
   if (!observer || !sentinel.value) return
@@ -154,6 +164,7 @@ onUnmounted(() => {
   removeScrollListener()
   cancelAnimationFrame(frame)
   cancelAnimationFrame(filterFrame)
+  clearTimeout(settledTimer)
 })
 
 function schedulePackageUpdate() {

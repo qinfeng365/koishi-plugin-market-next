@@ -49,6 +49,9 @@ declare class Installer extends Service {
     private routeProbeTask?;
     private routeProbeResult?;
     private registryRouteStats;
+    private notFoundCache;
+    private statsFile;
+    private statsWriteTimer?;
     private flushData;
     private tempRegistryStatus;
     private flushRegistryStatus;
@@ -57,6 +60,8 @@ declare class Installer extends Service {
     get cwd(): string;
     start(): Promise<void>;
     private createHttp;
+    private loadRouteStats;
+    private scheduleStatsWrite;
     private resetEndpoint;
     resolveName(name: string): string[];
     findVersion(names: string[]): Promise<{
@@ -67,6 +72,7 @@ declare class Installer extends Service {
     private getRegistryEndpointCandidates;
     private getRouteProbeEndpoints;
     private ensureMetadataEndpoint;
+    private raceEndpoints;
     private probeMetadataEndpoint;
     private fetchRegistryEndpoint;
     private applyRouteProbeResult;
@@ -84,7 +90,7 @@ declare class Installer extends Service {
     private formatRegistryError;
     private _getPackage;
     setPackage(name: string, versions: RemotePackage[]): void;
-    getPackage(name: string): Promise<Dict<Pick<RemotePackage, DependencyMetaKey>>>;
+    getPackage(name: string): Promise<any>;
     private getLocalDepsSnapshot;
     private _refreshDependencyMetadata;
     refreshDependencyMetadata(wait?: boolean): Promise<Dict<Dependency>>;

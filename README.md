@@ -7,7 +7,7 @@
 
 `koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-`3.5.5` 是本项目的第一个正式 release。`3.5.6-alpha.6` 是依赖版本刷新与依赖管理页体验的当前 alpha 测试版，默认不会替换 npm 的 `latest` 渠道。
+`3.5.5` 是本项目的第一个正式 release。`3.5.6` 整合了 alpha 系列验证过的依赖管理页改版、npm 路由优化、更新忽略策略和可选精致模式，是当前推荐的稳定版本。
 
 ## 为什么做 Next
 
@@ -51,18 +51,6 @@ npm install koishi-plugin-market-next
 
 如果同时安装了原始 `@koishijs/plugin-market`，建议只启用其中一个。market-next 为了保持 Console 事件兼容，内部服务名仍使用 `market`。
 
-测试 alpha 渠道：
-
-```bash
-npm install koishi-plugin-market-next@alpha
-```
-
-也可以固定安装某个 alpha 版本：
-
-```bash
-npm install koishi-plugin-market-next@3.5.6-alpha.6
-```
-
 ## 基础配置
 
 ```yaml
@@ -77,6 +65,7 @@ plugins:
       autoRoute: true
       retry: 1
       concurrency: 4
+    frontendMode: performance
     chatlunaTool: false
 ```
 
@@ -94,6 +83,11 @@ plugins:
 | `registry.autoRoute` | `true` | npm 包元数据失败时自动尝试备用 npm 源。 |
 | `registry.retry` | `1` | 每个 npm 源失败后的重试次数。 |
 | `registry.concurrency` | `4` | 批量获取依赖版本时的最大并发数。 |
+| `frontendMode` | `performance` | 前端显示模式：`performance` 为低动效高密度，`polished` 为精致动效和高级样式。 |
+| `updateIgnoredPackages` | 空 | 不检测更新的依赖名，每行或用逗号分隔。 |
+| `updateIgnoreDuration` | `0` | “忽略此次更新”的默认忽略时长，`0` 表示默认不限时。 |
+| `updateIgnoreVersions` | `1` | “忽略此次更新”默认连续忽略几个新版本。 |
+| `updateIgnorePrerelease` | `false` | 手动开启后，`alpha` / `beta` / `rc` 等预发布版本不会被视为可更新目标。 |
 | `chatlunaTool` | `false` | 是否注册 ChatLuna 插件市场查询工具。 |
 
 ## 市场源和自动路由
@@ -127,11 +121,11 @@ market-next 区分两类源：
 
 依赖管理页显示“可更新版本”时，请求的不是 4MB 左右的市场索引，而是每个依赖包自己的 npm 元数据，例如 `https://registry.npmjs.org/koishi-plugin-xxx`。如果弱网环境下每个包都分别尝试多个 npm 源，132 个依赖就可能放大成大量超时等待。
 
-`3.5.6` alpha 系列中，依赖版本刷新会先进行一次 npm registry route probe：
+`3.5.6` 中，依赖版本刷新会先进行一次 npm registry route probe：
 
 - 代表包选择顺序：`koishi`、`@koishijs/plugin-console`、第一个 Koishi 插件包、第一个普通依赖。
 - 当前 `registry.endpoint` 始终作为主源先请求。
-- 主源失败，或超过 1.5 秒仍未返回时，备用 npm 源才会启动竞速。
+- 主源失败，或超过 800ms 仍未返回时，备用 npm 源才会启动竞速。
 - 如果主源近期连续失败或平均耗时明显偏高，备用源启动延迟会自动缩短，但主源仍会先请求。
 - 备用 npm 源会按 route score 排序，评分参考成功率、失败次数、平均耗时和最近成功时间。
 - 不同失败原因有不同权重：超时和网络失败会较快降权，`not-found` / 镜像未同步只轻度降权。
@@ -140,7 +134,7 @@ market-next 区分两类源：
 - 本轮后续 `getPackage()` / `market/registry` 请求优先走选中的源。
 - 如果选中的备用源后续连续失败且分数低于主源，会自动回退到主源优先。
 - 单个包请求也会执行慢源接管：首选源超时或失败时，备用源可在同一个请求内胜出并更新当前 `metadataEndpoint`。
-- 这个选择只保存在进程内，不写入用户配置；下次刷新会重新判断。
+- 本轮选中的 `metadataEndpoint` 只保存在进程内，不写入用户配置；路由评分会写入本地统计缓存，重启后沿用历史延迟与成功记录。
 - 如果 route probe 全部失败，会回到原有的逐包重试和备用源 fallback 行为。
 - `registry.autoRoute: false` 时只请求 `registry.endpoint`，不会访问任何备用 npm 源。
 
@@ -148,7 +142,7 @@ market-next 区分两类源：
 
 ## 依赖更新提示策略
 
-`3.5.6-alpha.6` 增加了依赖更新提示控制，用来减少不需要处理的更新噪音：
+`3.5.6` 增加了依赖更新提示控制，用来减少不需要处理的更新噪音：
 
 - 可以在插件市场设置里填写“不检测更新的依赖名”，每行或用逗号分隔一个包名；这些依赖不会进入可更新或已忽略分组。
 - 依赖卡片上的“忽略此次更新”会先询问忽略多久，可选不限时、1 天、7 天、30 天或自定义天数。
@@ -173,6 +167,8 @@ market-next 会把市场索引缓存到 Koishi 实例目录下的 `cache/market-
 - 支持 ETag、Last-Modified 和内容 hash。
 - HTTP 304 或 hash 未变化时复用旧索引。
 - 网络失败但已有旧 payload 时，页面继续显示旧数据并标记 stale。
+- 缓存条目超过 30 天会在后续写盘时自动清理。
+- 市场源和 npm registry 的路由评分会持久化，重启后不必完全冷启动重新试源。
 
 这套策略的目的不是永远显示旧市场，而是让弱网用户先能操作，再在后台确认数据是否更新。
 
@@ -342,26 +338,22 @@ npm pack --dry-run
 - 使用 npm Trusted Publishing，不需要 `NPM_TOKEN`。
 - 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.4` 发布到 `alpha`，正式版本发布到 `latest`。
 
-## 3.5.6 Alpha Notes
+## 3.5.6 Release Notes
 
-`3.5.6-alpha.6` 主要用于验证依赖版本刷新性能、依赖管理页可读性，以及依赖更新提示策略。
+`3.5.6` 是依赖管理、路由性能和前端显示体验的稳定版更新，整合了 `3.5.6-alpha.0` 到 `3.5.6-alpha.6` 的测试内容。
 
-这一版重点关注：
+这一版重点包含：
 
-- npm 元数据 route probe 是否能减少依赖页“版本获取中 / 版本获取失败”的等待时间。
-- 选中源是否符合用户实际网络环境。
-- 依赖管理页是否能先显示本地依赖快照，再由后台刷新补齐最新版本。
-- 单个包请求在首选 npm 源变慢时，是否能及时让备用源接管，而不是一直死磕同一个源。
-- 依赖管理页是否能通过分组、搜索、筛选和固定底部操作条降低“全量表格”带来的眼花感。
-- 低频分区（例如已下载未配置）是否能折叠，避免长期占用依赖管理页空间。
-- 单个依赖是否能按设置忽略当前更新，并在达到忽略版本数或忽略到期后重新提示。
-- 不检测更新名单是否能让指定依赖完全退出可更新提示。
-- 手动开启预发布过滤后，alpha / beta / rc 等 prerelease 版本是否不再被当作更新目标。
-- 普通“已安装”卡片是否能通过插件身份标签、轻量类别色和简介行降低一屏灰卡的重复感。
-- 待应用、可更新、未配置、异常等状态是否仍然比普通已安装依赖更醒目、更容易操作。
-- 市场页和依赖页的 `Ctrl+K` / `Cmd+K` 搜索聚焦是否符合用户预期。
-- 日志页是否能清楚显示慢在 probe、单包请求、镜像未同步还是网络超时。
-- alpha 发布是否只更新 npm 的 `alpha` dist-tag，不影响 `latest` 用户。
+- 依赖管理页改为分组卡片工作台，降低 100+ 依赖环境下的视觉噪音。
+- 依赖页先显示本地依赖快照，再由后台刷新补齐最新版本。
+- npm 元数据 route probe 与单包慢源接管减少弱网下的版本获取等待。
+- market 和 npm registry 路由评分持久化，重启后能继续利用历史延迟与成功记录。
+- 可忽略单个更新、设置忽略时长/版本数，也可把指定依赖加入永久不检测更新名单。
+- 预发布版本过滤可手动开启，避免 `alpha` / `beta` / `rc` 被误当成普通可更新目标。
+- 普通“已安装”卡片增加插件身份标签、轻量类别色和简介行，待处理项仍保持更醒目。
+- 市场页和依赖页支持 `Ctrl+K` / `Cmd+K` 聚焦搜索。
+- 新增前端显示模式：默认性能模式保持低动效；精致模式提供更丰富的样式、层次和动效。
+- 日志页继续输出更完整的 route、缓存、probe、单包请求和错误原因，便于定位弱网问题。
 
 ## 3.5.5 Release Notes
 
