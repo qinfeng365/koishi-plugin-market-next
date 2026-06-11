@@ -12,6 +12,11 @@
               <market-icon :name="badge.type"></market-icon>
             </span>
           </el-tooltip>
+          <el-tooltip v-if="bundlePackage" placement="right" :content="t('badge.bundle')">
+            <span class="icon bundle" @click.stop.prevent="$emit('query', 'is:bundle')">
+              <market-icon name="file-archive"></market-icon>
+            </span>
+          </el-tooltip>
         </h2>
         <div class="bottom">
           <el-tooltip :content="Math.max(Math.min(data.rating ?? 0, 5), 0).toFixed(1)" placement="right">
@@ -67,7 +72,7 @@
 import { computed, inject } from 'vue'
 import { SearchObject } from '@koishijs/registry'
 import { useI18nText } from '@koishijs/components'
-import { badges, getUserAvatar, getUsers, resolveCategory, validate } from '../utils'
+import { badges, getUserAvatar, getUsers, isBundleSearchObject, resolveCategory, validate } from '../utils'
 import { kConfig } from '../utils'
 import { useI18n } from 'vue-i18n'
 import zhCN from '../locales/zh-CN.yml'
@@ -97,6 +102,8 @@ const badge = computed(() => {
     if (validate(props.data, badges[type].query)) return { type, ...badges[type] }
   }
 })
+
+const bundlePackage = computed(() => isBundleSearchObject(props.data))
 
 function getAvatar(user: ReturnType<typeof getUsers>[number]) {
   return getUserAvatar(user, props.gravatar)

@@ -3,6 +3,7 @@ import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry';
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps';
 import Installer from './installer';
 import MarketProvider from './market';
+import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult } from '../shared/bundle';
 export * from '../shared';
 export { Installer };
 declare module 'koishi' {
@@ -20,6 +21,8 @@ declare module '@koishijs/console' {
     }
     interface Events {
         'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>;
+        'market/install-bundle'(request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult>;
+        'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>;
         'market/refresh-dependencies'(): Promise<void>;
         'market/package'(name: string): Promise<Registry>;
         'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>;

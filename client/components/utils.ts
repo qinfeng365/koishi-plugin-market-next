@@ -1,9 +1,17 @@
 import { Awaitable, Context, Dict, loading, message, send, socket, store, valueMap } from '@koishijs/client'
-import type { Registry } from '@koishijs/registry'
+import type { Registry, SearchObject } from '@koishijs/registry'
 import type { RegistryStatus } from 'koishi-plugin-market-next'
 import { compare, satisfies } from 'semver'
 import { reactive, ref, watch } from 'vue'
 import { active } from '../utils'
+import {
+  getBundleGroupIdent,
+  getPluginShortname,
+  isBundlePackageName,
+  parseBundleManifest,
+  type PluginBundleManifest,
+  type PluginBundleRecord,
+} from '../../src/shared/bundle'
 
 export type ResultType = 'success' | 'warning' | 'danger' | 'primary'
 
@@ -94,6 +102,105 @@ export async function addManual(name: string) {
 export const showManual = ref(false)
 export const showConfirm = ref(false)
 export const expandedDependency = ref('')
+export const activeBundle = ref<SearchObject>()
+export type BundleMemberCleanupTarget = {
+  package: string
+  plugin: string
+}
+export const pendingBundleUninstalls = ref<Record<string, {
+  members: string[]
+  cleanup: boolean
+  configs?: BundleMemberCleanupTarget[]
+}>>({})
+
+export type BundleRecordView = PluginBundleRecord & {
+  fallback?: boolean
+}
+
+export function createBundleRecordFromManifest(packageName: string, version = '', bundle?: PluginBundleManifest, fallback = true): BundleRecordView | undefined {
+  if (!isBundlePackageName(packageName)) return
+  return {
+    package: packageName,
+    version,
+    label: bundle?.label || getPluginShortname(packageName),
+    groupKey: `group:${getBundleGroupIdent(packageName)}`,
+    installedAt: 0,
+    fallback,
+    members: (bundle?.members ?? []).map(member => ({
+      ...member,
+      selected: true,
+      installedByBundle: false,
+      skipped: true,
+    })),
+  }
+}
+
+export function createLocalBundleRecord(packageName: string): BundleRecordView | undefined {
+  if (!isBundlePackageName(packageName)) return
+  const local = store.packages?.[packageName]
+  const dep = store.dependencies?.[packageName]
+  if (!local && !dep) return
+  return createBundleRecordFromManifest(packageName, dep?.resolved ?? local?.package.version ?? '')
+}
+
+export function resolveBundlePackageFromGroup(groupPath?: string, records: Dict<PluginBundleRecord> = {}) {
+  if (!groupPath) return
+  const groupKey = groupPath.startsWith('group:') ? groupPath : `group:${groupPath}`
+  const byRecord = Object.values(records).find(record => record?.groupKey === groupKey)
+  if (byRecord?.package) return byRecord.package
+  const names = new Set([
+    ...Object.keys(store.dependencies ?? {}),
+    ...Object.keys(store.packages ?? {}),
+  ])
+  return [...names].find(name => isBundlePackageName(name) && getBundleGroupIdent(name) === groupPath.replace(/^group:/, ''))
+}
+
+export function resolveBundleRecordFromGroup(groupPath?: string, records: Dict<PluginBundleRecord> = {}) {
+  const packageName = resolveBundlePackageFromGroup(groupPath, records)
+  if (!packageName) return
+  return records[packageName] || createLocalBundleRecord(packageName)
+}
+
+function normalizeGroupPath(path?: string) {
+  return path?.replace(/^group:/, '')
+}
+
+export function isBundleGroupPath(path: string | undefined, groupKey: string | undefined) {
+  if (!path || !groupKey) return false
+  return normalizeGroupPath(path) === normalizeGroupPath(groupKey)
+}
+
+export function getBundleMemberConfigState(ctx: Context, member: BundleMemberCleanupTarget, groupKey?: string) {
+  const nodes = [
+    ...(ctx.configWriter?.get(member.package) ?? []),
+    ...(member.plugin ? ctx.configWriter?.get(member.plugin) ?? [] : []),
+  ]
+  const unique = new Map<string, any>()
+  for (const node of nodes) {
+    if (!node) continue
+    unique.set(node.path || node.id, node)
+  }
+  const entries = [...unique.values()]
+  const getParentPath = (node: any) => node.parent?.path || node.parent?.id
+  return {
+    all: entries,
+    group: entries.filter(node => isBundleGroupPath(getParentPath(node), groupKey)),
+    external: entries.filter(node => !isBundleGroupPath(getParentPath(node), groupKey)),
+  }
+}
+
+export async function fetchBundleRecord(packageName: string): Promise<BundleRecordView | undefined> {
+  if (!isBundlePackageName(packageName)) return
+  const registry = await send('market/package', packageName) as Registry
+  const targetVersion = store.dependencies?.[packageName]?.resolved ?? store.packages?.[packageName]?.package.version
+  const entry = targetVersion && registry.versions?.[targetVersion]
+    ? [targetVersion, registry.versions[targetVersion]] as const
+    : Object.entries(registry.versions ?? {})[0]
+  if (!entry) return createLocalBundleRecord(packageName)
+  const [version, remote] = entry
+  const bundle = parseBundleManifest((remote as any)?.koishi?.bundle)
+  return createBundleRecordFromManifest(packageName, version, bundle)
+}
 
 interface InstallMessages {
   loadingText?: string

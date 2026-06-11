@@ -83,7 +83,7 @@
           <el-button v-else @click="installDep(workspace)" type="success">添加</el-button>
         </template>
         <template v-else-if="data">
-          <el-button v-if="showRemoveButton" @click="installDep('', true)" type="danger">卸载</el-button>
+          <el-button v-if="showRemoveButton" @click="requestRemove()" type="danger">卸载</el-button>
           <el-button :type="result" @click="installDep(version)" :disabled="unchanged">
             {{ current ? '更新' : store.dependencies?.[active] ? '修复' : '安装' }}
           </el-button>
@@ -109,21 +109,31 @@
       </div>
     </template>
   </el-dialog>
+
+  <bundle-uninstall
+    v-model="showBundleUninstallDialog"
+    :package-name="bundleUninstallTarget"
+    :record="bundleUninstallRecord"
+  ></bundle-uninstall>
 </template>
 
 <script lang="ts" setup>
 
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, send, store, useContext, useConfig } from '@koishijs/client'
-import { analyzeVersions, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
+import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
 import { active } from '../utils'
 import { parse } from 'semver'
+import { isBundlePackageName } from '../../src/shared/bundle'
+import BundleUninstall from './bundle-uninstall.vue'
 
 const ctx = useContext()
 const config = useConfig()
 
 const saveChoice = ref(false)
 const showRemoveDialog = ref(false)
+const showBundleUninstallDialog = ref(false)
+const bundleUninstallTarget = ref('')
 
 function installDep(version: string, checkConfig = false, removeConfig = false) {
   const target = active.value
@@ -170,6 +180,9 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
       }
     } else if (removeConfig) {
       ctx.configWriter?.remove(target)
+    }
+    if (!version) {
+      delete config.value.market.bundleRecords?.[target]
     }
   })
 }
@@ -220,12 +233,28 @@ const unchanged = computed(() => {
 const dep = computed(() => store.dependencies?.[active.value])
 const current = computed(() => store.dependencies?.[active.value]?.resolved)
 const local = computed(() => store.packages?.[active.value])
+const bundleUninstallRecord = computed(() => {
+  const target = bundleUninstallTarget.value
+  if (!target || !isBundlePackageName(target)) return
+  return config.value.market?.bundleRecords?.[target] || createLocalBundleRecord(target)
+})
 
 const showRemoveButton = computed(() => {
   return current.value || store.dependencies?.[active.value] || config.value.market.bulkMode && config.value.market.override[active.value]
 })
 
 const workspace = computed(() => getWorkspaceVersion(active.value))
+
+function requestRemove() {
+  const target = active.value
+  if (target && isBundlePackageName(target)) {
+    bundleUninstallTarget.value = target
+    active.value = ''
+    showBundleUninstallDialog.value = true
+    return
+  }
+  installDep('', true)
+}
 
 function getWorkspaceVersion(name: string) {
   // workspace plugins:     dependencies ? packages √

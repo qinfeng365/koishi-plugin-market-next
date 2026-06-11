@@ -191,6 +191,102 @@ plugins:
 - full reload 前的补配置。
 - 启动时扫描已安装但未配置的插件并补齐。
 
+## 插件包 / Plugin Bundle
+
+market-next 支持一种新的插件分发形态：插件包。插件包本身仍然是 npm 上的 Koishi 插件，但它可以声明一组成员插件，让用户在专用确认面板里一次审查、选择和安装。
+
+适合的场景：
+
+- 开发者维护一组实用插件，希望用户安装一个入口包就能拿到完整依赖列表。
+- 一个生态由核心插件和多个外围插件组成，用户可以按需勾选成员。
+- 插件包后续更新时，market-next 可以借助本地归属记录提示成员来源和辅助卸载。
+
+### 命名和识别
+
+npm 包名必须小写。推荐真实包名：
+
+- `koishi-plugin-pa-xxx`
+- `@scope/koishi-plugin-pa-xxx`
+
+`koishi-plugin-PA-xxx` 只作为文档里的概念写法；真实 npm 包名不能使用大写，Koishi registry 也不会识别大写插件名。
+
+market-next 识别插件包的方式：
+
+- 包名匹配 `koishi-plugin-pa-xxx` 或 `@scope/koishi-plugin-pa-xxx`。
+- `keywords` 包含 `market:package`。
+- npm 元数据中提供结构化 `koishi.bundle` 清单。
+
+推荐同时使用包名和 keyword。没有 `koishi.bundle` 的包只会显示“插件包”标识，不能展开安装。
+
+### koishi.bundle v1
+
+在 `package.json` 中声明：
+
+```json
+{
+  "name": "koishi-plugin-pa-dialogue",
+  "keywords": ["koishi", "plugin", "market:package"],
+  "koishi": {
+    "bundle": {
+      "label": "Dialogue 插件包",
+      "description": "一组对话系统相关插件。",
+      "members": [
+        {
+          "package": "koishi-plugin-dialogue",
+          "plugin": "dialogue",
+          "version": "^1.0.0",
+          "required": true,
+          "config": {}
+        }
+      ]
+    }
+  }
+}
+```
+
+字段说明：
+
+- `members[].package`：成员 npm 包名，必须是有效 Koishi 插件包名。
+- `members[].plugin`：写入 Koishi 配置树时使用的插件键。
+- `members[].version`：必填 semver range。不会默认使用 `latest`。
+- `members[].required`：核心成员默认勾选；可选成员默认不勾选。
+- `members[].config`：预设配置。不会静默注入，必须由用户在安装面板确认后才写入。
+
+### 安装安全策略
+
+插件包不会走普通“一键安装”按钮，而是进入专用安装 GUI：
+
+- 展示插件包自身、成员清单、required / optional、版本范围、安装状态、描述、作者/维护者、下载量和风险标识。
+- 完整预设配置可展开查看。
+- `command`、`script`、`exec`、`path`、`token`、`sql`、`url` 等敏感字段会高亮提醒。
+- 用户可逐个选择安装/跳过、创建配置/不创建配置、使用预设配置/空配置。
+- 最终确认区会展示新增依赖、配置分组、成员配置和跳过项。
+
+配置写入规则：
+
+- 安装成功后创建或复用确定性分组：`group:pa-<bundle-shortname>`。
+- 成员配置默认停用，形如 `~dialogue:pa-pa-dialogue-dialogue`。
+- 已存在配置时默认跳过，不重复创建。
+- 用户选择“移动已有配置到插件包分组”时才会移动配置。
+- 不会静默启用成员插件，不会静默删除用户配置。
+
+卸载插件包时，market-next 会显示成员列表。默认只卸载插件包自身；用户可以选择把由该包记录的成员一起加入卸载。成员配置仍需要用户自行检查和清理。
+
+### 发布校验
+
+`npm run check:package` 会校验插件包清单：
+
+- 插件包命名必须是有效小写 npm / Koishi 插件名。
+- `members` 不能为空。
+- `package`、`plugin`、`version` 必填。
+- `version` 必须是合法 semver range。
+- 成员不能引用插件包自身。
+- 检查重复成员和明显 plugin 键冲突风险。
+- 对本地可解析的成员包做直接循环检查。
+- 缺少 `market:package` 只给 warning；缺少 version、自引用、非法包名会报错。
+
+第一版暂不做 npm 依赖求解模拟；peer dependency 冲突仍由包管理器处理，但安装面板会尽量展示成员元数据和风险标识。
+
 ## 调试日志
 
 打开详细诊断：

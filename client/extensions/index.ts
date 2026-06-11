@@ -2,14 +2,23 @@ import { Context, MenuItem, store } from '@koishijs/client'
 import { markRaw, watch } from 'vue'
 import ConfigRemove from './config-remove.vue'
 import { isProtectedConfigNode, requestConfigRemove } from './config-remove'
+import BundleGroupUninstall from './bundle-group-uninstall.vue'
+import { requestBundleGroupUninstall } from './bundle-group-uninstall'
 import Dependency from './dependency.vue'
 import Missing from './missing.vue'
 import Select from './select.vue'
 import Version from './version.vue'
+import { resolveBundlePackageFromGroup } from '../components/utils'
+
+function isBundleGroup(tree: any) {
+  if (!tree?.children) return false
+  return !!resolveBundlePackageFromGroup(tree.path, store.config?.market?.bundleRecords ?? {})
+}
 
 function patchConfigRemoveLabel(ctx: Context) {
   const patched = new Map<MenuItem, MenuItem['label']>()
   const label: MenuItem['label'] = ({ config }: any) => {
+    if (isBundleGroup(config.tree)) return '卸载插件包'
     return config.tree?.children ? '删除分组' : '删除配置'
   }
   const apply = () => {
@@ -44,7 +53,10 @@ function patchConfigRemoveLabel(ctx: Context) {
 function patchConfigRemoveAction(ctx: Context) {
   const action = markRaw({
     disabled: ({ config }: any) => !config.tree?.path || isProtectedConfigNode(config.tree),
-    action: ({ config }: any) => requestConfigRemove(config.tree),
+    action: ({ config }: any) => {
+      if (isBundleGroup(config.tree)) return requestBundleGroupUninstall(config.tree)
+      return requestConfigRemove(config.tree)
+    },
   })
 
   ctx.effect(() => {
@@ -79,6 +91,11 @@ export default (ctx: Context) => {
   ctx.slot({
     type: 'global',
     component: ConfigRemove,
+  })
+
+  ctx.slot({
+    type: 'global',
+    component: BundleGroupUninstall,
   })
 
   ctx.slot({

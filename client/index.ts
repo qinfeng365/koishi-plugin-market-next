@@ -1,11 +1,12 @@
 import { defineComponent, h, ref, watch } from 'vue'
 import { Context, Dict, global, message, receive, router, Schema, send, store, useConfig } from '@koishijs/client'
-import type { RegistryStatus } from 'koishi-plugin-market-next'
+import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
 import type { IgnoredUpdates } from './utils'
 import { showConfirm, showManual } from './components/utils'
 import extensions from './extensions'
 import Dependencies from './components/dependencies.vue'
 import Install from './components/install.vue'
+import BundleInstall from './components/bundle-install.vue'
 import Confirm from './components/confirm.vue'
 import Market from './components/market.vue'
 import Progress from './components/progress.vue'
@@ -29,6 +30,7 @@ interface MarketConfig {
   updateIgnoreDuration?: number
   updateIgnoreVersions?: number
   updateIgnorePrerelease?: boolean
+  bundleRecords?: Dict<PluginBundleRecord>
   gravatar?: string
   search?: {
     endpoint?: string
@@ -93,6 +95,11 @@ export default (ctx: Context) => {
 
   ctx.slot({
     type: 'global',
+    component: BundleInstall,
+  })
+
+  ctx.slot({
+    type: 'global',
     component: Confirm,
   })
 
@@ -125,6 +132,7 @@ export default (ctx: Context) => {
         override: Schema.dict(String).hidden(),
         collapsedGroups: Schema.dict(Boolean).hidden(),
         updateIgnored: Schema.dict(Schema.any()).hidden(),
+        bundleRecords: Schema.dict(Schema.any()).hidden(),
         gravatar: Schema.string().description('Gravatar 镜像地址。'),
       }),
     }),

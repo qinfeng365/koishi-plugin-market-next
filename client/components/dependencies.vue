@@ -104,9 +104,10 @@ import { getFrontendMode, getDepsLayout, getLatestVersion, hasUpdate, isUpdateCh
 import { addManual, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
+import { isBundlePackageName } from '../../src/shared/bundle'
 
-type FilterKey = 'all' | 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual'
-type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
+type FilterKey = 'all' | 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual'
+type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
 
 interface DependencyItem {
   name: string
@@ -153,7 +154,7 @@ const names = computed(() => {
     ...getOverride(),
   }
   for (const name of Object.keys(store.packages ?? {})) {
-    if (isUnconfigured(name)) explicit[name] = true
+    if (isUnconfigured(name) || isBundlePackageName(name)) explicit[name] = true
   }
   return Object
     .keys(explicit)
@@ -196,9 +197,10 @@ function classify(name: string): ItemKind {
   const override = getOverride()
   const pending = Object.prototype.hasOwnProperty.call(override, name)
   if (pending) return 'pending'
-  if (!dep) return isUnconfigured(name) ? 'unconfigured' : 'manual'
+  if (!dep) return isBundlePackageName(name) && store.packages?.[name] ? 'bundle' : isUnconfigured(name) ? 'unconfigured' : 'manual'
   if (dep.workspace) return 'workspace'
   if (dep.invalid) return 'invalid'
+  if (isBundlePackageName(name)) return 'bundle'
   if (isUnconfigured(name)) return 'unconfigured'
   const status = getRegistryStatus(name)
   if (status?.error) return 'error'
@@ -213,6 +215,7 @@ function isPluginPackage(name: string) {
 }
 
 function isUnconfigured(name: string) {
+  if (isBundlePackageName(name)) return false
   return !!ctx.configWriter && !!store.packages?.[name] && isPluginPackage(name) && !ctx.configWriter.get(name)?.length
 }
 
@@ -231,6 +234,7 @@ const summary = computed(() => {
   return {
     total: items.value.length,
     updatable: items.value.filter(item => item.kind === 'updatable').length,
+    bundle: items.value.filter(item => item.kind === 'bundle').length,
     pending: Object.keys(getOverride()).length,
     unconfigured: items.value.filter(item => item.kind === 'unconfigured').length,
     ignored: items.value.filter(item => item.kind === 'ignored').length,
@@ -250,6 +254,7 @@ const refreshing = computed(() => {
 const filterOptions = computed(() => [
   { value: 'all' as const, label: '全部', count: summary.value.total },
   { value: 'pending' as const, label: '待应用', count: summary.value.pending },
+  { value: 'bundle' as const, label: '插件包', count: summary.value.bundle },
   { value: 'unconfigured' as const, label: '未配置', count: summary.value.unconfigured },
   { value: 'updatable' as const, label: '可更新', count: summary.value.updatable },
   { value: 'ignored' as const, label: '已忽略', count: summary.value.ignored },
@@ -262,6 +267,7 @@ const filterOptions = computed(() => [
 
 const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items' | 'collapsed' | 'collapsible'>> = {
   pending: { key: 'pending', label: '待应用', description: '这些变更已经暂存，确认后才会真正安装、更新或卸载。' },
+  bundle: { key: 'bundle', label: '插件包', description: '插件包用于安装和管理一组成员插件，本身不会出现在插件配置页。' },
   updatable: { key: 'updatable', label: '可更新', description: '存在比本地版本更新的 npm 版本。' },
   ignored: { key: 'ignored', label: '已忽略更新', description: '已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。' },
   'check-disabled': { key: 'check-disabled', label: '不检测更新', description: '已加入永久不检测更新名单，不会收到版本提示。' },
@@ -273,7 +279,7 @@ const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items' | 'collapsed' | 
   installed: { key: 'installed', label: '已安装', description: '已安装且当前没有明确需要处理的依赖。' },
 }
 
-const groupOrder: ItemKind[] = ['pending', 'unconfigured', 'updatable', 'ignored', 'check-disabled', 'invalid', 'error', 'workspace', 'manual', 'installed']
+const groupOrder: ItemKind[] = ['pending', 'bundle', 'unconfigured', 'updatable', 'ignored', 'check-disabled', 'invalid', 'error', 'workspace', 'manual', 'installed']
 
 const collapseEnabled = computed(() => filter.value === 'all' && !keyword.value.trim())
 
@@ -451,6 +457,7 @@ ctx.action('dependencies.upgrade', {
   --group-accent: var(--fg3);
 
   &.pending  { --group-accent: var(--k-color-primary); }
+  &.bundle { --group-accent: #9b74df; }
   &.updatable { --group-accent: var(--k-color-success); }
   &.ignored, &.check-disabled { --group-accent: var(--fg3); }
   &.unconfigured, &.workspace { --group-accent: var(--warning); }

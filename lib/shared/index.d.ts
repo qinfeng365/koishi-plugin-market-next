@@ -1,6 +1,7 @@
 import { Context, Dict } from 'koishi';
 import { DataService } from '@koishijs/console';
 import { SearchObject, SearchResult } from '@koishijs/registry';
+export * from './bundle';
 export interface RegistryStatus {
     loading?: boolean;
     reason?: 'timeout' | 'not-found' | 'network' | 'invalid' | 'http' | 'unknown';

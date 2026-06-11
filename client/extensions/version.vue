@@ -20,10 +20,10 @@
     <el-button
       v-if="showDependencyUninstall"
       :class="{ 'dependency-remove-button': !pendingRemove }"
-      :loading="uninstalling"
+      :loading="uninstalling || loadingBundleRecord"
       @click="pendingRemove ? cancelPendingUninstall() : requestUninstall()"
     >
-      {{ pendingRemove ? '取消卸载' : '卸载插件包' }}
+      {{ pendingRemove ? '取消卸载' : bundleRecord ? '卸载插件包' : '卸载插件' }}
     </el-button>
   </div>
 
@@ -42,14 +42,20 @@
     <p>尚未将当前插件列入依赖，<span class="k-link" @click="addDependency">点击添加</span>。</p>
   </k-comment>
 
-  <el-dialog v-model="showUninstallDialog" title="确认卸载插件包" destroy-on-close>
+  <el-dialog v-model="showUninstallDialog" title="确认卸载插件" destroy-on-close>
     检测到当前插件存在配置。是否同时删除配置？
     <template #footer>
       <el-button @click="showUninstallDialog = false">取消</el-button>
-      <el-button type="primary" @click="uninstallDependency(false)">仅卸载插件包</el-button>
+      <el-button type="primary" @click="uninstallDependency(false)">仅卸载插件</el-button>
       <el-button type="danger" @click="uninstallDependency(true)">卸载并删除配置</el-button>
     </template>
   </el-dialog>
+
+  <bundle-uninstall
+    v-model="showBundleUninstallDialog"
+    :package-name="name"
+    :record="bundleRecord"
+  ></bundle-uninstall>
 </template>
 
 <script lang="ts" setup>
@@ -58,7 +64,16 @@ import { global, message, send, store, useConfig, useContext } from '@koishijs/c
 import { computed, inject, ComputedRef, ref } from 'vue'
 import { hasUpdate } from '../utils'
 import type {} from '@koishijs/plugin-config'
-import { ensureInstalledConfig, install } from '../components/utils'
+import type { PluginBundleRecord } from '../../src/shared/bundle'
+import {
+  createLocalBundleRecord,
+  ensureInstalledConfig,
+  fetchBundleRecord,
+  install,
+  pendingBundleUninstalls,
+  type BundleRecordView,
+} from '../components/utils'
+import BundleUninstall from '../components/bundle-uninstall.vue'
 
 const ctx = useContext()
 const config = useConfig()
@@ -71,7 +86,10 @@ const dep = computed(() => store.dependencies?.[name.value])
 const versions = computed(() => store.registry?.[name.value])
 const updateAvailable = computed(() => hasUpdate(name.value, config.value.market))
 const uninstalling = ref(false)
+const loadingBundleRecord = ref(false)
 const showUninstallDialog = ref(false)
+const showBundleUninstallDialog = ref(false)
+const remoteBundleRecord = ref<BundleRecordView>()
 
 const pendingRemove = computed(() => {
   const override = config.value.market?.override ?? {}
@@ -80,6 +98,13 @@ const pendingRemove = computed(() => {
 
 const hasConfigEntries = computed(() => {
   return !!ctx.configWriter?.get(name.value)?.length
+})
+
+const bundleRecord = computed<BundleRecordView | PluginBundleRecord | undefined>(() => {
+  const stored = config.value.market?.bundleRecords?.[name.value]
+  if (stored) return stored
+  if (remoteBundleRecord.value?.package === name.value) return remoteBundleRecord.value
+  return createLocalBundleRecord(name.value)
 })
 
 const showDependencyUninstall = computed(() => {
@@ -100,11 +125,16 @@ function ensureOverride() {
   return config.value.market.override ||= {}
 }
 
-function requestUninstall() {
+async function requestUninstall() {
   if (!name.value || uninstalling.value) return
+  if (bundleRecord.value) {
+    await loadRemoteBundleRecord()
+    showBundleUninstallDialog.value = true
+    return
+  }
   if (config.value.market.bulkMode) {
     ensureOverride()[name.value] = ''
-    message.success('卸载插件包已暂存，应用更改后生效。')
+    message.success('卸载已暂存，应用更改后生效。')
     return
   }
   if (hasConfigEntries.value && typeof config.value.market?.removeConfig !== 'boolean') {
@@ -114,8 +144,28 @@ function requestUninstall() {
   return uninstallDependency(config.value.market?.removeConfig === true)
 }
 
+async function loadRemoteBundleRecord() {
+  if (!name.value || config.value.market?.bundleRecords?.[name.value]) return
+  if (remoteBundleRecord.value?.package === name.value && remoteBundleRecord.value.members.length) return
+  loadingBundleRecord.value = true
+  try {
+    const record = await fetchBundleRecord(name.value)
+    if (record) remoteBundleRecord.value = record
+  } catch (error) {
+    console.warn(error)
+    message.warning('未能读取插件包成员清单，将只卸载插件包自身。')
+  } finally {
+    loadingBundleRecord.value = false
+  }
+}
+
 function cancelPendingUninstall() {
+  const pendingBundle = pendingBundleUninstalls.value[name.value]
   delete ensureOverride()[name.value]
+  for (const member of pendingBundle?.members ?? []) {
+    delete ensureOverride()[member]
+  }
+  delete pendingBundleUninstalls.value[name.value]
   message.success('已取消卸载。')
 }
 
@@ -126,8 +176,9 @@ async function uninstallDependency(removeConfig: boolean) {
   try {
     await install({ [name.value]: '' }, async () => {
       if (removeConfig) ctx.configWriter?.remove(name.value)
+      delete config.value.market.bundleRecords?.[name.value]
     }, undefined, {
-      loadingText: '正在卸载插件包……',
+      loadingText: '正在卸载插件……',
       successText: '卸载成功！',
       errorText: '卸载失败！',
       timeoutText: '卸载超时！',

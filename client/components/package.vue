@@ -32,7 +32,7 @@
         </el-option>
       </el-select>
       <el-button v-if="pending" size="small" @click="clearOverride">撤销</el-button>
-      <el-button v-if="showRemoveDependency" class="dep-remove-button" size="small" @click="removeDependency">卸载</el-button>
+      <el-button v-if="showRemoveDependency" class="dep-remove-button" size="small" @click="removeDependency">{{ removeButtonText }}</el-button>
       <el-button v-if="canExpandCard && !pending" size="small" @click.stop="editing = !editing">{{ editing ? '收起' : '版本' }}</el-button>
     </div>
   </div>
@@ -162,7 +162,7 @@
           size="small"
           @click="removeDependency"
         >
-          卸载
+          {{ removeButtonText }}
         </el-button>
         <el-button v-if="pending" size="small" @click="clearOverride">取消改动</el-button>
       </div>
@@ -213,18 +213,26 @@
       <el-button type="primary" @click="confirmIgnoreUpdate">确认忽略</el-button>
     </template>
   </el-dialog>
+
+  <bundle-uninstall
+    v-model="showBundleUninstallDialog"
+    :package-name="name"
+    :record="bundleRecord"
+  ></bundle-uninstall>
 </template>
 
 <script lang="ts" setup>
 
 import { computed, ref } from 'vue'
 import { message, store, useConfig, useContext } from '@koishijs/client'
+import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
 import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
-import { analyzeVersions, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText } from './utils'
+import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
+import BundleUninstall from './bundle-uninstall.vue'
 
-type ItemKind = 'pending' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
+type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
 
 const props = defineProps<{
   name: string
@@ -242,6 +250,7 @@ const editing = computed({
   set: (value: boolean) => expandedDependency.value = value ? props.name : '',
 })
 const showIgnoreDialog = ref(false)
+const showBundleUninstallDialog = ref(false)
 const ignoreDurationPreset = ref<'forever' | '1d' | '7d' | '30d' | 'custom'>('forever')
 const ignoreCustomDays = ref(7)
 const ignoreCount = ref(1)
@@ -250,6 +259,8 @@ const ignorePackagePermanently = ref(false)
 const dep = computed(() => store.dependencies?.[props.name])
 const local = computed(() => store.packages?.[props.name])
 const marketData = computed(() => store.market?.data?.[props.name])
+const bundleRecord = computed(() => config.value.market?.bundleRecords?.[props.name] || createLocalBundleRecord(props.name))
+const bundleOrigin = computed(() => findBundleOrigin(props.name))
 
 const displayName = computed(() => formatPackageDisplayName(props.name))
 
@@ -288,7 +299,9 @@ const pendingRemove = computed(() => pending.value && !overrideValue.value)
 const updateCheckDisabled = computed(() => isUpdateCheckDisabled(props.name, getUpdatePolicy()))
 const ignoredUpdate = computed(() => updateCheckDisabled.value || isUpdateIgnored(props.name, getUpdatePolicy()))
 const updatable = computed(() => !!hasUpdate(props.name, getUpdatePolicy()))
+const bundlePackage = computed(() => isBundlePackageName(props.name))
 const unconfigured = computed(() => {
+  if (bundlePackage.value) return false
   return !!ctx.configWriter && !!local.value && isPluginPackage(props.name) && !ctx.configWriter.get(props.name)?.length
 })
 
@@ -313,6 +326,7 @@ const statusClass = computed<ItemKind>(() => {
   if (pending.value) return 'pending'
   if (dep.value?.workspace) return 'workspace'
   if (dep.value?.invalid) return 'invalid'
+  if (bundlePackage.value && (dep.value || local.value)) return 'bundle'
   if (unconfigured.value) return 'unconfigured'
   if (status.value?.error) return 'error'
   if (!dep.value && !local.value) return 'manual'
@@ -328,6 +342,7 @@ const statusLabel = computed(() => {
   if (pending.value) return '待安装'
   if (dep.value?.workspace) return '工作区'
   if (dep.value?.invalid) return '不支持'
+  if (bundlePackage.value && (dep.value || local.value)) return '插件包'
   if (unconfigured.value) return '未配置'
   if (status.value?.error) return '版本异常'
   if (!dep.value && !local.value) return '手动添加'
@@ -340,6 +355,7 @@ const statusLabel = computed(() => {
 const statusIcon = computed(() => {
   if (pendingRemove.value) return 'close'
   if (pending.value) return 'tag'
+  if (bundlePackage.value && (dep.value || local.value)) return 'file-archive'
   if (unconfigured.value) return 'preview'
   if (dep.value?.invalid) return 'insecure'
   if (status.value?.error) return 'insecure'
@@ -392,6 +408,7 @@ const detailText = computed(() => {
   if (pending.value) return '此依赖已加入待安装列表，应用后会安装到本地。'
   if (dep.value?.workspace) return '本地工作区依赖，不参与 npm registry 版本更新。'
   if (dep.value?.invalid) return '版本区间语法暂不支持自动版本管理，请手动修改 package.json。'
+  if (bundlePackage.value && (dep.value || local.value)) return '插件包本身不需要配置；成员配置由插件包分组管理。'
   if (unconfigured.value) return '本地已下载，但插件配置页还没有对应配置项。'
   if (status.value?.error) return getRegistryStatusText(props.name)
   if (!data.value && !dep.value?.workspace) return getRegistryStatusText(props.name)
@@ -408,6 +425,7 @@ const compactStatusText = computed(() => {
 })
 
 const configText = computed(() => {
+  if (bundlePackage.value) return '不需要配置'
   if (!isPluginPackage(props.name)) return '非插件'
   if (!ctx.configWriter) return '未知'
   if (!local.value) return pending.value ? '待安装' : '未加载'
@@ -415,12 +433,16 @@ const configText = computed(() => {
 })
 
 const sourceText = computed(() => {
+  if (bundleOrigin.value) return `插件包：${bundleOrigin.value.label || formatPackageDisplayName(bundleOrigin.value.package)}`
+  if (bundleRecord.value) return '插件包自身'
   if (dep.value?.workspace || local.value?.workspace) return '工作区'
   if (pending.value && !dep.value) return '待安装'
   if (!dep.value && local.value) return '本地'
   if (!dep.value) return '手动'
   return 'package.json'
 })
+
+const removeButtonText = computed(() => bundleRecord.value ? '卸载插件包' : '卸载')
 
 const requestText = computed(() => {
   if (!dep.value?.request) return ''
@@ -527,10 +549,19 @@ function toggleCardActions() {
 }
 
 function clearOverride() {
+  const pendingBundle = pendingBundleUninstalls.value[props.name]
   delete config.value.market.override[props.name]
+  for (const member of pendingBundle?.members ?? []) {
+    delete config.value.market.override[member]
+  }
+  delete pendingBundleUninstalls.value[props.name]
 }
 
 function removeDependency() {
+  if (bundleRecord.value) {
+    showBundleUninstallDialog.value = true
+    return
+  }
   selectedVersion.value = removeValue
 }
 
@@ -600,6 +631,13 @@ function restoreUpdate() {
   removePackageFromIgnoredList(props.name)
 }
 
+function findBundleOrigin(name: string): PluginBundleRecord | undefined {
+  const records = config.value.market?.bundleRecords ?? {}
+  return Object.values(records).find(record => {
+    return record?.members?.some(member => member.package === name)
+  })
+}
+
 function removePackageFromIgnoredList(name: string) {
   const names = (getUpdatePolicy().updateIgnoredPackages ?? '')
     .split(/[\s,，;；]+/g)
@@ -636,6 +674,7 @@ function pickDescription(value: unknown) {
 }
 
 function resolveIdentity(name: string) {
+  if (isBundlePackageName(name)) return identityMap.bundle
   const data = store.market?.data?.[name]
   const category = resolveCategory(data?.category)
   const normalized = name.toLowerCase()
@@ -668,6 +707,7 @@ const identityMap: Record<string, { label: string, icon: string, color: string }
   meme: { label: '趣味', icon: 'solid:meme', color: '#d98445' },
   game: { label: '游戏', icon: 'solid:game', color: '#df6b5f' },
   gametool: { label: '游戏辅助', icon: 'solid:gametool', color: '#c77745' },
+  bundle: { label: '插件包', icon: 'file-archive', color: '#9b74df' },
   other: { label: '插件', icon: 'solid:other', color: '#778294' },
 }
 
@@ -742,6 +782,7 @@ async function configure() {
   &.updatable { --dep-accent: var(--k-color-success); }
   &.error     { --dep-accent: var(--danger); border-color: var(--dep-accent-border); }
   &.invalid   { --dep-accent: var(--warning); border-color: var(--dep-accent-border); }
+  &.bundle    { --dep-accent: #9b74df; }
   &.unconfigured, &.workspace { --dep-accent: var(--warning); }
   &.manual    { --dep-accent: var(--k-color-primary); }
   &.ignored, &.check-disabled { --dep-accent: var(--fg3); }
@@ -1209,6 +1250,7 @@ async function configure() {
   }
 
   &.pending   { --dep-accent: var(--k-color-primary); background: color-mix(in srgb, var(--k-color-primary) 4%, var(--k-card-bg)); }
+  &.bundle    { --dep-accent: #9b74df; background: color-mix(in srgb, #9b74df 4%, var(--k-card-bg)); }
   &.updatable { --dep-accent: var(--k-color-success); }
   &.error, &.invalid { --dep-accent: var(--danger); background: color-mix(in srgb, var(--danger) 4%, var(--k-card-bg)); }
   &.unconfigured { --dep-accent: var(--warning); background: color-mix(in srgb, var(--warning) 3%, var(--k-card-bg)); }

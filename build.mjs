@@ -42,6 +42,8 @@ const common = {
 
 await Promise.all([
   build({ ...common, entryPoints: ['src/node/index.ts'], outfile: 'lib/node/index.js', format: 'cjs' }),
+  build({ ...common, entryPoints: ['src/shared/bundle.ts'], outfile: 'lib/shared/bundle.js', format: 'cjs' }),
+  build({ ...common, entryPoints: ['src/shared/bundle.ts'], outfile: 'lib/shared/bundle.mjs', format: 'esm' }),
   build({ ...common, entryPoints: ['src/shared/index.ts'], outfile: 'lib/shared/index.js', format: 'cjs' }),
   build({ ...common, entryPoints: ['src/shared/index.ts'], outfile: 'lib/shared/index.mjs', format: 'esm' }),
   build({ ...common, entryPoints: ['src/browser/index.ts'], outfile: 'lib/browser/index.mjs', format: 'esm' }),

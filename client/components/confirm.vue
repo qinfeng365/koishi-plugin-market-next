@@ -42,8 +42,8 @@
 <script lang="ts" setup>
 
 import { computed, ref } from 'vue'
-import { store, useContext, useConfig } from '@koishijs/client'
-import { ensureInstalledConfigs, showConfirm, install } from './utils'
+import { send, store, useContext, useConfig } from '@koishijs/client'
+import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls } from './utils'
 
 const ctx = useContext()
 const config = useConfig()
@@ -53,6 +53,7 @@ const removeConfig = ref(config.value.market?.removeConfig)
 function clear() {
   showConfirm.value = false
   config.value.market.override = {}
+  pendingBundleUninstalls.value = {}
 }
 
 const hasRemove = computed(() => {
@@ -65,14 +66,32 @@ function confirm() {
   const removed = Object.entries(override)
     .filter(([, value]) => !value)
     .map(([name]) => name)
+  const bundleRemovals = Object.fromEntries(Object.entries(pendingBundleUninstalls.value)
+    .filter(([name]) => removed.includes(name)))
+  const bundlePackages = new Set(Object.keys(bundleRemovals))
+  const bundleMembers = new Set(Object.values(bundleRemovals)
+    .flatMap(item => item.members ?? []))
   return install(config.value.market.override, async () => {
     await ensureInstalledConfigs(ctx, Object.entries(override)
       .filter(([, value]) => value)
       .map(([name]) => name), true)
+    for (const [name, item] of Object.entries(bundleRemovals)) {
+      if (!item.cleanup) continue
+      await send('market/remove-bundle-configs', {
+        package: name,
+        members: item.configs,
+        removeEmptyGroup: true,
+      })
+    }
     if (removeConfig.value) {
       for (const name of removed) {
+        if (bundlePackages.has(name) || bundleMembers.has(name)) continue
         ctx.configWriter?.remove(name)
       }
+    }
+    for (const name of removed) {
+      delete config.value.market.bundleRecords?.[name]
+      delete pendingBundleUninstalls.value[name]
     }
   })
 }

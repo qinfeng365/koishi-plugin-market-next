@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Dict } from 'cosmokit'
 import zhCN from './locales/zh-CN.yml'
 import * as md5 from 'spark-md5'
+import { hasBundleKeyword, isBundlePackageName } from '../../src/shared/bundle'
 
 export const useMarketI18n = () => useI18n({
   messages: {
@@ -42,6 +43,15 @@ export function getUserAvatar(user: User, gravatar?: string) {
     + '.png?d=mp'
 }
 
+export function isBundleSearchObject(data: SearchObject) {
+  return isBundlePackageName(data.package.name)
+    || hasBundleKeyword(data.package.keywords)
+}
+
+export function canInstallBundleSearchObject(data: SearchObject) {
+  return isBundlePackageName(data.package.name)
+}
+
 const aWeekAgo = new Date(Date.now() - 1000 * 3600 * 24 * 7).toISOString()
 
 export interface Badge {
@@ -76,6 +86,10 @@ export const badges: Dict<Badge> = {
     hidden(config, type) {
       return !config.portable || type === 'card'
     },
+  },
+  bundle: {
+    query: 'is:bundle',
+    negate: 'not:bundle',
   },
   newborn: {
     query: `created:>${aWeekAgo}`,
@@ -267,6 +281,7 @@ export function validate(data: SearchObject, word: string, config: ValidateConfi
       if (word === 'is:portable') return data.portable
       if (word === 'is:preview') return !!data.manifest.preview
       if (word === 'is:installed') return !!config.installed?.(data)
+      if (word === 'is:bundle') return isBundleSearchObject(data)
       return false
     } else if (word.startsWith('not:')) {
       if (word === 'not:verified') return !data.verified
@@ -274,6 +289,7 @@ export function validate(data: SearchObject, word: string, config: ValidateConfi
       if (word === 'not:portable') return !data.portable
       if (word === 'not:preview') return !data.manifest.preview
       if (word === 'not:installed') return !config.installed?.(data)
+      if (word === 'not:bundle') return !isBundleSearchObject(data)
       return true
     } else if (word.includes(':')) {
       return true
@@ -281,9 +297,11 @@ export function validate(data: SearchObject, word: string, config: ValidateConfi
   } else {
     if (word.startsWith('is:')) {
       if (word === 'is:installed') return !!config.installed?.(data)
+      if (word === 'is:bundle') return isBundleSearchObject(data)
       return false
     } else if (word.startsWith('not:')) {
       if (word === 'not:installed') return !config.installed?.(data)
+      if (word === 'not:bundle') return !isBundleSearchObject(data)
       return true
     } else if (word.includes(':')) {
       return true

@@ -4,11 +4,12 @@ type:
   category: Category
 badge:
   installed: Installed
-  verified: Verified
+  verified: Market Verified
   insecure: Insecure
   preview: In Development
   newborn: Recently Added
   portable: Instant Preview
+  bundle: Plugin Bundle
 sort:
   default: Overall
   rating: Rating

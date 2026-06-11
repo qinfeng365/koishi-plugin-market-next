@@ -1,6 +1,7 @@
 import { Awaitable, Context, Dict, Logger, Time } from 'koishi'
 import { DataService } from '@koishijs/console'
 import { SearchObject, SearchResult } from '@koishijs/registry'
+export * from './bundle'
 
 export interface RegistryStatus {
   loading?: boolean

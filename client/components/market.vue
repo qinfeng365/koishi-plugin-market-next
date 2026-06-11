@@ -83,7 +83,7 @@
           <el-button
             solid
             :type="getType(data)"
-            @click.stop.prevent="active = data.package.name">
+            @click.stop.prevent="openPackage(data)">
             {{ getText(data) }}
           </el-button>
         </template>
@@ -111,6 +111,8 @@ import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { active, getFrontendMode, getMarketLayout } from '../utils'
 import { getVisible, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
 import { SearchObject } from '@koishijs/registry'
+import { activeBundle } from './utils'
+import { canInstallBundleSearchObject } from '../market/utils'
 
 function installed(data: SearchObject) {
   if (store.packages) {
@@ -284,6 +286,14 @@ function getText(data: SearchObject) {
   }
   if (version) return '等待安装'
   return '添加'
+}
+
+function openPackage(data: SearchObject) {
+  if (!global.static && canInstallBundleSearchObject(data) && !installed(data)) {
+    activeBundle.value = data
+    return
+  }
+  active.value = data.package.name
 }
 
 function scrollToTop() {
