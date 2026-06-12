@@ -1,5 +1,5 @@
 <template>
-  <a :class="['market-package flex gap-3', config.layout === 'list' ? 'list-mode flex-row' : 'flex-col']" target="_blank" :href="homepage">
+  <a :class="['market-package flex gap-3', config.layout === 'list' ? 'list-mode flex-row' : 'flex-col', { 'bundle-card': bundlePackage }]" target="_blank" :href="homepage">
     <div class="header flex flex-row gap-4">
       <div :class="['left', 'shrink-0', 'flex', 'flex-row', 'justify-center', 'items-center', 'cat-' + resolveCategory(data.category)]">
         <market-icon :name="'outline:' + resolveCategory(data.category)"></market-icon>
@@ -9,12 +9,7 @@
           <span class="title truncate" :title="data.shortname">{{ data.shortname }}</span>
           <el-tooltip v-if="badge" placement="right" :content="t(`badge.${badge.type}`)">
             <span :class="['icon', badge.type]" @click.stop.prevent="$emit('query', badge.query)">
-              <market-icon :name="badge.type"></market-icon>
-            </span>
-          </el-tooltip>
-          <el-tooltip v-if="bundlePackage" placement="right" :content="t('badge.bundle')">
-            <span class="icon bundle" @click.stop.prevent="$emit('query', 'is:bundle')">
-              <market-icon name="file-archive"></market-icon>
+              <market-icon :name="badge.icon || badge.type"></market-icon>
             </span>
           </el-tooltip>
         </h2>
@@ -97,6 +92,14 @@ const homepage = computed(() => {
 })
 
 const badge = computed(() => {
+  if (bundlePackage.value) {
+    return {
+      type: 'bundle',
+      query: 'is:bundle',
+      negate: 'not:bundle',
+      icon: 'file-archive',
+    }
+  }
   for (const type in badges) {
     if (badges[type].hidden?.(config, 'card')) continue
     if (validate(props.data, badges[type].query)) return { type, ...badges[type] }
@@ -231,6 +234,7 @@ if (import.meta.hot) {
       line-height: 1.2;
       display: flex;
       align-items: center;
+      min-width: 0;
 
       .title {
         flex: 0 1 auto;
@@ -277,7 +281,21 @@ if (import.meta.hot) {
           background-color: rgba(245, 108, 108, 0.1);
           border-color: rgba(245, 108, 108, 0.2);
         }
+
+        &.bundle {
+          color: var(--bundle-color, #8b5cf6);
+          background: color-mix(in srgb, var(--bundle-color, #8b5cf6) 12%, transparent);
+          border-color: color-mix(in srgb, var(--bundle-color, #8b5cf6) 28%, transparent);
+        }
       }
+    }
+
+    .text-right {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+      gap: 0.35rem;
+      min-width: fit-content;
     }
 
     .rating {
@@ -356,6 +374,49 @@ if (import.meta.hot) {
         vertical-align: middle;
       }
     }
+  }
+}
+
+// Plugin bundle: distinct visual treatment
+.market-package.bundle-card {
+  --bundle-color: #8b5cf6;
+  border-color: color-mix(in srgb, var(--bundle-color) 32%, var(--k-color-border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 10%, transparent) 0%, transparent 55%),
+    var(--k-color-card, var(--k-card-bg));
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--bundle-color) 12%, transparent), 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  &:hover {
+    border-color: var(--bundle-color);
+    box-shadow:
+      0 16px 32px color-mix(in srgb, var(--bundle-color) 22%, transparent),
+      0 4px 12px rgba(0, 0, 0, 0.08),
+      inset 0 1px 0 rgb(255 255 255 / 8%);
+  }
+
+  // accent stripes top-left to suggest a "wrapped package"
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--bundle-color), color-mix(in srgb, var(--bundle-color) 50%, transparent) 60%, transparent);
+    border-radius: 12px 12px 0 0;
+    pointer-events: none;
+  }
+
+  .header .left {
+    background: linear-gradient(135deg,
+      color-mix(in srgb, var(--bundle-color) 26%, var(--k-card-bg)),
+      color-mix(in srgb, var(--bundle-color) 14%, var(--k-card-bg)));
+    border-color: color-mix(in srgb, var(--bundle-color) 38%, var(--k-color-border));
+    svg { color: var(--bundle-color); }
+  }
+
+  h2 .title {
+    color: var(--bundle-color);
   }
 }
 

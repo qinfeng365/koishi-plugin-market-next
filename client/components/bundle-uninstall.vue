@@ -1,5 +1,12 @@
 <template>
-  <el-dialog v-model="visible" class="bundle-uninstall-dialog" :title="title || '卸载插件包'" destroy-on-close>
+  <el-dialog
+    v-model="visible"
+    append-to-body
+    class="bundle-uninstall-dialog"
+    :title="title || '卸载插件包'"
+    width="min(760px, calc(100vw - 24px))"
+    destroy-on-close
+  >
     <template v-if="packageName">
       <div class="bundle-uninstall-body">
         <p>
@@ -261,9 +268,37 @@ async function uninstallBundle() {
 <style lang="scss" scoped>
 
 .bundle-uninstall-dialog {
+  :deep(.el-dialog__body) {
+    max-height: min(68vh, 620px);
+    overflow: auto;
+  }
+
+  :deep(.el-dialog__footer) {
+    padding-top: 0.25rem;
+  }
+
+  :deep(.el-radio-group) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  :deep(.el-radio-button) {
+    min-width: 0;
+  }
+
+  :deep(.el-radio-button__inner) {
+    width: 100%;
+    padding: 0 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .bundle-uninstall-body {
     display: grid;
     gap: 0.75rem;
+    min-width: 0;
 
     p {
       margin: 0;
@@ -292,6 +327,7 @@ async function uninstallBundle() {
   .bundle-member-option {
     display: grid;
     gap: 0.45rem;
+    min-width: 0;
     padding: 0.58rem 0.65rem;
     border: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
     border-radius: 8px;
@@ -307,8 +343,17 @@ async function uninstallBundle() {
     gap: 0.35rem 0.6rem;
   }
 
+  .member-main,
+  .member-state {
+    min-width: 0;
+  }
+
   .member-title {
     font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-all;
   }
 
   .member-meta,
@@ -344,9 +389,19 @@ async function uninstallBundle() {
   }
 
   @media (max-width: 640px) {
-    .el-radio-group {
-      display: grid;
+    :deep(.el-dialog__footer) {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    :deep(.el-radio-group) {
       grid-template-columns: 1fr;
+    }
+
+    :deep(.el-radio-button__inner) {
+      text-align: center;
     }
   }
 }
