@@ -3,7 +3,7 @@
     :model-value="!!activeBundle"
     append-to-body
     align-center
-    class="bundle-install-panel"
+    :class="['bundle-install-panel', modeClass]"
     width="min(880px, calc(100vw - 24px))"
     destroy-on-close
     @update:model-value="close"
@@ -63,6 +63,20 @@
           <p v-for="item in validationWarnings" :key="item">{{ item }}</p>
         </k-comment>
 
+        <!-- Global Bulk Operations Row -->
+        <div class="bundle-bulk-row" v-if="selectedMembers.length">
+          <span class="bulk-label">批量操作:</span>
+          <button class="bundle-section-action" @click="batchSetCreateConfig(true)">创建所有配置</button>
+          <span class="bundle-section-spacer">|</span>
+          <button class="bundle-section-action" @click="batchSetCreateConfig(false)">跳过所有配置</button>
+          <template v-if="selectedMembers.some(m => hasPreset(m))">
+            <span class="bundle-section-spacer">|</span>
+            <button class="bundle-section-action" @click="batchSetUsePreset(true)">启用所有预设</button>
+            <span class="bundle-section-spacer">|</span>
+            <button class="bundle-section-action" @click="batchSetUsePreset(false)">关闭所有预设</button>
+          </template>
+        </div>
+
         <!-- Required members section -->
         <template v-if="requiredMembers.length">
           <div class="bundle-section-title">
@@ -106,26 +120,57 @@
                 </div>
               </div>
 
-              <div class="member-options" v-if="member.selected">
-                <el-checkbox v-model="member.createConfig">创建停用配置</el-checkbox>
+              <div class="member-options" v-if="member.selected" @click.stop>
+                <el-checkbox v-model="member.createConfig" :disabled="member.conflict === 'same-group'">创建配置</el-checkbox>
                 <el-checkbox
-                  v-if="configConflict(member)"
+                  v-if="member.conflict === 'other-config'"
                   v-model="member.move"
                 >移动已有配置</el-checkbox>
                 <el-checkbox v-model="member.usePreset" :disabled="!member.createConfig || member.move || !hasPreset(member)">使用预设</el-checkbox>
               </div>
 
-              <k-comment v-if="configConflict(member)" type="warning" class="member-warning">
-                <p>已有独立配置，默认在插件包分组下创建停用副本；勾选"移动"可整体迁移。</p>
+              <!-- Conflict Warning Comments -->
+              <k-comment v-if="member.conflict === 'package-mismatch' && member.selected" type="danger" class="member-warning" @click.stop>
+                <p>版本冲突：当前项目中已安装的版本为 <strong>{{ store.dependencies?.[member.package]?.resolved }}</strong>，不满足插件包声明的版本范围 <strong>{{ member.version }}</strong>。安装将覆盖此依赖！</p>
               </k-comment>
 
-              <k-comment v-if="sensitiveFields(member).length && member.selected && member.usePreset" type="warning" class="member-warning">
-                <p>预设包含敏感字段：{{ sensitiveFields(member).join('、') }}</p>
+              <k-comment v-if="member.conflict === 'other-config' && member.selected" type="warning" class="member-warning" @click.stop>
+                <p>配置冲突：此插件在包外部已有配置。默认在包内创建停用配置；勾选"移动"可将配置迁移进包内。</p>
               </k-comment>
+
+              <k-comment v-if="member.conflict === 'same-group' && member.selected" type="info" class="member-warning" @click.stop>
+                <p>配置存在：此插件在包分组下已存在配置，将默认跳过配置创建，仅确保依赖安装。</p>
+              </k-comment>
+
+              <!-- Sensitive fields in-place editing -->
+              <div v-if="member.selected && member.usePreset && sensitiveFields(member).length" class="sensitive-fields-editor" @click.stop>
+                <div class="editor-title">修改敏感预设配置：</div>
+                <div class="editor-grid">
+                  <div v-for="field in sensitiveFields(member)" :key="field" class="editor-field-row">
+                    <span class="field-label">{{ field }}:</span>
+                    <el-input
+                      size="small"
+                      v-model="member.config[field]"
+                      :placeholder="`请输入 ${field}`"
+                      show-password
+                    ></el-input>
+                  </div>
+                </div>
+              </div>
 
               <details v-if="hasPreset(member) && member.selected" class="member-config" @click.stop>
-                <summary>查看预设</summary>
-                <pre>{{ formatConfig(member.config) }}</pre>
+                <summary>查看/编辑配置预设</summary>
+                <div class="json-editor-container">
+                  <textarea
+                    class="raw-json-editor"
+                    :value="formatConfig(member.config)"
+                    @input="onJsonInput(member, $event.target.value)"
+                    rows="8"
+                  ></textarea>
+                  <div v-if="memberJsonErrors[getMemberKey(member)]" class="json-error-text">
+                    JSON 格式错误：{{ memberJsonErrors[getMemberKey(member)] }}
+                  </div>
+                </div>
               </details>
             </section>
           </div>
@@ -179,25 +224,56 @@
               </div>
 
               <div class="member-options" v-if="member.selected" @click.stop>
-                <el-checkbox v-model="member.createConfig">创建停用配置</el-checkbox>
+                <el-checkbox v-model="member.createConfig" :disabled="member.conflict === 'same-group'">创建配置</el-checkbox>
                 <el-checkbox
-                  v-if="configConflict(member)"
+                  v-if="member.conflict === 'other-config'"
                   v-model="member.move"
                 >移动已有配置</el-checkbox>
                 <el-checkbox v-model="member.usePreset" :disabled="!member.createConfig || member.move || !hasPreset(member)">使用预设</el-checkbox>
               </div>
 
-              <k-comment v-if="configConflict(member) && member.selected" type="warning" class="member-warning">
-                <p>已有独立配置，默认在插件包分组下创建停用副本；勾选"移动"可整体迁移。</p>
+              <!-- Conflict Warning Comments -->
+              <k-comment v-if="member.conflict === 'package-mismatch' && member.selected" type="danger" class="member-warning" @click.stop>
+                <p>版本冲突：当前项目中已安装的版本为 <strong>{{ store.dependencies?.[member.package]?.resolved }}</strong>，不满足插件包声明的版本范围 <strong>{{ member.version }}</strong>。安装将覆盖此依赖！</p>
               </k-comment>
 
-              <k-comment v-if="sensitiveFields(member).length && member.selected && member.usePreset" type="warning" class="member-warning">
-                <p>预设包含敏感字段：{{ sensitiveFields(member).join('、') }}</p>
+              <k-comment v-if="member.conflict === 'other-config' && member.selected" type="warning" class="member-warning" @click.stop>
+                <p>配置冲突：此插件在包外部已有配置。默认在包内创建停用配置；勾选"移动"可将配置迁移进包内。</p>
               </k-comment>
+
+              <k-comment v-if="member.conflict === 'same-group' && member.selected" type="info" class="member-warning" @click.stop>
+                <p>配置存在：此插件在包分组下已存在配置，将默认跳过配置创建，仅确保依赖安装。</p>
+              </k-comment>
+
+              <!-- Sensitive fields in-place editing -->
+              <div v-if="member.selected && member.usePreset && sensitiveFields(member).length" class="sensitive-fields-editor" @click.stop>
+                <div class="editor-title">修改敏感预设配置：</div>
+                <div class="editor-grid">
+                  <div v-for="field in sensitiveFields(member)" :key="field" class="editor-field-row">
+                    <span class="field-label">{{ field }}:</span>
+                    <el-input
+                      size="small"
+                      v-model="member.config[field]"
+                      :placeholder="`请输入 ${field}`"
+                      show-password
+                    ></el-input>
+                  </div>
+                </div>
+              </div>
 
               <details v-if="hasPreset(member) && member.selected" class="member-config" @click.stop>
-                <summary>查看预设</summary>
-                <pre>{{ formatConfig(member.config) }}</pre>
+                <summary>查看/编辑配置预设</summary>
+                <div class="json-editor-container">
+                  <textarea
+                    class="raw-json-editor"
+                    :value="formatConfig(member.config)"
+                    @input="onJsonInput(member, $event.target.value)"
+                    rows="8"
+                  ></textarea>
+                  <div v-if="memberJsonErrors[getMemberKey(member)]" class="json-error-text">
+                    JSON 格式错误：{{ memberJsonErrors[getMemberKey(member)] }}
+                  </div>
+                </div>
               </details>
             </section>
           </div>
@@ -251,7 +327,7 @@
 <script setup lang="ts">
 
 import { computed, reactive, ref, watch } from 'vue'
-import { loading as showLoading, message, send, store, useConfig, useContext } from '@koishijs/client'
+import { message, send, store, useConfig, useContext } from '@koishijs/client'
 import type { Registry } from '@koishijs/registry'
 import {
   BundleInstallMember,
@@ -261,10 +337,13 @@ import {
   parseBundleManifest,
   scanSensitiveConfig,
   validateBundleManifest,
+  getBundleGroupIdent,
 } from '../../src/shared/bundle'
-import { activeBundle } from './utils'
+import { activeBundle, getBundleMemberConfigState, installProgressState } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
+import { satisfies } from 'semver'
+import { getFrontendMode } from '../utils'
 
 const loading = ref(false)
 const installing = ref(false)
@@ -275,6 +354,9 @@ const resolvedBundleVersion = ref('')
 const members = reactive<BundleInstallMember[]>([])
 const ctx = useContext()
 const config = useConfig()
+
+const frontendMode = computed(() => getFrontendMode(config.value))
+const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const title = computed(() => activeBundle.value?.shortname || activeBundle.value?.package.name || '插件包')
 const bundleVersion = computed(() => resolvedBundleVersion.value || activeBundle.value?.package.version || '')
@@ -330,7 +412,32 @@ const presetList = computed(() => selectedMembers.value
 const skippedConfigList = computed(() => selectedMembers.value
   .filter(member => !member.createConfig && !member.move)
   .map(member => member.plugin))
-const canInstall = computed(() => !!activeBundle.value && !!bundle.value && validation.value.valid && selectedMembers.value.length > 0 && !loading.value)
+
+const memberJsonErrors = reactive<Record<string, string>>({})
+
+function getMemberKey(member: BundleInstallMember) {
+  return `${member.package}:${member.plugin}`
+}
+
+function onJsonInput(member: BundleInstallMember, value: string) {
+  const key = getMemberKey(member)
+  try {
+    const parsed = JSON.parse(value)
+    member.config = parsed
+    delete memberJsonErrors[key]
+  } catch (err) {
+    memberJsonErrors[key] = (err as Error).message
+  }
+}
+
+const canInstall = computed(() => {
+  return !!activeBundle.value 
+    && !!bundle.value 
+    && validation.value.valid 
+    && selectedMembers.value.length > 0 
+    && !loading.value
+    && Object.keys(memberJsonErrors).length === 0
+})
 
 watch(activeBundle, async (value) => {
   error.value = ''
@@ -338,6 +445,7 @@ watch(activeBundle, async (value) => {
   bundle.value = undefined
   resolvedBundleVersion.value = ''
   members.splice(0)
+  Object.keys(memberJsonErrors).forEach(key => delete memberJsonErrors[key])
   if (!value) return
   loading.value = true
   try {
@@ -358,14 +466,22 @@ watch(activeBundle, async (value) => {
     }
     resolvedBundleVersion.value = remoteVersion
     bundle.value = parsed
+    const groupKey = `group:${getBundleGroupIdent(value.package.name)}`
     for (const member of parsed.members) {
-      const conflict = hasExistingConfig(member)
+      const state = getBundleMemberConfigState(ctx, member, groupKey)
+      const hasConfig = !!(state.group.length || state.external.length)
+      const conflictType = state.group.length ? 'same-group' : state.external.length ? 'other-config' : undefined
+      
+      const dep = store.dependencies?.[member.package]
+      const isMismatch = dep?.resolved && !satisfies(dep.resolved, member.version, { includePrerelease: true })
+      
       members.push({
         ...member,
-        selected: !!member.required,
-        createConfig: true,
-        usePreset: !conflict && !!member.config && Object.keys(member.config).length > 0,
+        selected: !!member.required || (!!dep && !isMismatch),
+        createConfig: !hasConfig && conflictType !== 'same-group',
+        usePreset: !hasConfig && !!member.config && Object.keys(member.config).length > 0,
         move: false,
+        conflict: conflictType || (isMismatch ? 'package-mismatch' : undefined),
       })
     }
     const names = parsed.members.map(member => member.package).filter(name => !store.registry?.[name])
@@ -415,15 +531,6 @@ function getInstalledText(name: string) {
   return '未安装'
 }
 
-function hasExistingConfig(member: BundleInstallMember) {
-  if (!ctx.configWriter) return false
-  return !!(ctx.configWriter.get(member.package)?.length || ctx.configWriter.get(member.plugin)?.length)
-}
-
-function configConflict(member: BundleInstallMember) {
-  return hasExistingConfig(member) ? 'other-config' : undefined
-}
-
 function versionMeta(member: BundleInstallMember) {
   return store.registry?.[member.package]?.[member.version]
 }
@@ -462,10 +569,34 @@ function close() {
   activeBundle.value = undefined
 }
 
+function batchSetCreateConfig(value: boolean) {
+  for (const m of selectedMembers.value) {
+    if (m.conflict !== 'same-group') {
+      m.createConfig = value
+      if (!value) {
+        m.usePreset = false
+      }
+    }
+  }
+}
+
+function batchSetUsePreset(value: boolean) {
+  for (const m of selectedMembers.value) {
+    if (hasPreset(m) && m.createConfig && !m.move) {
+      m.usePreset = value
+    }
+  }
+}
+
 async function confirmInstall() {
   if (!activeBundle.value || !bundle.value || installing.value) return
   installing.value = true
-  const instance = showLoading({ text: '正在安装插件包……' })
+
+  installProgressState.title = '正在安装插件包……'
+  installProgressState.logs = []
+  installProgressState.status = 'running'
+  installProgressState.visible = true
+
   try {
     const result = await send('market/install-bundle', {
       package: activeBundle.value.package.name,
@@ -477,9 +608,11 @@ async function confirmInstall() {
       })),
     }) as BundleInstallResult
     if (result?.code) {
+      installProgressState.status = 'error'
       message.error('插件包安装失败。')
       return
     }
+    installProgressState.status = 'success'
     if (result?.record) {
       config.value.market.bundleRecords ||= {}
       config.value.market.bundleRecords[result.record.package] = result.record
@@ -490,10 +623,10 @@ async function confirmInstall() {
     activeBundle.value = undefined
   } catch (err) {
     console.error(err)
+    installProgressState.status = 'error'
     message.error('插件包安装失败。')
   } finally {
     installing.value = false
-    instance.close()
   }
 }
 
@@ -703,7 +836,7 @@ async function confirmInstall() {
     cursor: pointer;
     font-size: 0.74rem;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 6px;
     transition: background 0.15s;
     &:hover { background: var(--bundle-color-soft); }
   }
@@ -803,7 +936,7 @@ async function confirmInstall() {
     font-size: 0.74rem;
     color: var(--fg3);
     padding: 0 0.32rem;
-    border-radius: 4px;
+    border-radius: 6px;
     background: color-mix(in srgb, var(--fg3) 10%, transparent);
   }
 
@@ -855,7 +988,7 @@ async function confirmInstall() {
   .member-risk {
     display: inline-flex;
     align-items: center;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 0.05rem 0.4rem;
     font-size: 0.68rem;
     line-height: 1.4;
@@ -894,16 +1027,95 @@ async function confirmInstall() {
       font-size: 0.78rem;
       user-select: none;
     }
+  }
 
-    pre {
-      margin: 0.4rem 0 0;
+  .bundle-bulk-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.6rem 0 0.8rem;
+    padding: 0.5rem 0.65rem;
+    background: color-mix(in srgb, var(--bundle-color) 4%, var(--k-side-bg));
+    border: 1px solid color-mix(in srgb, var(--bundle-color) 12%, var(--k-color-border));
+    border-radius: 8px;
+    font-size: 0.76rem;
+
+    .bulk-label {
+      font-weight: 600;
+      color: var(--fg2);
+      margin-right: 0.4rem;
+    }
+
+    .bundle-section-spacer {
+      color: color-mix(in srgb, var(--fg3) 50%, transparent);
+      margin: 0 0.2rem;
+    }
+  }
+
+  .sensitive-fields-editor {
+    margin: 0.5rem 0 0.25rem 2.55rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--k-color-warning) 24%, var(--k-color-border));
+    background: color-mix(in srgb, var(--k-color-warning) 4%, var(--k-card-bg));
+
+    .editor-title {
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--k-color-warning);
+      margin-bottom: 0.45rem;
+    }
+
+    .editor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+      gap: 0.45rem;
+    }
+
+    .editor-field-row {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+
+      .field-label {
+        font-family: var(--font-mono, monospace);
+        font-size: 0.74rem;
+        color: var(--fg2);
+        word-break: break-all;
+        min-width: 4.5rem;
+      }
+    }
+  }
+
+  .json-editor-container {
+    margin-top: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+
+    .raw-json-editor {
+      width: 100%;
+      box-sizing: border-box;
       padding: 0.55rem 0.7rem;
-      border-radius: 6px;
-      overflow: auto;
+      border-radius: 8px;
       background: color-mix(in srgb, var(--bundle-color) 5%, var(--k-color-code-bg, rgb(0 0 0 / 8%)));
-      border: 1px solid color-mix(in srgb, var(--bundle-color) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--bundle-color) 14%, var(--k-color-border));
+      font-family: var(--font-mono, monospace);
       font-size: 0.74rem;
-      max-height: 16rem;
+      color: var(--fg1);
+      resize: vertical;
+
+      &:focus {
+        border-color: var(--bundle-color-border);
+        outline: none;
+        box-shadow: 0 0 8px color-mix(in srgb, var(--bundle-color) 12%, transparent);
+      }
+    }
+
+    .json-error-text {
+      font-size: 0.7rem;
+      color: var(--k-color-danger);
+      font-weight: 500;
     }
   }
 
@@ -911,7 +1123,7 @@ async function confirmInstall() {
   .bundle-diff {
     margin-top: 0.75rem;
     padding: 0.6rem 0.72rem;
-    border-radius: 10px;
+    border-radius: 8px;
     background: linear-gradient(135deg, var(--bundle-color-soft), transparent 60%), color-mix(in srgb, var(--k-side-bg) 70%, transparent);
     border: 1px solid var(--bundle-color-border);
   }
@@ -934,7 +1146,7 @@ async function confirmInstall() {
   .bundle-diff-cell {
     background: var(--k-card-bg);
     border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0.45rem 0.55rem;
   }
 
@@ -967,7 +1179,7 @@ async function confirmInstall() {
     gap: 0.25rem;
     padding: 0.08rem 0.42rem;
     font-size: 0.7rem;
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid transparent;
     background: color-mix(in srgb, var(--fg3) 8%, transparent);
     color: var(--fg2);
@@ -980,7 +1192,7 @@ async function confirmInstall() {
     .preset-marker {
       font-size: 0.62rem;
       padding: 0 0.25rem;
-      border-radius: 3px;
+      border-radius: 4px;
       background: color-mix(in srgb, var(--bundle-color) 18%, transparent);
       color: var(--bundle-color);
     }
@@ -1009,6 +1221,36 @@ async function confirmInstall() {
     border-top-color: var(--bundle-color);
     border-radius: 50%;
     animation: bundle-spin 0.7s linear infinite;
+  }
+
+  &.market-mode-polished {
+    border-radius: 16px;
+    box-shadow: 0 24px 56px rgb(0 0 0 / 24%), 0 8px 20px rgb(0 0 0 / 14%);
+
+    .bundle-member {
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--k-card-bg) 85%, transparent);
+      backdrop-filter: blur(10px);
+
+      &.optional:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-color) 10%, rgb(0 0 0 / 8%));
+      }
+
+      &.selected {
+        box-shadow: inset 4px 0 0 var(--bundle-color), 0 6px 16px color-mix(in srgb, var(--bundle-color) 6%, transparent);
+      }
+
+      &.required {
+        box-shadow: inset 4px 0 0 var(--k-color-success), 0 6px 16px color-mix(in srgb, var(--k-color-success) 4%, transparent);
+      }
+    }
+
+    .bundle-diff {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 12%, transparent), transparent 60%), color-mix(in srgb, var(--k-side-bg) 80%, transparent);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 24px rgb(0 0 0 / 8%);
+    }
   }
 
   @keyframes bundle-spin {

@@ -17,6 +17,19 @@
           <market-icon name="tag"></market-icon>
           <span>屏蔽预览</span>
         </button>
+        <button
+          class="deps-filter deps-layout-toggle"
+          @click="toggleLayout"
+          :title="depsLayout === 'grid' ? '切换到列表视图' : '切换到网格视图'"
+        >
+          <svg v-if="depsLayout === 'grid'" viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor">
+            <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor">
+            <path d="M4 4h4v4H4V4zm6 0h4v4h-4V4zm6 0h4v4h-4V4zM4 10h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4zM4 16h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z"/>
+          </svg>
+          <span>{{ depsLayout === 'grid' ? '列表视图' : '网格视图' }}</span>
+        </button>
         <div class="deps-search">
           <el-input ref="searchInput" v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
         </div>
@@ -296,6 +309,11 @@ function toggleGroup(key: ItemKind) {
   getCollapsedGroups()[key] = !isGroupCollapsed(key)
 }
 
+function toggleLayout() {
+  if (!config.value.market) config.value.market = {}
+  config.value.market.depsLayout = depsLayout.value === 'grid' ? 'list' : 'grid'
+}
+
 const visibleGroups = computed<DependencyGroup[]>(() => {
   const word = keyword.value.trim().toLowerCase()
   const buckets = Object.fromEntries(groupOrder.map(key => [key, [] as DependencyItem[]])) as Record<ItemKind, DependencyItem[]>
@@ -410,6 +428,31 @@ ctx.action('dependencies.upgrade', {
     color: var(--k-color-primary);
     border-color: color-mix(in srgb, var(--k-color-primary) 45%, transparent);
     background: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-card-bg));
+  }
+}
+
+.deps-layout-toggle {
+  flex: 0 0 auto;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 0.65rem;
+  color: var(--fg2);
+  background: color-mix(in srgb, var(--k-side-bg) 70%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.83rem;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+
+  svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+
+  &:hover {
+    color: var(--fg1);
+    background: color-mix(in srgb, var(--k-side-bg) 95%, transparent);
+    border-color: color-mix(in srgb, var(--k-color-border) 80%, transparent);
   }
 }
 
@@ -660,6 +703,7 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-prerelease-toggle,
+  .deps-layout-toggle,
   .deps-summary span {
     border-color: color-mix(in srgb, var(--k-color-border) 64%, transparent);
     background: color-mix(in srgb, var(--k-side-bg) 72%, transparent);
@@ -667,7 +711,8 @@ ctx.action('dependencies.upgrade', {
     transition: color 0.18s var(--deps-polished-ease), background 0.18s var(--deps-polished-ease), border-color 0.18s var(--deps-polished-ease), box-shadow 0.18s var(--deps-polished-ease), transform 0.18s var(--deps-polished-ease);
   }
 
-  .deps-prerelease-toggle:hover {
+  .deps-prerelease-toggle:hover,
+  .deps-layout-toggle:hover {
     border-color: color-mix(in srgb, var(--k-color-primary) 40%, var(--k-color-border));
     background: color-mix(in srgb, var(--k-card-bg) 92%, transparent);
     box-shadow: 0 8px 20px rgb(0 0 0 / 12%);

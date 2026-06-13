@@ -1,4 +1,4 @@
-import { Awaitable, Context, Dict, loading, message, send, socket, store, valueMap } from '@koishijs/client'
+import { Awaitable, Context, Dict, loading, message, receive, send, socket, store, valueMap } from '@koishijs/client'
 import type { Registry, SearchObject } from '@koishijs/registry'
 import type { RegistryStatus } from 'koishi-plugin-market-next'
 import { compare, satisfies } from 'semver'
@@ -202,6 +202,24 @@ export async function fetchBundleRecord(packageName: string): Promise<BundleReco
   return createBundleRecordFromManifest(packageName, version, bundle)
 }
 
+export interface LogLine {
+  type: 'stdout' | 'stderr'
+  line: string
+}
+
+export const installProgressState = reactive({
+  visible: false,
+  status: 'idle', // 'idle' | 'running' | 'success' | 'error'
+  logs: [] as LogLine[],
+  title: '正在应用依赖更改',
+})
+
+receive('market/install-log', (log: LogLine) => {
+  if (installProgressState.status === 'running') {
+    installProgressState.logs.push(log)
+  }
+})
+
 interface InstallMessages {
   loadingText?: string
   successText?: string
@@ -210,29 +228,33 @@ interface InstallMessages {
 }
 
 export async function install(override: Dict<string>, callback?: () => Awaitable<void>, forced?: boolean, messages: InstallMessages = {}) {
-  const instance = loading({
-    text: messages.loadingText ?? '正在更新依赖……',
-  })
+  installProgressState.title = messages.loadingText ?? '正在更新依赖……'
+  installProgressState.logs = []
+  installProgressState.status = 'running'
+  installProgressState.visible = true
+
   const dispose = watch(socket, () => {
+    installProgressState.status = 'success'
     message.success(messages.successText ?? '安装成功！')
     dispose()
-    instance.close()
   })
   try {
     active.value = ''
     const code = await send('market/install', override, forced)
     if (code) {
+      installProgressState.status = 'error'
       message.error(messages.errorText ?? '安装失败！')
     } else {
+      installProgressState.status = 'success'
       await callback?.()
       message.success(messages.successText ?? '安装成功！')
     }
   } catch (err) {
     console.error(err)
+    installProgressState.status = 'error'
     message.error(messages.timeoutText ?? '安装超时！')
   } finally {
     dispose()
-    instance.close()
   }
 }
 

@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     append-to-body
-    class="bundle-uninstall-dialog"
+    :class="['bundle-uninstall-dialog', modeClass]"
     :title="title || '卸载插件包'"
     width="min(760px, calc(100vw - 24px))"
     destroy-on-close
@@ -22,32 +22,44 @@
 
         <div v-if="loadingRecord" class="bundle-loading">正在读取插件包成员清单……</div>
 
-        <div v-else-if="memberRows.length" class="bundle-member-list">
-          <section v-for="row in memberRows" :key="row.package" class="bundle-member-option">
-            <div class="member-main">
-              <span class="member-title">{{ row.package }}</span>
-              <span class="member-meta">
-                {{ row.required ? '核心成员' : '可选成员' }} · {{ row.version || '未声明版本' }}
-              </span>
-            </div>
-            <div class="member-state">
-              <span>{{ row.installed ? '依赖已安装' : '依赖未安装' }}</span>
-              <span v-if="row.hasGroupConfig">包内配置</span>
-              <span v-if="row.hasExternalConfig" class="warning">存在包外配置</span>
-              <span v-if="row.workspace">工作区依赖</span>
-            </div>
-            <el-radio-group v-model="memberActions[row.package]" size="small">
-              <el-radio-button value="config" :disabled="!row.hasGroupConfig">只清包内配置</el-radio-button>
-              <el-radio-button value="dependency" :disabled="!row.canRemoveDependency">
-                卸载依赖并清配置
-              </el-radio-button>
-              <el-radio-button value="keep">保留</el-radio-button>
-            </el-radio-group>
-            <p v-if="row.hasExternalConfig" class="member-note">
-              检测到根层级或其他分组仍有配置，默认只清理插件包分组下的副本，不卸载成员依赖。
-            </p>
-          </section>
-        </div>
+        <template v-else-if="memberRows.length">
+          <!-- Bulk Operations Bar -->
+          <div class="bundle-bulk-row">
+            <span class="bulk-label">批量操作:</span>
+            <button class="bundle-section-action" @click="setAllActions('dependency')">全部卸载依赖并清配置</button>
+            <span class="bundle-section-spacer">|</span>
+            <button class="bundle-section-action" @click="setAllActions('config')">全部只清配置</button>
+            <span class="bundle-section-spacer">|</span>
+            <button class="bundle-section-action" @click="setAllActions('keep')">全部保留</button>
+          </div>
+
+          <div class="bundle-member-list">
+            <section v-for="row in memberRows" :key="row.package" class="bundle-member-option">
+              <div class="member-main">
+                <span class="member-title">{{ row.package }}</span>
+                <span class="member-meta">
+                  {{ row.required ? '核心成员' : '可选成员' }} · {{ row.version || '未声明版本' }}
+                </span>
+              </div>
+              <div class="member-state">
+                <span>{{ row.installed ? '依赖已安装' : '依赖未安装' }}</span>
+                <span v-if="row.hasGroupConfig">包内配置</span>
+                <span v-if="row.hasExternalConfig" class="warning">存在包外配置</span>
+                <span v-if="row.workspace">工作区依赖</span>
+              </div>
+              <el-radio-group v-model="memberActions[row.package]" size="small">
+                <el-radio-button value="config" :disabled="!row.hasGroupConfig">只清包内配置</el-radio-button>
+                <el-radio-button value="dependency" :disabled="!row.canRemoveDependency">
+                  卸载依赖并清配置
+                </el-radio-button>
+                <el-radio-button value="keep">保留</el-radio-button>
+              </el-radio-group>
+              <p v-if="row.hasExternalConfig" class="member-note">
+                检测到根层级或其他分组仍有配置，默认只清理插件包分组下的副本，不卸载成员依赖。
+              </p>
+            </section>
+          </div>
+        </template>
 
         <k-comment v-else>
           <p>没有读取到可处理的成员清单。将只卸载插件包自身。</p>
@@ -92,6 +104,7 @@ import {
   type BundleRecordView,
   type BundleMemberCleanupTarget,
 } from './utils'
+import { getFrontendMode } from '../utils'
 
 type MemberAction = 'config' | 'dependency' | 'keep'
 
@@ -111,6 +124,20 @@ const emit = defineEmits<{
 }>()
 
 const config = useConfig()
+const frontendMode = computed(() => getFrontendMode(config.value))
+const modeClass = computed(() => `market-mode-${frontendMode.value}`)
+
+function setAllActions(action: MemberAction) {
+  for (const row of memberRows.value) {
+    if (action === 'dependency') {
+      memberActions[row.package] = row.canRemoveDependency ? 'dependency' : (row.hasGroupConfig ? 'config' : 'keep')
+    } else if (action === 'config') {
+      memberActions[row.package] = row.hasGroupConfig ? 'config' : 'keep'
+    } else {
+      memberActions[row.package] = 'keep'
+    }
+  }
+}
 const ctx = useContext()
 const loadingRecord = ref(false)
 const uninstalling = ref(false)
@@ -386,6 +413,59 @@ async function uninstallBundle() {
 
   .bundle-loading {
     color: var(--fg2);
+  }
+
+  .bundle-bulk-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    background: color-mix(in srgb, var(--k-color-primary) 4%, var(--k-side-bg));
+    border: 1px solid color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+    border-radius: 8px;
+    font-size: 0.76rem;
+
+    .bulk-label {
+      font-weight: 600;
+      color: var(--fg2);
+      margin-right: 0.4rem;
+    }
+
+    .bundle-section-spacer {
+      color: color-mix(in srgb, var(--fg3) 50%, transparent);
+      margin: 0 0.2rem;
+    }
+
+    .bundle-section-action {
+      border: none;
+      background: none;
+      color: var(--k-color-primary);
+      cursor: pointer;
+      font-size: 0.74rem;
+      padding: 2px 6px;
+      border-radius: 6px;
+      transition: background 0.15s;
+      &:hover { background: color-mix(in srgb, var(--k-color-primary) 8%, transparent); }
+    }
+  }
+
+  &.market-mode-polished {
+    border-radius: 16px;
+    box-shadow: 0 24px 56px rgb(0 0 0 / 24%), 0 8px 20px rgb(0 0 0 / 14%);
+
+    .bundle-member-option {
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--k-card-bg) 85%, transparent);
+      backdrop-filter: blur(10px);
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+
+      &:hover {
+        border-color: color-mix(in srgb, var(--k-color-primary) 28%, var(--k-color-border));
+        box-shadow: 0 8px 20px rgb(0 0 0 / 10%);
+        transform: translateY(-2px);
+      }
+    }
   }
 
   @media (max-width: 640px) {

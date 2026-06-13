@@ -21,6 +21,9 @@
           <template v-if="loadingTimeout">；超时：{{ loadingTimeout }}</template>
           <template v-if="loadingAutoRoute">；备用源自动路由已开启</template>
         </p>
+        <p style="margin-top: 0.5rem;">
+          <el-button type="primary" size="small" @click="router.push('/settings/market')">前往市场设置修改源</el-button>
+        </p>
       </k-comment>
     </div>
 
@@ -33,7 +36,17 @@
         @debug="updateClientDebug"
         @update:page="scrollToTop">
         <template #header="{ hasFilter, all, packages }">
-          <market-search ref="searchBox" v-model="words"></market-search>
+          <div class="market-search-row">
+            <market-search ref="searchBox" v-model="words"></market-search>
+            <button class="layout-toggle-btn" @click="toggleLayout" :title="marketLayout === 'grid' ? '切换到列表视图' : '切换到网格视图'">
+              <svg v-if="marketLayout === 'grid'" viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="currentColor">
+                <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="currentColor">
+                <path d="M4 4h4v4H4V4zm6 0h4v4h-4V4zm6 0h4v4h-4V4zM4 10h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4zM4 16h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z"/>
+              </svg>
+            </button>
+          </div>
           <div class="market-hint text-center">
             共搜索到 {{ hasFilter ? packages.length + ' / ' : '' }}{{ all.length }} 个插件。
           </div>
@@ -100,6 +113,9 @@
         <li>无法连接到网络，请检查你的网络连接和代理设置</li>
         <li>您所用的 registry 不支持搜索功能，请考虑进行更换</li>
       </ul>
+      <p style="margin-top: 0.8rem;">
+        <el-button type="primary" size="small" @click="router.push('/settings/market')">前往设置修改 Registry 下载源</el-button>
+      </p>
     </k-comment>
   </k-layout>
 </template>
@@ -238,6 +254,11 @@ watch(marketLoading, (loading) => {
   if (loading) scheduleLoadingWarning()
 }, { immediate: true })
 
+function toggleLayout() {
+  if (!config.value.market) config.value.market = {}
+  config.value.market.marketLayout = marketLayout.value === 'grid' ? 'list' : 'grid'
+}
+
 onMounted(() => {
   scheduleLoadingWarning()
   window.addEventListener('keydown', onSearchShortcut)
@@ -289,7 +310,7 @@ function getText(data: SearchObject) {
 }
 
 function openPackage(data: SearchObject) {
-  if (!global.static && canInstallBundleSearchObject(data) && !installed(data)) {
+  if (!global.static && canInstallBundleSearchObject(data)) {
     activeBundle.value = data
     return
   }
@@ -810,6 +831,61 @@ function formatNumber(value?: number) {
       &:focus-within {
         transform: none;
       }
+    }
+  }
+}
+
+.market-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+
+  .search-box {
+    flex: 1 1 auto;
+    max-width: none;
+    margin: 0;
+  }
+}
+
+.layout-toggle-btn {
+  flex: 0 0 auto;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 8px;
+  border: 1px solid var(--k-color-border);
+  background: var(--k-card-bg);
+  color: var(--fg2);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: var(--k-color-primary);
+    border-color: var(--k-color-primary);
+    background: color-mix(in srgb, var(--k-color-primary) 8%, var(--k-card-bg));
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+.page-market.market-mode-polished {
+  .layout-toggle-btn {
+    border-radius: 12px;
+    border-color: color-mix(in srgb, var(--k-color-primary) 22%, var(--k-color-border));
+    background: color-mix(in srgb, var(--k-card-bg) 80%, transparent);
+    backdrop-filter: blur(10px);
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px color-mix(in srgb, var(--k-color-primary) 15%, transparent);
     }
   }
 }

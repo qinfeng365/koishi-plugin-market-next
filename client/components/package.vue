@@ -33,7 +33,9 @@
       </el-select>
       <el-button v-if="pending" size="small" @click="clearOverride">撤销</el-button>
       <el-button v-if="showRemoveDependency" class="dep-remove-button" size="small" @click="removeDependency">{{ removeButtonText }}</el-button>
-      <el-button v-if="canExpandCard && !pending" size="small" @click.stop="editing = !editing">{{ editing ? '收起' : '版本' }}</el-button>
+      <el-button v-if="canExpandCard && !pending" size="small" @click.stop="toggleEdit">
+        {{ bundlePackage ? '管理' : editing ? '收起' : '版本' }}
+      </el-button>
     </div>
   </div>
 
@@ -70,8 +72,8 @@
         >
           忽略更新
         </el-button>
-        <el-button v-if="showEditToggle" size="small" @click.stop="editing = !editing">
-          {{ editing ? '收起' : '修改' }}
+        <el-button v-if="showEditToggle" size="small" @click.stop="toggleEdit">
+          {{ bundlePackage ? '管理' : editing ? '收起' : '修改' }}
         </el-button>
       </div>
     </div>
@@ -225,9 +227,10 @@
 
 import { computed, ref } from 'vue'
 import { message, store, useConfig, useContext } from '@koishijs/client'
+import type { SearchObject } from '@koishijs/registry'
 import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
 import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
-import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
+import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import BundleUninstall from './bundle-uninstall.vue'
@@ -504,10 +507,12 @@ const showVersionControl = computed(() => {
 })
 
 const showEditToggle = computed(() => {
+  if (bundlePackage.value && (dep.value || local.value)) return !pending.value
   return !!data.value && !pending.value && !updatable.value && statusClass.value !== 'error' && statusClass.value !== 'manual'
 })
 
 const canExpandCard = computed(() => {
+  if (bundlePackage.value && (dep.value || local.value)) return !pending.value
   return !!data.value && !pending.value && statusClass.value !== 'error' && statusClass.value !== 'manual'
 })
 
@@ -545,7 +550,35 @@ const floatingActions = computed(() => {
 
 function toggleCardActions() {
   if (!canExpandCard.value) return
+  if (bundlePackage.value) {
+    openBundlePanel()
+    return
+  }
   editing.value = !editing.value
+}
+
+function toggleEdit() {
+  if (bundlePackage.value) {
+    openBundlePanel()
+    return
+  }
+  editing.value = !editing.value
+}
+
+function openBundlePanel() {
+  const data = marketData.value
+  if (data) {
+    activeBundle.value = data
+    return
+  }
+  activeBundle.value = {
+    package: {
+      name: props.name,
+      version: dep.value?.resolved ?? local.value?.package.version ?? latestVersion.value ?? '',
+      keywords: [],
+    },
+    shortname: displayName.value,
+  } as SearchObject
 }
 
 function clearOverride() {

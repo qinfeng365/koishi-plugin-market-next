@@ -13,19 +13,25 @@
       </el-select>
     </template>
 
-    <p class="danger" v-if="danger">{{ danger }}</p>
-    <p class="warning" v-if="warning">{{ warning }}</p>
+    <k-comment class="danger" v-if="danger" type="danger">{{ danger }}</k-comment>
+    <k-comment class="warning" v-if="warning" type="warning">{{ warning }}</k-comment>
 
     <div v-if="!data && active && !workspace">
-      <p :class="{ danger: registryStatus?.error }">{{ registryStatusText }}</p>
+      <k-comment :type="registryStatus?.error ? 'danger' : 'info'">{{ registryStatusText }}</k-comment>
     </div>
 
-    <p v-if="store.dependencies?.[active] && !current" class="danger">
+    <k-comment v-if="store.dependencies?.[active] && !current" type="danger">
       该依赖的安装发生了错误，你可以尝试修复或移除它。
-    </p>
+    </k-comment>
 
-    <el-scrollbar v-if="data?.[version] && Object.keys(data[version].peers).length">
-      <table>
+    <el-scrollbar v-if="data?.[version] && Object.keys(data[version].peers).length" class="peer-table-scroll">
+      <table class="peer-table">
+        <colgroup>
+          <col class="peer-name-col">
+          <col class="peer-range-col">
+          <col class="peer-current-col">
+          <col class="peer-status-col">
+        </colgroup>
         <thead>
           <tr>
             <th>依赖名称</th>
@@ -39,7 +45,7 @@
             <td class="text-left">{{ name }}</td>
             <td>{{ peer.request }}</td>
             <td>
-              <span class="wrapper" v-if="store.registry?.[name] && !getWorkspaceVersion(name)">
+              <span class="wrapper" v-if="shouldShowPeerVersionSelect(peer, name)">
                 <span class="shadow">{{ getVersion(name) || 'Select' }}</span>
                 <el-select
                   class="frameless"
@@ -54,7 +60,10 @@
                   </el-option>
                 </el-select>
               </span>
-              <template v-else>{{ peer.resolved }}{{ getWorkspaceVersion(name) ? ' (工作区)' : '' }}</template>
+              <span v-else class="peer-version" :class="{ workspace: !!getWorkspaceVersion(name), missing: !getPeerResolvedVersion(peer, name) }">
+                {{ getPeerResolvedVersion(peer, name) || '未安装' }}
+                <template v-if="getWorkspaceVersion(name)">工作区</template>
+              </span>
             </td>
             <td :class="['theme-color', peer.result]">
               <span class="inline-flex items-center gap-1">
@@ -223,6 +232,20 @@ function setVersion(name: string, version: string) {
   } else {
     delete override[name]
   }
+}
+
+function shouldShowPeerVersionSelect(peer: PeerInfo, name: string) {
+  if (!store.registry?.[name] || getWorkspaceVersion(name)) return false
+  if (name in getOverride()) return true
+  return peer.result === 'danger'
+}
+
+function getPeerResolvedVersion(peer: PeerInfo, name: string) {
+  return getVersion(name)
+    || getWorkspaceVersion(name)
+    || peer.resolved
+    || store.dependencies?.[name]?.resolved
+    || store.packages?.[name]?.package.version
 }
 
 const unchanged = computed(() => {
@@ -395,17 +418,41 @@ function getResultText(peer: PeerInfo, name: string) {
   @include apply-color(danger);
 }
 
+.install-panel.el-dialog,
+.el-dialog.install-panel,
+.install-panel .el-dialog {
+  width: min(720px, calc(100vw - 32px)) !important;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
+  border-radius: 10px;
+  color: var(--fg1);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent), transparent 44%),
+    var(--k-card-bg);
+  box-shadow:
+    0 28px 80px rgb(0 0 0 / 32%),
+    0 0 0 1px color-mix(in srgb, var(--fg1) 8%, transparent) inset;
+}
+
 .install-panel {
   .el-dialog__header {
     display: flex;
     gap: 0 0.5em;
     align-items: center;
-    padding-right: 36px;
-    padding-bottom: 4px;
+    min-height: 62px;
+    padding: 14px 44px 12px 20px;
+    border-bottom: 1px solid color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
+      color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
 
     .el-dialog__title {
-      font-weight: 500;
+      min-width: 0;
+      overflow: hidden;
       color: var(--fg1);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 700;
       margin-right: 0.5rem;
       flex: 0 0 auto;
     }
@@ -414,6 +461,21 @@ function getResultText(peer: PeerInfo, name: string) {
       flex: 1 1 auto;
       max-width: 12.5rem;
       margin: -2px 0 -4px;
+    }
+  }
+
+  .el-dialog__headerbtn {
+    top: 11px;
+    right: 12px;
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    color: var(--fg2);
+    transition: background 0.15s, color 0.15s;
+
+    &:hover {
+      color: var(--k-color-primary);
+      background: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
     }
   }
 
@@ -431,8 +493,9 @@ function getResultText(peer: PeerInfo, name: string) {
   }
 
   .el-dialog__body {
-    padding: 0 20px;
+    padding: 16px 20px 6px;
     min-height: 40px;
+    background: color-mix(in srgb, var(--k-side-bg) 58%, var(--k-card-bg));
 
     > div {
       margin: 1rem 0;
@@ -443,12 +506,103 @@ function getResultText(peer: PeerInfo, name: string) {
     }
   }
 
+  .peer-table-scroll {
+    border-radius: 8px;
+    background: var(--k-card-bg);
+    box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
+  }
+
   table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    border: 1px solid var(--k-color-border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 0.75rem 0;
+
+    .peer-name-col {
+      width: 42%;
+    }
+
+    .peer-range-col {
+      width: 18%;
+    }
+
+    .peer-current-col {
+      width: 20%;
+    }
+
+    .peer-status-col {
+      width: 20%;
+    }
+
     thead, tbody {
       td, th {
-        padding: 0.5em 0.875em;
+        padding: 0.62rem 0.875rem;
         white-space: nowrap;
+        overflow: hidden;
+        color: var(--fg1);
+        text-overflow: ellipsis;
+        border-bottom: 1px solid var(--k-color-border);
+        border-right: 1px solid var(--k-color-border);
+        font-size: 0.82rem;
+
+        &:last-child {
+          border-right: none;
+        }
       }
+    }
+
+    th {
+      background: color-mix(in srgb, var(--fg1) 5%, var(--k-side-bg));
+      color: var(--fg2);
+      font-weight: 700;
+      text-align: left;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr {
+      background: var(--k-card-bg);
+      transition: background 0.15s;
+
+      &:hover {
+        background: color-mix(in srgb, var(--k-color-primary) 6%, var(--k-card-bg));
+      }
+    }
+  }
+
+  .peer-version {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 28px;
+    overflow: hidden;
+    padding: 0 9px;
+    border: 1px solid var(--k-color-border);
+    border-radius: 8px;
+    color: var(--fg1);
+    background: color-mix(in srgb, var(--k-side-bg) 42%, var(--k-card-bg));
+    font-weight: 700;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.workspace {
+      gap: 6px;
+      color: var(--k-color-success);
+      border-color: color-mix(in srgb, var(--k-color-success) 34%, var(--k-color-border));
+      background: color-mix(in srgb, var(--k-color-success) 10%, var(--k-card-bg));
+    }
+
+    &.missing {
+      color: var(--k-color-danger);
+      border-color: color-mix(in srgb, var(--k-color-danger) 34%, var(--k-color-border));
+      background: color-mix(in srgb, var(--k-color-danger) 10%, var(--k-card-bg));
     }
   }
 
@@ -467,11 +621,17 @@ function getResultText(peer: PeerInfo, name: string) {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    min-height: 68px;
+    padding: 14px 16px;
+    border-top: 1px solid color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+    background: color-mix(in srgb, var(--k-side-bg) 50%, var(--k-card-bg));
   }
 
   .wrapper {
     position: relative;
     display: inline-flex;
+    min-width: 7.8rem;
+    max-width: 100%;
 
     .shadow {
       letter-spacing: 1px;
@@ -485,6 +645,18 @@ function getResultText(peer: PeerInfo, name: string) {
       top: 50%;
       right: 0;
       transform: translateY(-50%);
+    }
+  }
+
+  .frameless {
+    --el-fill-color-blank: var(--k-card-bg);
+    --el-border-color: var(--k-color-border);
+    --el-text-color-regular: var(--fg1);
+
+    :deep(.el-input__wrapper) {
+      min-height: 30px;
+      border-radius: 8px;
+      box-shadow: 0 0 0 1px var(--k-color-border) inset;
     }
   }
 }

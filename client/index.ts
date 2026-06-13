@@ -8,6 +8,7 @@ import Dependencies from './components/dependencies.vue'
 import Install from './components/install.vue'
 import BundleInstall from './components/bundle-install.vue'
 import Confirm from './components/confirm.vue'
+import InstallProgress from './components/install-progress.vue'
 import Market from './components/market.vue'
 import Progress from './components/progress.vue'
 import './icons'
@@ -102,6 +103,11 @@ export default (ctx: Context) => {
   ctx.slot({
     type: 'global',
     component: Confirm,
+  })
+
+  ctx.slot({
+    type: 'global',
+    component: InstallProgress,
   })
 
   ctx.page({

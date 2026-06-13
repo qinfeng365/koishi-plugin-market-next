@@ -49,7 +49,7 @@ export function isBundleSearchObject(data: SearchObject) {
 }
 
 export function canInstallBundleSearchObject(data: SearchObject) {
-  return isBundlePackageName(data.package.name)
+  return isBundleSearchObject(data)
 }
 
 const aWeekAgo = new Date(Date.now() - 1000 * 3600 * 24 * 7).toISOString()

@@ -776,6 +776,7 @@ class Installer extends Service {
         stderr = lines.pop()!
         for (const line of lines) {
           logger.warn(line)
+          this.ctx.get('console')?.broadcast('market/install-log', { type: 'stderr', line })
         }
       })
 
@@ -787,14 +788,17 @@ class Installer extends Service {
         for (const line of lines) {
           if (!useJson || line[0] !== '{') {
             logger.info(line)
+            this.ctx.get('console')?.broadcast('market/install-log', { type: 'stdout', line })
             continue
           }
           try {
             const { type, data } = JSON.parse(line) as YarnLog
             logger[levelMap[type] ?? 'info'](data)
+            this.ctx.get('console')?.broadcast('market/install-log', { type: 'stdout', line: data })
           } catch (error) {
             logger.warn(line)
             logger.warn(error)
+            this.ctx.get('console')?.broadcast('market/install-log', { type: 'stderr', line })
           }
         }
       })

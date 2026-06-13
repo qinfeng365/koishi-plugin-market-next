@@ -345,6 +345,7 @@ async function installBundle(ctx: Context, request: BundleInstallRequest, forced
         createConfig: option?.createConfig !== false,
         usePreset: option?.usePreset === true,
         move: option?.move === true,
+        config: option?.config ?? member.config,
       }
     })
     .filter(member => member.selected)

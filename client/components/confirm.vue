@@ -101,6 +101,50 @@ function confirm() {
 <style lang="scss">
 
 .confirm-panel {
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--k-color-border, #e2e8f0);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 0.75rem 0;
+
+    thead, tbody {
+      td, th {
+        padding: 0.6rem 0.875rem;
+        white-space: nowrap;
+        border-bottom: 1px solid var(--k-color-border, #e2e8f0);
+        border-right: 1px solid var(--k-color-border, #e2e8f0);
+        font-size: 0.82rem;
+
+        &:last-child {
+          border-right: none;
+        }
+      }
+    }
+
+    th {
+      background: color-mix(in srgb, var(--fg1, #1e293b) 4%, var(--k-side-bg, #f8fafc));
+      color: var(--fg2, #64748b);
+      font-weight: 600;
+      text-align: left;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr {
+      background: var(--k-card-bg, #ffffff);
+      transition: background 0.15s;
+
+      &:hover {
+        background: color-mix(in srgb, var(--k-color-primary, #3b82f6) 4%, var(--k-card-bg, #ffffff));
+      }
+    }
+  }
+
   td.arrow {
     padding: 0;
 
