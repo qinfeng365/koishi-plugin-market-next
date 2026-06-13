@@ -1,6 +1,8 @@
 <template>
   <el-dialog
     :model-value="!!activeBundle"
+    append-to-body
+    align-center
     class="bundle-install-panel"
     width="min(880px, calc(100vw - 24px))"
     destroy-on-close
@@ -503,8 +505,62 @@ async function confirmInstall() {
   --bundle-color: #8b5cf6;
   --bundle-color-soft: color-mix(in srgb, var(--bundle-color) 12%, transparent);
   --bundle-color-border: color-mix(in srgb, var(--bundle-color) 32%, var(--k-color-border));
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
 
-  .el-dialog__header { padding-bottom: 0.5rem; }
+  .el-dialog__header {
+    flex: 0 0 auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .el-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .el-dialog__body,
+  .member-config pre {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--bundle-color) 42%, var(--fg3)) transparent;
+
+    &::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--bundle-color) 28%, var(--fg3));
+      background-clip: content-box;
+    }
+
+    &::-webkit-scrollbar-thumb:hover {
+      background: color-mix(in srgb, var(--bundle-color) 45%, var(--fg2));
+      background-clip: content-box;
+    }
+
+    &::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+  }
+
+  .el-dialog__footer {
+    flex: 0 0 auto;
+    border-top: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--bundle-color) 4%, transparent), transparent),
+      var(--k-card-bg);
+  }
 
   // Hero
   .bundle-hero {
@@ -562,23 +618,23 @@ async function confirmInstall() {
 
   // Description
   .bundle-description {
-    margin: 0.7rem 0 0.5rem;
+    margin: 0.45rem 0 0.4rem;
     color: var(--fg1);
     font-size: 0.88rem;
-    line-height: 1.5;
+    line-height: 1.45;
   }
 
   // Stats row
   .bundle-stats {
     display: grid;
     grid-template-columns: 2fr 1fr 1fr;
-    gap: 0.6rem;
-    margin: 0.65rem 0 0.85rem;
+    gap: 0.48rem;
+    margin: 0.5rem 0 0.65rem;
   }
 
   .bundle-stat {
     position: relative;
-    padding: 0.55rem 0.7rem 0.55rem;
+    padding: 0.45rem 0.62rem;
     border: 1px solid var(--k-color-border);
     border-radius: 8px;
     background: color-mix(in srgb, var(--bundle-color) 4%, var(--k-card-bg));
@@ -622,7 +678,7 @@ async function confirmInstall() {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    margin: 0.95rem 0 0.45rem;
+    margin: 0.72rem 0 0.36rem;
     font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -657,15 +713,13 @@ async function confirmInstall() {
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
-    max-height: 38vh;
-    overflow: auto;
     padding: 2px;
   }
 
   .bundle-member {
     border: 1px solid var(--k-color-border);
     border-radius: 8px;
-    padding: 0.6rem 0.7rem;
+    padding: 0.52rem 0.62rem;
     background: var(--k-card-bg);
     transition: border-color 0.18s, background 0.18s, box-shadow 0.18s, transform 0.18s;
 
@@ -692,15 +746,15 @@ async function confirmInstall() {
   .member-row {
     display: flex;
     align-items: flex-start;
-    gap: 0.65rem;
+    gap: 0.56rem;
   }
 
   .member-check { flex: 0 0 auto; margin-top: 2px; }
 
   .member-icon {
     flex: 0 0 auto;
-    width: 2.1rem;
-    height: 2.1rem;
+    width: 1.95rem;
+    height: 1.95rem;
     display: grid;
     place-items: center;
     border-radius: 8px;
@@ -779,7 +833,7 @@ async function confirmInstall() {
     line-height: 1.4;
     overflow: hidden;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
   }
 
@@ -819,19 +873,19 @@ async function confirmInstall() {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem 0.85rem;
-    margin: 0.5rem 0 0 2.75rem;
-    padding-top: 0.45rem;
+    margin: 0.42rem 0 0 2.55rem;
+    padding-top: 0.38rem;
     border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 60%, transparent);
     cursor: default;
     font-size: 0.82rem;
   }
 
   .member-warning.k-comment {
-    margin: 0.45rem 0 0 2.75rem;
+    margin: 0.4rem 0 0 2.55rem;
   }
 
   .member-config {
-    margin: 0.5rem 0 0 2.75rem;
+    margin: 0.42rem 0 0 2.55rem;
     cursor: default;
 
     summary {
@@ -855,8 +909,8 @@ async function confirmInstall() {
 
   // Diff
   .bundle-diff {
-    margin-top: 1rem;
-    padding: 0.7rem 0.85rem;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.72rem;
     border-radius: 10px;
     background: linear-gradient(135deg, var(--bundle-color-soft), transparent 60%), color-mix(in srgb, var(--k-side-bg) 70%, transparent);
     border: 1px solid var(--bundle-color-border);
@@ -874,14 +928,14 @@ async function confirmInstall() {
   .bundle-diff-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-    gap: 0.6rem;
+    gap: 0.48rem;
   }
 
   .bundle-diff-cell {
     background: var(--k-card-bg);
     border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
     border-radius: 6px;
-    padding: 0.5rem 0.6rem;
+    padding: 0.45rem 0.55rem;
   }
 
   .bundle-diff-head {
@@ -963,15 +1017,11 @@ async function confirmInstall() {
 
   @media (max-width: 640px) {
     .el-dialog__body {
-      max-height: calc(100vh - 132px);
-      overflow: auto;
       padding: 0 12px 12px;
     }
 
     .bundle-stats { grid-template-columns: 1fr 1fr; }
     .bundle-stat:first-child { grid-column: 1 / -1; }
-
-    .bundle-member-list { max-height: none; overflow: visible; }
 
     .member-options, .member-warning.k-comment, .member-config { margin-left: 0; }
   }

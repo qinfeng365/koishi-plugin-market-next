@@ -49,7 +49,14 @@ await Promise.all([
   build({ ...common, entryPoints: ['src/browser/index.ts'], outfile: 'lib/browser/index.mjs', format: 'esm' }),
 ])
 
-await buildClient(process.cwd())
+await buildClient(process.cwd(), {
+  build: {
+    target: 'esnext',
+  },
+  esbuild: {
+    target: 'esnext',
+  },
+})
 
 // Koishi Console directory entries still auto-load style.css only, while
 // newer client builds may emit index.css for explicit static entries.

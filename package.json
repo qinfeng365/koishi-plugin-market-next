@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Next-generation Koishi plugin market and dependency management center",
-  "version": "3.6.0-alpha.2",
+  "version": "3.6.0-alpha.3",
   "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
   "repository": {
     "type": "git",
@@ -86,7 +86,7 @@
     "@types/semver": "^7.5.8",
     "@types/spark-md5": "^3.0.4",
     "@types/which-pm-runs": "^1.0.2",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.1",
     "js-yaml": "^4.1.1",
     "typescript": "^5.6.2",
     "yml-register": "^1.2.5"
@@ -107,6 +107,7 @@
     "zod": "^3.25.76"
   },
   "overrides": {
+    "esbuild": "^0.28.1",
     "@koishijs/client": {
       "element-plus": "^2.14.1",
       "vite": "^6.4.2"

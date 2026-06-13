@@ -11,6 +11,7 @@ import Confirm from './components/confirm.vue'
 import Market from './components/market.vue'
 import Progress from './components/progress.vue'
 import './icons'
+import './styles/scrollbars.scss'
 
 import 'virtual:uno.css'
 
