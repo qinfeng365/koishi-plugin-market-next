@@ -9,10 +9,11 @@ import Missing from './missing.vue'
 import Select from './select.vue'
 import Version from './version.vue'
 import { resolveBundlePackageFromGroup } from '../components/utils'
+import { getBundleRecords } from '../utils'
 
 function isBundleGroup(tree: any) {
   if (!tree?.children) return false
-  return !!resolveBundlePackageFromGroup(tree.path, store.config?.market?.bundleRecords ?? {})
+  return !!resolveBundlePackageFromGroup(tree.path, getBundleRecords())
 }
 
 function patchConfigRemoveLabel(ctx: Context) {
@@ -33,12 +34,13 @@ function patchConfigRemoveLabel(ctx: Context) {
   }
 
   ctx.effect(() => {
-    const stop = watch(() => ctx.internal.menus['config.tree']?.map(item => item.id).join('\n'), apply, { immediate: true })
-    const timer = setInterval(apply, 500)
+    const stop = watch(() => {
+      const item = ctx.internal.menus['config.tree']?.find(item => item.id === '.remove')
+      return [item, item?.label] as const
+    }, apply, { immediate: true })
 
     return () => {
       stop()
-      clearInterval(timer)
       for (const [item, previous] of patched) {
         const list = ctx.internal.menus['config.tree']
         const index = list?.indexOf(item) ?? -1
@@ -69,11 +71,10 @@ function patchConfigRemoveAction(ctx: Context) {
       ctx.internal.actions['config.tree.remove'] = action
     }
 
-    apply()
-    const timer = setInterval(apply, 250)
+    const stop = watch(() => ctx.internal.actions['config.tree.remove'], apply, { immediate: true })
 
     return () => {
-      clearInterval(timer)
+      stop()
       if (ctx.internal.actions['config.tree.remove'] !== action) return
       if (previous) {
         ctx.internal.actions['config.tree.remove'] = previous

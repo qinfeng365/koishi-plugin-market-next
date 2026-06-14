@@ -10,7 +10,7 @@ class DependencyProvider extends DataService<Dict<Dependency>> {
   }
 
   async get() {
-    return this.ctx.installer.getDeps()
+    return this.ctx.installer.getDeps({ background: false })
   }
 }
 

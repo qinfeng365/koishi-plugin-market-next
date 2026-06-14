@@ -55,9 +55,13 @@ declare class Installer extends Service {
     private flushData;
     private tempRegistryStatus;
     private flushRegistryStatus;
+    private pendingControllers;
+    private installTask;
+    private installActive;
     private serial;
     constructor(ctx: Context, config?: Installer.Config);
     get cwd(): string;
+    get isInstalling(): boolean;
     start(): Promise<void>;
     private createHttp;
     private loadRouteStats;
@@ -84,6 +88,10 @@ declare class Installer extends Service {
     private getRegistryRouteScores;
     private fetchRegistryByRoute;
     private isStale;
+    private trackController;
+    private untrackControllers;
+    private abortPendingRequests;
+    private isInternalAbort;
     private setRegistryStatus;
     private clearRegistryStatus;
     getRegistry(name: string, serial?: number): Promise<Registry>;
@@ -94,13 +102,17 @@ declare class Installer extends Service {
     private getLocalDepsSnapshot;
     private _refreshDependencyMetadata;
     refreshDependencyMetadata(wait?: boolean): Promise<Dict<Dependency>>;
+    probeDependenciesInBackground(reason?: string): Promise<void>;
     getDeps(options?: Installer.GetDepsOptions): Dict<Dependency> | Promise<Dict<Dependency>>;
     refreshData(): Promise<void>;
     refresh(refresh?: boolean, waitMetadata?: boolean): Promise<void>;
     exec(args: string[]): Promise<number>;
     override(deps: Dict<string>): Promise<void>;
+    private snapshotPackageManifest;
+    private restorePackageManifest;
     private _install;
     private _getLocalDeps;
+    private _installLocked;
     install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>): Promise<number>;
 }
 declare namespace Installer {

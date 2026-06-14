@@ -12,3 +12,18 @@ search:
   proxyAgent: 用于搜索插件市场的代理。
   autoRoute: 当前市场源失败时自动尝试备用市场源。
   logLevel: 插件市场调试日志级别。silent 关闭日志，debug 输出最详细。
+
+frontendMode: Frontend display mode. Performance mode keeps low-motion dense UI; polished mode enables richer visual effects.
+depsLayout: Dependencies page layout. Grid shows compact cards; list shows a denser single-column view.
+marketLayout: Market page layout. Grid shows multi-column cards; list shows compact rows.
+idleProbe: Automatically probes dependency versions and market data while Console is idle. It only runs when no browser console is connected, and page reloads do not trigger it.
+idleProbeDelay: How long Console must stay idle before the background probe starts.
+idleProbeBootDelay: Minimum delay after Koishi startup or reload before idle probing is allowed.
+idleProbeInterval: Minimum interval between idle background probes.
+bulkMode: Batch operation mode. Dependency install, update, and uninstall actions are staged until applying changes.
+removeConfig: Whether to remove existing plugin config when uninstalling a plugin. Ask every time when unset.
+updateIgnoredPackages: Dependency package names that should not be checked for updates. One package per line, or separated by commas, semicolons, or spaces.
+updateIgnoreDuration: Default duration after ignoring one update. 0 means no time-based expiry.
+updateIgnoreVersions: How many consecutive newer versions should be ignored after ignoring one update. 1 means only the current latest version.
+updateIgnorePrerelease: When enabled, alpha / beta / rc and other prerelease versions are not treated as update targets.
+chatlunaTool: Enable the ChatLuna plugin market query tool. When ChatLuna is installed, this registers the read-only koishi_plugin_market_search tool.

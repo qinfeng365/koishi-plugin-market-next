@@ -343,7 +343,7 @@ import { activeBundle, getBundleMemberConfigState, installProgressState } from '
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import { satisfies } from 'semver'
-import { getFrontendMode } from '../utils'
+import { getFrontendMode, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
 
 const loading = ref(false)
 const installing = ref(false)
@@ -450,6 +450,10 @@ watch(activeBundle, async (value) => {
   loading.value = true
   try {
     const data = await send('market/package', value.package.name) as Registry
+    if (!data?.versions) {
+      error.value = '没有读取到这个插件包的 npm 版本元数据。'
+      return
+    }
     registry.value = data
     const remoteEntry = data.versions?.[value.package.version]
       ? [value.package.version, data.versions[value.package.version]] as const
@@ -486,7 +490,7 @@ watch(activeBundle, async (value) => {
     }
     const names = parsed.members.map(member => member.package).filter(name => !store.registry?.[name])
     if (names.length) {
-      const result = await send('market/registry', names).catch(() => undefined)
+      const result = await (send('market/registry', names) ?? Promise.resolve(undefined)).catch(() => undefined)
       if (result) store.registry = { ...store.registry, ...result }
     }
   } catch (err) {
@@ -609,13 +613,15 @@ async function confirmInstall() {
     }) as BundleInstallResult
     if (result?.code) {
       installProgressState.status = 'error'
-      message.error('插件包安装失败。')
+      reportInstallError(`包管理器退出码：${result.code}`)
       return
     }
     installProgressState.status = 'success'
     if (result?.record) {
-      config.value.market.bundleRecords ||= {}
-      config.value.market.bundleRecords[result.record.package] = result.record
+      const records = getWritableBundleRecords(config.value)
+      records[result.record.package] = result.record
+      const saved = await patchMarketNextConfig({ bundleRecords: records })
+      if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
     }
     const moved = result?.moved?.length ? `，移动配置 ${result.moved.length} 项` : ''
     const skipped = result?.skipped?.length ? `，跳过配置 ${result.skipped.length} 项` : ''
@@ -624,10 +630,30 @@ async function confirmInstall() {
   } catch (err) {
     console.error(err)
     installProgressState.status = 'error'
-    message.error('插件包安装失败。')
+    reportInstallError(formatInstallError(err))
   } finally {
     installing.value = false
   }
+}
+
+function reportInstallError(detail: string) {
+  const text = detail || '未知错误'
+  installProgressState.logs.push({
+    type: 'stderr',
+    line: `插件包安装失败：${text}`,
+  })
+  message.error(`插件包安装失败：${text}`)
+}
+
+function formatInstallError(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const value = error as any
+    if (typeof value.message === 'string') return value.message
+    if (typeof value.error === 'string') return value.error
+  }
+  return String(error || '未知错误')
 }
 
 </script>

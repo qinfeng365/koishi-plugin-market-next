@@ -42,13 +42,14 @@
 <script lang="ts" setup>
 
 import { computed, ref } from 'vue'
-import { send, store, useContext, useConfig } from '@koishijs/client'
+import { message, send, store, useContext, useConfig } from '@koishijs/client'
 import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls } from './utils'
+import { getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
 
 const ctx = useContext()
 const config = useConfig()
 
-const removeConfig = ref(config.value.market?.removeConfig)
+const removeConfig = ref(getRemoveConfig(config.value))
 
 function clear() {
   showConfirm.value = false
@@ -90,9 +91,11 @@ function confirm() {
       }
     }
     for (const name of removed) {
-      delete config.value.market.bundleRecords?.[name]
+      delete getWritableBundleRecords(config.value)[name]
       delete pendingBundleUninstalls.value[name]
     }
+    const saved = await patchMarketNextConfig({ bundleRecords: getWritableBundleRecords(config.value) })
+    if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
   })
 }
 

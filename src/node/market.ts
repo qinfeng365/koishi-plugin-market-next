@@ -42,6 +42,8 @@ interface PersistedRouteStats {
   lastSuccess?: number
   contentEncoding?: string
   score: number
+  consecutiveFailures?: number
+  cooldownUntil?: number
 }
 
 interface CacheStore {
@@ -76,6 +78,8 @@ interface RouteStats {
   score: number
   successes: number
   failures: number
+  consecutiveFailures?: number
+  cooldownUntil?: number
   averageElapsed?: number
   lastSuccess?: number
   contentEncoding?: string
@@ -104,6 +108,7 @@ class MarketProvider extends BaseMarketProvider {
   private backgroundSerial?: number
   private pendingRefreshTask?: Promise<any>
   private cacheWriteTimer?: ReturnType<typeof setTimeout>
+  private pendingControllers = new Set<AbortController>()
   private flushData: () => void
 
   constructor(ctx: Context, public config: MarketProvider.Config = {}) {
@@ -112,6 +117,7 @@ class MarketProvider extends BaseMarketProvider {
       this.disposed = true
       this.serial++
       clearTimeout(this.cacheWriteTimer)
+      this.abortPendingRequests('market provider disposed')
     })
     config.endpoint ||= DEFAULT_ENDPOINT
     this.endpoint = config.endpoint
@@ -140,10 +146,12 @@ class MarketProvider extends BaseMarketProvider {
   async start(refresh = false) {
     const reuseBackground = refresh && !!this.backgroundTask && this.backgroundSerial === this.serial
     const serial = reuseBackground ? this.serial : ++this.serial
+    if (!reuseBackground) this.abortPendingRequests('market refresh superseded')
     const start = Date.now()
     this.log('debug', `start market refresh=${refresh}, serial=${serial}, endpoint=${this.config.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
     if (refresh) {
       this.log('info', `market refresh requested: endpoint=${this.config.endpoint}, autoRoute=${this.config.autoRoute !== false}, cache=${this.hasCurrentMarketData() ? 'warm' : 'cold'}`)
+      this.clearRouteCooldowns('manual refresh')
     }
     this.forceRefresh = false
     if (refresh && await this.startSoftRefresh(serial, start)) {
@@ -331,12 +339,20 @@ class MarketProvider extends BaseMarketProvider {
     this.log('info', `market endpoint candidates: primary=${endpoints[0]}, fallbacks=${Math.max(0, endpoints.length - 1)}, autoRoute=${this.config.autoRoute !== false}`)
 
     if (endpoints.length === 1 || this.config.autoRoute === false) {
-      const result = await this.fetchEndpoint(endpoints[0], 0, endpoints.length, serial)
-      const { endpoint } = result
-      this.endpoint = endpoint
-      result.preferredEndpoint = endpoints[0]
-      this.recordRouteSuccess(result)
-      return result
+      const controller = this.trackController(new AbortController())
+      try {
+        const result = await this.fetchEndpoint(endpoints[0], 0, endpoints.length, serial, true, controller.signal)
+        const { endpoint } = result
+        this.endpoint = endpoint
+        result.preferredEndpoint = endpoints[0]
+        this.recordRouteSuccess(result)
+        return result
+      } catch (error) {
+        if (!this.isStale(serial) && !this.isInternalAbort(error)) this.recordRouteFailure(endpoints[0])
+        throw error
+      } finally {
+        this.untrackControllers([controller])
+      }
     }
 
     this.log('debug', `fetch primary market endpoint first, primary=${endpoints[0]}, fallbacks=${endpoints.slice(1).join(', ')}, slowThreshold=${FAST_ROUTE_THRESHOLD}ms`)
@@ -347,8 +363,13 @@ class MarketProvider extends BaseMarketProvider {
       let lastError: any
       let fallbackStarted = false
       let fallbackReason: EndpointResult['fallbackReason']
-      const controllers = endpoints.map(() => new AbortController())
+      const controllers = endpoints.map(() => this.trackController(new AbortController()))
       const timer = setTimeout(() => startFallback('primary-slow'), FAST_ROUTE_THRESHOLD)
+
+      const finish = () => {
+        clearTimeout(timer)
+        this.untrackControllers(controllers)
+      }
 
       const settle = (data: EndpointResult, index: number) => {
         if (settled) {
@@ -356,7 +377,7 @@ class MarketProvider extends BaseMarketProvider {
           return
         }
         settled = true
-        clearTimeout(timer)
+        finish()
         controllers.forEach((controller, controllerIndex) => {
           if (controllerIndex !== index) controller.abort(new Error('market endpoint race settled'))
         })
@@ -375,13 +396,20 @@ class MarketProvider extends BaseMarketProvider {
 
       const fail = (endpoint: string, index: number, error: any) => {
         if (settled) return
+        if (this.isStale(serial) || this.isInternalAbort(error)) {
+          settled = true
+          controllers.forEach(controller => controller.abort(new Error('market endpoint race cancelled')))
+          finish()
+          reject(error)
+          return
+        }
         this.recordRouteFailure(endpoint)
         lastError = error
         failed++
         if (index === 0) startFallback('primary-failed')
         if (failed < endpoints.length) return
         settled = true
-        clearTimeout(timer)
+        finish()
         this.log('debug', `all market endpoint candidates failed, count=${endpoints.length}`)
         reject(lastError)
       }
@@ -419,8 +447,13 @@ class MarketProvider extends BaseMarketProvider {
     const endpoints = this.getEndpointCandidates()
     if (this.config.autoRoute === false) return endpoints
     const [primary, ...fallbacks] = endpoints
+    const availableFallbacks = fallbacks.filter((endpoint) => {
+      if (!this.isRouteCoolingDown(endpoint)) return true
+      this.log('debug', `skip cooled market endpoint: endpoint=${endpoint}, until=${formatTime(this.routeStats[endpoint]?.cooldownUntil)}, failures=${this.routeStats[endpoint]?.consecutiveFailures ?? 0}`)
+      return false
+    })
     const originalIndex = new Map(fallbacks.map((endpoint, index) => [endpoint, index]))
-    return [primary, ...fallbacks.sort((a, b) => {
+    return [primary, ...availableFallbacks.sort((a, b) => {
       const delta = this.getRouteScore(b) - this.getRouteScore(a)
       if (delta) return delta
       return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0)
@@ -460,8 +493,8 @@ class MarketProvider extends BaseMarketProvider {
     score -= Math.min(6, stats.failures * 1.2)
     if (stats.averageElapsed != null) {
       if (stats.averageElapsed <= 600) score += 4
-      else if (stats.averageElapsed <= 1000) score += 3
-      else if (stats.averageElapsed <= FAST_ROUTE_THRESHOLD) score += 2
+      else if (stats.averageElapsed <= FAST_ROUTE_THRESHOLD) score += 3
+      else if (stats.averageElapsed <= 1200) score += 2
       else if (stats.averageElapsed <= 2500) score += 0
       else if (stats.averageElapsed <= 4000) score -= 2
       else score -= 4
@@ -475,6 +508,8 @@ class MarketProvider extends BaseMarketProvider {
   private recordRouteSuccess(result: EndpointResult) {
     const stats = this.routeStats[result.endpoint] ||= { score: 0, successes: 0, failures: 0 }
     stats.successes++
+    stats.consecutiveFailures = 0
+    stats.cooldownUntil = undefined
     stats.score = clamp(stats.score + (result.elapsed <= FAST_ROUTE_THRESHOLD ? 0.5 : -0.5), -6, 3)
     stats.lastSuccess = Date.now()
     stats.contentEncoding = result.contentEncoding
@@ -487,11 +522,13 @@ class MarketProvider extends BaseMarketProvider {
   private recordRouteFailure(endpoint: string) {
     const stats = this.routeStats[endpoint] ||= { score: 0, successes: 0, failures: 0 }
     stats.failures++
+    stats.consecutiveFailures = (stats.consecutiveFailures ?? 0) + 1
+    stats.cooldownUntil = Date.now() + getRouteCooldown(stats.consecutiveFailures)
     stats.score = clamp(stats.score - 2, -10, 3)
-    this.log('debug', `route failure updated: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
+    this.log('debug', `route failure updated: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, consecutive=${stats.consecutiveFailures}, cooldownUntil=${formatTime(stats.cooldownUntil)}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
   }
 
-  private getRouteScores(endpoints = this.getEndpoints()) {
+  private getRouteScores(endpoints = this.getEndpointCandidates()) {
     return endpoints.map((endpoint) => {
       const stats = this.routeStats[endpoint]
       const cache = this.cacheEntries[endpoint]
@@ -500,6 +537,9 @@ class MarketProvider extends BaseMarketProvider {
         score: Math.round(this.getRouteScore(endpoint) * 10) / 10,
         successes: stats?.successes,
         failures: stats?.failures,
+        consecutiveFailures: stats?.consecutiveFailures,
+        cooldownUntil: stats?.cooldownUntil,
+        coolingDown: this.isRouteCoolingDown(endpoint),
         averageElapsed: stats?.averageElapsed,
         lastSuccess: stats?.lastSuccess,
         contentEncoding: stats?.contentEncoding,
@@ -507,6 +547,21 @@ class MarketProvider extends BaseMarketProvider {
         cachedAt: cache?.fetchedAt,
       }
     })
+  }
+
+  private isRouteCoolingDown(endpoint: string) {
+    if (endpoint === this.config.endpoint) return false
+    const until = this.routeStats[endpoint]?.cooldownUntil
+    return !!until && Date.now() < until
+  }
+
+  private clearRouteCooldowns(reason: string) {
+    for (const stats of Object.values(this.routeStats)) {
+      if (!stats) continue
+      stats.cooldownUntil = undefined
+      stats.consecutiveFailures = 0
+    }
+    this.log('debug', `market route cooldowns cleared: reason=${reason}`)
   }
 
   private getConditionalHeaders(endpoint: string) {
@@ -818,6 +873,8 @@ class MarketProvider extends BaseMarketProvider {
             score: stats.score,
             successes: 0,
             failures: 0,
+            consecutiveFailures: stats.consecutiveFailures,
+            cooldownUntil: stats.cooldownUntil,
             averageElapsed: stats.averageElapsed,
             lastSuccess: stats.lastSuccess,
             contentEncoding: stats.contentEncoding,
@@ -966,6 +1023,8 @@ class MarketProvider extends BaseMarketProvider {
         averageElapsed: stats.averageElapsed,
         lastSuccess: stats.lastSuccess,
         contentEncoding: stats.contentEncoding,
+        consecutiveFailures: stats.consecutiveFailures,
+        cooldownUntil: stats.cooldownUntil,
       }
     }
     return result
@@ -1082,6 +1141,90 @@ class MarketProvider extends BaseMarketProvider {
     }
   }
 
+  private async probeIndexInBackground(serial: number, reason: string) {
+    const start = Date.now()
+    this.log('info', `${reason} market probe started: serial=${serial}, endpoint=${this.config.endpoint}, autoRoute=${this.config.autoRoute !== false}`)
+    this.failed = []
+    this.fullCache = {}
+    this.tempCache = {}
+    this.debugInfo = undefined
+    this._task = null
+    this._error = null
+    this.createScanner()
+    try {
+      const result = await this.fetchIndex(serial)
+      if (this.isStale(serial)) return false
+      const applyStart = Date.now()
+      this.applyIndex(result.result, result.endpoint)
+      result.timings.apply = Date.now() - applyStart
+      result.timings.total = Date.now() - start
+      this.updateCacheState(result)
+      if (result.source !== 'disk-cache') this.scheduleDiskCacheWrite(result.result, this.conditionMeta)
+      this.cacheMeta = undefined
+      this.payload = undefined
+      this.updateDebugInfo({
+        source: result.source,
+        endpoint: result.endpoint,
+        preferredEndpoint: result.preferredEndpoint,
+        fallbackReason: result.fallbackReason,
+        candidates: result.candidates,
+        size: result.size,
+        wireSize: result.wireSize,
+        contentEncoding: result.contentEncoding,
+        objects: this.scanner.total,
+        hash: shortHash(result.hash),
+        etag: result.etag,
+        lastModified: result.lastModified,
+        cachedAt: result.cachedAt,
+        validatedAt: result.validatedAt,
+        timings: result.timings,
+      }, 'refresh')
+      await this.notifyMarketRefresh()
+      this.log('info', `${reason} market probe completed: ${formatSnapshot({
+        source: result.source,
+        endpoint: result.endpoint,
+        preferredEndpoint: result.preferredEndpoint,
+        fallbackReason: result.fallbackReason,
+        candidates: result.candidates,
+        objects: this.scanner.total,
+        size: result.size,
+        wireSize: result.wireSize,
+        contentEncoding: result.contentEncoding,
+        cachedAt: result.cachedAt,
+        validatedAt: result.validatedAt,
+        timings: result.timings,
+      })}`)
+      return true
+    } catch (error) {
+      if (this.isStale(serial)) return false
+      this._error = error
+      await this.notifyMarketRefresh()
+      this.log('warn', `${reason} market probe failed in ${Date.now() - start}ms: ${formatError(error)}`)
+      return false
+    }
+  }
+
+  async probeInBackground(reason = 'idle probe') {
+    if (!this.ctx.scope.isActive || this.disposed) return false
+    if (this.backgroundTask) {
+      this.log('debug', `reuse running background market refresh for ${reason}`)
+      await this.backgroundTask
+      return true
+    }
+    if (!this.hasCurrentMarketData() && !this.backgroundTask) {
+      const serial = ++this.serial
+      this.abortPendingRequests(`${reason} market probe superseded`)
+      return this.probeIndexInBackground(serial, reason)
+    }
+    const serial = this.serial
+    if (this.refreshInBackground(serial, reason)) {
+      void this.notifyMarketRefresh()
+      await this.backgroundTask
+      return true
+    }
+    return false
+  }
+
   private updateDebugInfo(info: MarketPerformanceSnapshot, phase?: 'initial' | 'refresh') {
     const next: MarketPerformance = {
       ...this.debugInfo,
@@ -1113,6 +1256,29 @@ class MarketProvider extends BaseMarketProvider {
 
   private isStale(serial = this.serial) {
     return this.disposed || serial !== this.serial || !this.ctx.scope.isActive
+  }
+
+  private trackController(controller: AbortController) {
+    this.pendingControllers.add(controller)
+    return controller
+  }
+
+  private untrackControllers(controllers: AbortController[]) {
+    for (const controller of controllers) {
+      this.pendingControllers.delete(controller)
+    }
+  }
+
+  private abortPendingRequests(reason: string) {
+    for (const controller of this.pendingControllers) {
+      controller.abort(new Error(reason))
+    }
+    this.pendingControllers.clear()
+  }
+
+  private isInternalAbort(error: any) {
+    const message = error instanceof Error ? error.message : String(error)
+    return /race settled|stale|disposed|aborted|abort/i.test(message)
   }
 
   private log(level: Exclude<LogLevel, 'silent'>, message: string) {
@@ -1193,6 +1359,15 @@ function normalizeWireSize(wireSize: number | undefined, decodedSize: number) {
   return wireSize
 }
 
+function getRouteCooldown(failures = 0) {
+  if (failures <= 0) return 0
+  if (failures === 1) return Time.minute
+  if (failures === 2) return Time.minute * 5
+  if (failures === 3) return Time.minute * 30
+  if (failures === 4) return Time.hour * 4
+  return Time.hour * 12
+}
+
 function formatSnapshot(snapshot: MarketPerformanceSnapshot = {}) {
   return [
     `source=${snapshot.source ?? 'unknown'}`,
@@ -1217,6 +1392,8 @@ function formatRouteScores(routes?: MarketPerformance['routeScores']) {
     `score=${route.score}`,
     `ok=${route.successes ?? 0}`,
     `fail=${route.failures ?? 0}`,
+    `consecutive=${route.consecutiveFailures ?? 0}`,
+    `cooldown=${route.coolingDown ? formatTime(route.cooldownUntil) : '-'}`,
     `avg=${route.averageElapsed == null ? '-' : Math.round(route.averageElapsed) + 'ms'}`,
     `cache=${route.cached ? 'yes' : 'no'}`,
     `cachedAt=${formatTime(route.cachedAt)}`,
@@ -1246,7 +1423,8 @@ function normalizeCacheStore(value: any): CacheStore {
       const entry = normalizeCacheEntry(value.entries[endpoint])
       if (entry) entries[entry.endpoint] = entry
     }
-    return { version: 2, entries, lastUsed: value.lastUsed }
+    const routeStats = normalizePersistedRouteStats(value.routeStats)
+    return { version: 2, entries, lastUsed: value.lastUsed, routeStats }
   }
   const entry = normalizeCacheEntry(value)
   if (entry) {
@@ -1257,6 +1435,31 @@ function normalizeCacheStore(value: any): CacheStore {
     }
   }
   return { version: 2, entries: {} }
+}
+
+function normalizePersistedRouteStats(value: any): Dict<PersistedRouteStats> | undefined {
+  if (!value || typeof value !== 'object') return
+  const result: Dict<PersistedRouteStats> = {}
+  for (const endpoint in value) {
+    const stats = value[endpoint]
+    if (!stats || typeof stats !== 'object') continue
+    const score = Number(stats.score)
+    if (!Number.isFinite(score)) continue
+    result[endpoint] = {
+      score: clamp(score, -6, 3),
+      averageElapsed: finiteNumber(stats.averageElapsed),
+      lastSuccess: finiteNumber(stats.lastSuccess),
+      contentEncoding: typeof stats.contentEncoding === 'string' ? stats.contentEncoding : undefined,
+      consecutiveFailures: finiteNumber(stats.consecutiveFailures),
+      cooldownUntil: finiteNumber(stats.cooldownUntil),
+    }
+  }
+  return Object.keys(result).length ? result : undefined
+}
+
+function finiteNumber(value: any) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : undefined
 }
 
 function normalizeCacheEntry(value: any): CacheFile | undefined {

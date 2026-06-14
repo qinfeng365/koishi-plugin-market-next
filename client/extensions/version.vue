@@ -62,7 +62,7 @@
 
 import { global, message, send, store, useConfig, useContext } from '@koishijs/client'
 import { computed, inject, ComputedRef, ref } from 'vue'
-import { hasUpdate } from '../utils'
+import { getBulkMode, getBundleRecords, getMarketNextPolicy, getRemoveConfig, getWritableBundleRecords, hasUpdate, patchMarketNextConfig } from '../utils'
 import type {} from '@koishijs/plugin-config'
 import type { PluginBundleRecord } from '../../src/shared/bundle'
 import {
@@ -84,7 +84,7 @@ const local = computed(() => store.packages?.[name.value])
 const object = computed(() => store.market?.data?.[name.value])
 const dep = computed(() => store.dependencies?.[name.value])
 const versions = computed(() => store.registry?.[name.value])
-const updateAvailable = computed(() => hasUpdate(name.value, config.value.market))
+const updateAvailable = computed(() => hasUpdate(name.value, getMarketNextPolicy(config.value)))
 const uninstalling = ref(false)
 const loadingBundleRecord = ref(false)
 const showUninstallDialog = ref(false)
@@ -101,7 +101,7 @@ const hasConfigEntries = computed(() => {
 })
 
 const bundleRecord = computed<BundleRecordView | PluginBundleRecord | undefined>(() => {
-  const stored = config.value.market?.bundleRecords?.[name.value]
+  const stored = getBundleRecords(config.value)[name.value]
   if (stored) return stored
   if (remoteBundleRecord.value?.package === name.value) return remoteBundleRecord.value
   return createLocalBundleRecord(name.value)
@@ -132,20 +132,21 @@ async function requestUninstall() {
     showBundleUninstallDialog.value = true
     return
   }
-  if (config.value.market.bulkMode) {
+  if (getBulkMode(config.value)) {
     ensureOverride()[name.value] = ''
     message.success('卸载已暂存，应用更改后生效。')
     return
   }
-  if (hasConfigEntries.value && typeof config.value.market?.removeConfig !== 'boolean') {
+  const savedRemoveConfig = getRemoveConfig(config.value)
+  if (hasConfigEntries.value && typeof savedRemoveConfig !== 'boolean') {
     showUninstallDialog.value = true
     return
   }
-  return uninstallDependency(config.value.market?.removeConfig === true)
+  return uninstallDependency(savedRemoveConfig === true)
 }
 
 async function loadRemoteBundleRecord() {
-  if (!name.value || config.value.market?.bundleRecords?.[name.value]) return
+  if (!name.value || getBundleRecords(config.value)[name.value]) return
   if (remoteBundleRecord.value?.package === name.value && remoteBundleRecord.value.members.length) return
   loadingBundleRecord.value = true
   try {
@@ -176,7 +177,10 @@ async function uninstallDependency(removeConfig: boolean) {
   try {
     await install({ [name.value]: '' }, async () => {
       if (removeConfig) ctx.configWriter?.remove(name.value)
-      delete config.value.market.bundleRecords?.[name.value]
+      const records = getWritableBundleRecords(config.value)
+      delete records[name.value]
+      const saved = await patchMarketNextConfig({ bundleRecords: records })
+      if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
     }, undefined, {
       loadingText: '正在卸载插件……',
       successText: '卸载成功！',

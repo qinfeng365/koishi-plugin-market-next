@@ -88,6 +88,7 @@
                 <template v-if="route.averageElapsed"> avg={{ formatDuration(route.averageElapsed) }}</template>
                 <template v-if="route.contentEncoding"> {{ route.contentEncoding }}</template>
                 <template v-if="route.cachedAt"> cache={{ formatTime(route.cachedAt) }}</template>
+                <template v-if="route.coolingDown"> cooldown={{ formatTime(route.cooldownUntil) }}</template>
               </span>
             </div>
           </k-comment>
@@ -124,7 +125,7 @@
 
 import { router, store, global, useConfig } from '@koishijs/client'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { active, getFrontendMode, getMarketLayout } from '../utils'
+import { active, getFrontendMode, getMarketLayout, patchMarketNextConfig } from '../utils'
 import { getVisible, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
 import { SearchObject } from '@koishijs/registry'
 import { activeBundle } from './utils'
@@ -256,7 +257,9 @@ watch(marketLoading, (loading) => {
 
 function toggleLayout() {
   if (!config.value.market) config.value.market = {}
-  config.value.market.marketLayout = marketLayout.value === 'grid' ? 'list' : 'grid'
+  const next = marketLayout.value === 'grid' ? 'list' : 'grid'
+  config.value.market.marketLayout = next
+  patchMarketNextConfig({ marketLayout: next })
 }
 
 onMounted(() => {

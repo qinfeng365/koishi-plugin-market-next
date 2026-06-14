@@ -104,7 +104,7 @@ import {
   type BundleRecordView,
   type BundleMemberCleanupTarget,
 } from './utils'
-import { getFrontendMode } from '../utils'
+import { getBulkMode, getFrontendMode, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
 
 type MemberAction = 'config' | 'dependency' | 'keep'
 
@@ -253,7 +253,7 @@ async function uninstallBundle() {
     ...Object.fromEntries(members.map(name => [name, ''])),
   }
 
-  if (config.value.market.bulkMode) {
+  if (getBulkMode(config.value)) {
     Object.assign(ensureOverride(), override)
     pendingBundleUninstalls.value[name] = {
       members,
@@ -276,7 +276,10 @@ async function uninstallBundle() {
           removeEmptyGroup: true,
         })
       }
-      delete config.value.market.bundleRecords?.[name]
+      const records = getWritableBundleRecords(config.value)
+      delete records[name]
+      const saved = await patchMarketNextConfig({ bundleRecords: records })
+      if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
       if (props.redirectToPlugins) await router.replace('/plugins')
       emit('done')
     }, undefined, {

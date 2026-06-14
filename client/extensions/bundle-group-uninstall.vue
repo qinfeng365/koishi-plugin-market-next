@@ -17,6 +17,7 @@ import {
   resolveBundleRecordFromGroup,
   type BundleRecordView,
 } from '../components/utils'
+import { getBundleRecords } from '../utils'
 import { bundleGroupUninstallTarget } from './bundle-group-uninstall'
 import BundleUninstall from '../components/bundle-uninstall.vue'
 
@@ -26,15 +27,16 @@ const remoteBundleRecord = ref<BundleRecordView>()
 
 const target = computed(() => bundleGroupUninstallTarget.value)
 const packageName = computed(() => {
-  return resolveBundlePackageFromGroup(target.value?.path, config.value.market?.bundleRecords ?? {})
+  return resolveBundlePackageFromGroup(target.value?.path, getBundleRecords(config.value))
 })
 const record = computed(() => {
   const name = packageName.value
   if (!name) return
-  const stored = config.value.market?.bundleRecords?.[name]
+  const records = getBundleRecords(config.value)
+  const stored = records[name]
   if (stored) return stored
   if (remoteBundleRecord.value?.package === name) return remoteBundleRecord.value
-  return resolveBundleRecordFromGroup(target.value?.path, config.value.market?.bundleRecords ?? {})
+  return resolveBundleRecordFromGroup(target.value?.path, records)
 })
 
 const visible = computed({
@@ -52,7 +54,7 @@ watch(target, async (value) => {
 
 async function loadRemoteBundleRecord() {
   const name = packageName.value
-  if (!name || config.value.market?.bundleRecords?.[name]) return
+  if (!name || getBundleRecords(config.value)[name]) return
   loadingBundleRecord.value = true
   try {
     const next = await fetchBundleRecord(name)

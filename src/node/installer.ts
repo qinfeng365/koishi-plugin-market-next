@@ -23,6 +23,7 @@ const REGISTRY_ROUTE_STAGGER = 120
 const REGISTRY_FAST_ROUTE_THRESHOLD = Time.second * 0.8
 const REGISTRY_STATS_TTL = Time.day * 30
 const NOT_FOUND_CACHE_TTL = Time.minute * 5
+const FULL_RELOAD_DELAY = Time.second
 
 interface PersistedRegistryStats {
   score: number
@@ -57,6 +58,12 @@ interface RegistryEndpointResult {
 interface RegistryRouteResult extends RegistryEndpointResult {
   attempts: number
   lastEndpoint: string
+}
+
+interface PackageManifestSnapshot {
+  manifest: PackageJson
+  content: string
+  dependencies: Dict<string>
 }
 
 export interface Dependency {
@@ -141,25 +148,35 @@ class Installer extends Service {
   private flushData: () => void
   private tempRegistryStatus: Dict<RegistryStatus> = {}
   private flushRegistryStatus: () => void
+  private pendingControllers = new Set<AbortController>()
+  private installTask = Promise.resolve()
+  private installActive = false
   private serial = 0
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
     super(ctx, 'installer')
     this.manifest = loadManifest(this.cwd)
     this.statsFile = resolve(ctx.baseDir, 'cache', 'market-next-registry-stats.json')
-    ctx.effect(() => () => clearTimeout(this.statsWriteTimer))
+    ctx.effect(() => () => {
+      clearTimeout(this.statsWriteTimer)
+      this.abortPendingRequests('installer disposed')
+    })
     this.flushData = ctx.throttle(() => {
       ctx.get('console')?.broadcast('market/registry', this.tempCache)
       this.tempCache = {}
     }, 500)
     this.flushRegistryStatus = ctx.throttle(() => {
-      ctx.get('console')?.broadcast('market/registry-status', this.tempRegistryStatus)
+      ctx.get('console')?.broadcast('market/registry-status', { ...this.tempRegistryStatus })
       this.tempRegistryStatus = {}
     }, 200)
   }
 
   get cwd() {
     return this.ctx.baseDir
+  }
+
+  get isInstalling() {
+    return this.installActive
   }
 
   async start() {
@@ -303,21 +320,33 @@ class Installer extends Service {
   private raceEndpoints(name: string, endpoints: string[], serial: number, onAttempt?: (endpoint: string) => void): Promise<RegistryEndpointResult> {
     const fallbackDelay = this.getFallbackDelay(endpoints[0])
     if (endpoints.length === 1 || this.config.autoRoute === false) {
+      const controller = this.trackController(new AbortController())
       onAttempt?.(endpoints[0])
-      return this.fetchRegistryEndpoint(name, endpoints[0], serial)
+      return this.fetchRegistryEndpoint(name, endpoints[0], serial, controller.signal)
         .then(r => { this.recordRegistryRouteSuccess(r); return r })
-        .catch(e => { this.recordRegistryRouteFailure(endpoints[0], this.formatRegistryError(e).reason); throw e })
+        .catch(e => {
+          if (!this.isStale(serial) && !this.isInternalAbort(e)) {
+            this.recordRegistryRouteFailure(endpoints[0], this.formatRegistryError(e).reason)
+          }
+          throw e
+        })
+        .finally(() => this.untrackControllers([controller]))
     }
     return new Promise<RegistryEndpointResult>((resolve, reject) => {
       let settled = false, failed = 0, lastError: any, fallbackStarted = false
       let fallbackReason: RegistryEndpointResult['fallbackReason']
-      const controllers = endpoints.map(() => new AbortController())
+      const controllers = endpoints.map(() => this.trackController(new AbortController()))
       const timer = setTimeout(() => startFallback('primary-slow'), fallbackDelay)
+
+      const finish = () => {
+        clearTimeout(timer)
+        this.untrackControllers(controllers)
+      }
 
       const settle = (result: RegistryEndpointResult, index: number) => {
         if (settled) return
         settled = true
-        clearTimeout(timer)
+        finish()
         controllers.forEach((c, i) => { if (i !== index) c.abort(new Error('race settled')) })
         if (result.endpoint !== endpoints[0]) result.fallbackReason = fallbackReason
         this.recordRegistryRouteSuccess(result)
@@ -325,11 +354,20 @@ class Installer extends Service {
       }
       const fail = (endpoint: string, index: number, error: any) => {
         if (settled) return
+        if (this.isStale(serial) || this.isInternalAbort(error)) {
+          settled = true
+          controllers.forEach(controller => controller.abort(new Error('npm registry race cancelled')))
+          finish()
+          reject(error)
+          return
+        }
         this.recordRegistryRouteFailure(endpoint, this.formatRegistryError(error).reason)
         lastError = error
         if (index === 0) startFallback('primary-failed')
         if (++failed < endpoints.length) return
-        settled = true; clearTimeout(timer); reject(lastError)
+        settled = true
+        finish()
+        reject(lastError)
       }
       const startEndpoint = (endpoint: string, index: number, waitIndex = 0) => {
         const signal = controllers[index].signal
@@ -417,8 +455,8 @@ class Installer extends Service {
     score -= Math.min(6, stats.failures * 1.2)
     if (stats.averageElapsed != null) {
       if (stats.averageElapsed <= 300) score += 4
-      else if (stats.averageElapsed <= 800) score += 3
-      else if (stats.averageElapsed <= REGISTRY_FAST_ROUTE_THRESHOLD) score += 2
+      else if (stats.averageElapsed <= REGISTRY_FAST_ROUTE_THRESHOLD) score += 3
+      else if (stats.averageElapsed <= 1200) score += 2
       else if (stats.averageElapsed <= 2500) score += 0
       else if (stats.averageElapsed <= 4000) score -= 2
       else score -= 4
@@ -455,7 +493,7 @@ class Installer extends Service {
     if (!recentSuccess && stats.failures >= 2) return 400
     if (stats.averageElapsed != null) {
       if (stats.averageElapsed > 4000) return 400
-      if (stats.averageElapsed > 2500) return 800
+      if (stats.averageElapsed > 2500) return 600
     }
     return REGISTRY_FAST_ROUTE_THRESHOLD
   }
@@ -480,6 +518,29 @@ class Installer extends Service {
 
   private isStale(serial: number) {
     return serial !== this.serial || !this.ctx.scope.isActive
+  }
+
+  private trackController(controller: AbortController) {
+    this.pendingControllers.add(controller)
+    return controller
+  }
+
+  private untrackControllers(controllers: AbortController[]) {
+    for (const controller of controllers) {
+      this.pendingControllers.delete(controller)
+    }
+  }
+
+  private abortPendingRequests(reason: string) {
+    for (const controller of this.pendingControllers) {
+      controller.abort(new Error(reason))
+    }
+    this.pendingControllers.clear()
+  }
+
+  private isInternalAbort(error: any) {
+    const message = error instanceof Error ? error.message : String(error)
+    return /race settled|stale|disposed|aborted|abort/i.test(message)
   }
 
   private setRegistryStatus(name: string, status: RegistryStatus, serial = this.serial) {
@@ -576,6 +637,7 @@ class Installer extends Service {
       elapsed: Date.now() - start,
     }, serial)
     logger.warn(`failed to fetch registry metadata for ${name}: ${detail.error}`)
+    throw lastError ?? new Error(detail.error)
   }
 
   private formatRegistryError(error: any): Required<Pick<RegistryStatus, 'reason' | 'error'>> {
@@ -609,7 +671,8 @@ class Installer extends Service {
       this.flushData()
       return this.fullCache[name]
     } catch (e) {
-      logger.warn(e.message)
+      logger.warn(e instanceof Error ? e.message : e)
+      throw e
     }
   }
 
@@ -714,6 +777,32 @@ class Installer extends Service {
     return wait ? this.depTask : undefined
   }
 
+  async probeDependenciesInBackground(reason = 'background') {
+    const start = Date.now()
+    if (this.depTask) {
+      logger.debug(`reuse running dependency metadata task for ${reason} probe`)
+      await this.depTask
+      await this.refreshData()
+      logger.info(`dependency ${reason} probe reused running metadata task: elapsed=${Date.now() - start}ms`)
+      return
+    }
+    this.serial++
+    this.abortPendingRequests(`dependency ${reason} probe superseded`)
+    await this.resetEndpoint()
+    this.manifest = loadManifest(this.cwd)
+    this.pkgTasks = {}
+    this.fullCache = {}
+    this.tempCache = {}
+    this.clearRegistryStatus()
+    this.depTask = undefined
+    this.depMetadataFresh = false
+    this.depCache = this.getLocalDepsSnapshot()
+    logger.info(`dependency ${reason} probe started: deps=${Object.keys(this.manifest.dependencies ?? {}).length}`)
+    await this.refreshDependencyMetadata(true)
+    await this.refreshData()
+    logger.info(`dependency ${reason} probe completed: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, elapsed=${Date.now() - start}ms`)
+  }
+
   getDeps(options: Installer.GetDepsOptions = {}) {
     if (!Object.keys(this.depCache).length) {
       this.depCache = this.getLocalDepsSnapshot()
@@ -735,6 +824,7 @@ class Installer extends Service {
   async refresh(refresh = false, waitMetadata = false) {
     const start = Date.now()
     this.serial++
+    this.abortPendingRequests('dependency refresh superseded')
     await this.resetEndpoint()
     this.manifest = loadManifest(this.cwd)
     this.pkgTasks = {}
@@ -808,6 +898,7 @@ class Installer extends Service {
   async override(deps: Dict<string>) {
     const filename = resolve(this.cwd, 'package.json')
     logger.debug(`override package dependencies: file=${filename}, changes=${formatDeps(deps)}`)
+    this.manifest.dependencies ||= {}
     for (const key in deps) {
       if (deps[key]) {
         this.manifest.dependencies[key] = deps[key]
@@ -818,6 +909,42 @@ class Installer extends Service {
     this.manifest.dependencies = Object.fromEntries(Object.entries(this.manifest.dependencies).sort((a, b) => a[0].localeCompare(b[0])))
     await fsp.writeFile(filename, JSON.stringify(this.manifest, null, 2) + '\n')
     logger.info(`package dependencies updated: changes=${formatDeps(deps)}, total=${Object.keys(this.manifest.dependencies).length}`)
+  }
+
+  private async snapshotPackageManifest(): Promise<PackageManifestSnapshot> {
+    const filename = resolve(this.cwd, 'package.json')
+    const content = await fsp.readFile(filename, 'utf8')
+    const manifest: PackageJson = JSON.parse(content)
+    manifest.dependencies ||= {}
+    return {
+      manifest,
+      content,
+      dependencies: { ...manifest.dependencies },
+    }
+  }
+
+  private async restorePackageManifest(snapshot: PackageManifestSnapshot, deps: Dict<string>, reason: string) {
+    const filename = resolve(this.cwd, 'package.json')
+    let manifest: PackageJson
+    try {
+      manifest = JSON.parse(await fsp.readFile(filename, 'utf8'))
+    } catch {
+      manifest = JSON.parse(snapshot.content)
+    }
+    manifest.dependencies ||= {}
+    for (const key of Object.keys(deps)) {
+      if (Object.prototype.hasOwnProperty.call(snapshot.dependencies, key)) {
+        manifest.dependencies[key] = snapshot.dependencies[key]
+      } else {
+        delete manifest.dependencies[key]
+      }
+    }
+    manifest.dependencies = Object.fromEntries(Object.entries(manifest.dependencies).sort((a, b) => a[0].localeCompare(b[0])))
+    await fsp.writeFile(filename, JSON.stringify(manifest, null, 2) + '\n')
+    this.manifest = manifest
+    this.depCache = this.getLocalDepsSnapshot()
+    this.depMetadataFresh = false
+    logger.warn(`package dependencies rolled back: reason=${reason}, changes=${formatDeps(deps)}, total=${Object.keys(this.manifest.dependencies ?? {}).length}`)
   }
 
   private _install() {
@@ -840,9 +967,10 @@ class Installer extends Service {
     })
   }
 
-  async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>) {
+  private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>) {
     const start = Date.now()
     logger.info(`dependency install requested: deps=${formatDeps(deps)}, forced=${!!forced}`)
+    const snapshot = await this.snapshotPackageManifest()
     const localDeps = this._getLocalDeps(deps)
     logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
     await this.override(deps)
@@ -857,7 +985,11 @@ class Installer extends Service {
 
     if (forced) {
       const code = await this._install()
-      if (code) return code
+      if (code) {
+        await this.restorePackageManifest(snapshot, deps, `package manager exited with code ${code}`)
+        await this.refreshData()
+        return code
+      }
     }
 
     await this.refresh()
@@ -888,11 +1020,28 @@ class Installer extends Service {
     await this.refreshData()
     logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!forced}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
     if (shouldReload) {
-      logger.info('dependency install triggers full reload')
-      this.ctx.loader.fullReload()
+      logger.info(`dependency install triggers full reload after ${FULL_RELOAD_DELAY}ms`)
+      setTimeout(() => {
+        if (this.ctx.scope.isActive) this.ctx.loader.fullReload()
+      }, FULL_RELOAD_DELAY)
     }
 
     return 0
+  }
+
+  async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>) {
+    const previous = this.installTask
+    let release: () => void
+    this.installTask = new Promise<void>((resolve) => { release = resolve })
+    if (this.installActive) logger.info(`dependency install queued: deps=${formatDeps(deps)}`)
+    await previous
+    this.installActive = true
+    try {
+      return await this._installLocked(deps, forced, beforeReload)
+    } finally {
+      this.installActive = false
+      release!()
+    }
   }
 }
 

@@ -94,7 +94,7 @@ function formatEndpoint(endpoint: string) {
 
 export async function addManual(name: string) {
   const data = await send('market/package', name) as Registry
-  if (!data) throw new Error(`failed to fetch package metadata: ${name}`)
+  if (!data?.versions) throw new Error(`failed to fetch package metadata: ${name}`)
   data.versions = Object.fromEntries(Object.entries(data.versions).sort((a, b) => compare(b[0], a[0])))
   return manualDeps[name] = data
 }
@@ -140,7 +140,9 @@ export function createLocalBundleRecord(packageName: string): BundleRecordView |
   const local = store.packages?.[packageName]
   const dep = store.dependencies?.[packageName]
   if (!local && !dep) return
-  return createBundleRecordFromManifest(packageName, dep?.resolved ?? local?.package.version ?? '')
+  const bundle = parseBundleManifest((local?.package as any)?.koishi?.bundle)
+  if (!bundle?.members.length) return
+  return createBundleRecordFromManifest(packageName, dep?.resolved ?? local?.package.version ?? '', bundle)
 }
 
 export function resolveBundlePackageFromGroup(groupPath?: string, records: Dict<PluginBundleRecord> = {}) {
@@ -191,7 +193,11 @@ export function getBundleMemberConfigState(ctx: Context, member: BundleMemberCle
 
 export async function fetchBundleRecord(packageName: string): Promise<BundleRecordView | undefined> {
   if (!isBundlePackageName(packageName)) return
-  const registry = await send('market/package', packageName) as Registry
+  const registry = await (send('market/package', packageName) ?? Promise.resolve(undefined)).catch((error) => {
+    console.warn(error)
+    return undefined
+  }) as Registry | undefined
+  if (!registry?.versions) return createLocalBundleRecord(packageName)
   const targetVersion = store.dependencies?.[packageName]?.resolved ?? store.packages?.[packageName]?.package.version
   const entry = targetVersion && registry.versions?.[targetVersion]
     ? [targetVersion, registry.versions[targetVersion]] as const
@@ -199,6 +205,7 @@ export async function fetchBundleRecord(packageName: string): Promise<BundleReco
   if (!entry) return createLocalBundleRecord(packageName)
   const [version, remote] = entry
   const bundle = parseBundleManifest((remote as any)?.koishi?.bundle)
+  if (!bundle?.members.length) return createLocalBundleRecord(packageName)
   return createBundleRecordFromManifest(packageName, version, bundle)
 }
 
@@ -233,21 +240,37 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
   installProgressState.status = 'running'
   installProgressState.visible = true
 
-  const dispose = watch(socket, () => {
-    installProgressState.status = 'success'
-    message.success(messages.successText ?? '安装成功！')
+  let resolveDisconnected: (value: number) => void
+  const disconnected = new Promise<number>((resolve) => {
+    resolveDisconnected = resolve
+  })
+  let disconnectedBeforeResponse = false
+  const dispose = watch(socket, (value, previous) => {
+    if (value || !previous) return
+    disconnectedBeforeResponse = true
+    resolveDisconnected(0)
     dispose()
   })
   try {
     active.value = ''
-    const code = await send('market/install', override, forced)
+    const task = send('market/install', override, forced) ?? Promise.resolve(1)
+    const code = await Promise.race([task, disconnected])
     if (code) {
       installProgressState.status = 'error'
       message.error(messages.errorText ?? '安装失败！')
     } else {
       installProgressState.status = 'success'
-      await callback?.()
-      message.success(messages.successText ?? '安装成功！')
+      try {
+        await callback?.()
+      } catch (error) {
+        if (!disconnectedBeforeResponse) throw error
+        console.warn(error)
+      }
+      if (disconnectedBeforeResponse && !socket.value) {
+        message.success(messages.successText ?? '依赖变更已提交，控制台正在重载。')
+      } else {
+        message.success(messages.successText ?? '安装成功！')
+      }
     }
   } catch (err) {
     console.error(err)
@@ -279,7 +302,7 @@ async function waitForInstalledConfig(ctx: Context, name: string) {
 
 export async function ensureInstalledConfig(ctx: Context, name: string, silent = true) {
   if (!ctx.configWriter || !name) return
-  await send('market/ensure-config', name).catch(console.error)
+  await (send('market/ensure-config', name) ?? Promise.resolve(false)).catch(console.error)
   await waitForInstalledPackage(name)
   if (await waitForInstalledConfig(ctx, name)) return
   if (ctx.configWriter.get(name)?.length) return
@@ -287,7 +310,5 @@ export async function ensureInstalledConfig(ctx: Context, name: string, silent =
 }
 
 export async function ensureInstalledConfigs(ctx: Context, names: string[], silent = true) {
-  for (const name of names) {
-    await ensureInstalledConfig(ctx, name, silent)
-  }
+  await Promise.all(names.map(name => ensureInstalledConfig(ctx, name, silent)))
 }

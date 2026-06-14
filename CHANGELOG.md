@@ -6,6 +6,26 @@
 
 暂无。
 
+## 3.6.0-alpha.5
+
+这是插件包与后台探测能力的第五个 alpha 测试版，继续发布到 `alpha` 渠道，不替换 `latest`。
+
+- 新增 Console 空闲后台探测：无人在线一段时间后自动探测市场索引与依赖 npm 元数据，更新缓存、latest 状态和路由评分；浏览器 F5 / WebSocket 重连不再隐式触发依赖元数据刷新。
+- 新增 `idleProbe`、`idleProbeDelay`、`idleProbeBootDelay`、`idleProbeInterval` 配置并修复其持久化白名单，避免设置刷新后丢失。
+- 市场空闲冷启动探测改为独立后台路径，不再复用首屏 `prepare()` 加载语义，降低后续页面加载策略与后台探测互相牵连的风险。
+- npm 依赖安装增加后端安装队列，避免连续安装 / 卸载触发多个包管理器进程并发写入 lockfile 和 `node_modules`。
+- 包管理器执行失败时只回滚本次变更涉及的 `dependencies` 键，不再整份覆盖 `package.json`，减少安装期间外部编辑被覆盖的风险。
+- npm 元数据 404 / not-found 负缓存链路修复：registry 获取失败会正确抛出，单包不存在不会反复冷查询，也不会把真实网络错误误报为“版本不存在”。
+- `market/registry` 批量查询改为单包失败隔离；某个包超时、404 或镜像未同步时不会拖垮整批正常包的版本数据。
+- market 与 npm registry 路由评分清理死分支，并避免 stale / dispose / race settle 等内部取消污染源评分。
+- market 备用源增加指数退避冷却，连续失败的备用源会临时跳过；手动刷新会清理冷却并重新尝试。
+- 插件销毁或刷新 supersede 时会 abort 正在进行的 market / npm 请求，减少热重载后的挂起请求。
+- 插件包识别收紧：依赖管理、配置页卸载和普通安装弹窗只在存在真实 `koishi.bundle` 清单或 NEXT 归属记录时进入插件包流程，避免仅因 `koishi-plugin-pa-*` 包名拦截普通插件卸载。
+- 插件包安装、普通卸载、批量应用和插件包卸载后的 `bundleRecords` 保存改为等待后端确认；保存失败会提示用户刷新确认，避免产生幽灵归属记录。
+- 前端配置定位只递归 config 分组节点，避免扫描其它插件的普通对象配置造成性能浪费或误判。
+- 插件包远端记录读取在网络异常或元数据缺失时安全降级，不再因 `registry.versions` 为空导致前端 TypeError。
+- 批量补齐已安装插件配置改为并发等待，减少插件包安装多个成员时的线性等待放大。
+
 ## 3.6.0-alpha.4
 
 这是插件包（Plugin Bundle）能力的第四个 alpha 测试版，继续发布到 `alpha` 渠道，不替换 `latest`。

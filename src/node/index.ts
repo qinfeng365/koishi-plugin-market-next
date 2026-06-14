@@ -1,4 +1,4 @@
-import { Context, Dict, pick, Schema } from 'koishi'
+import { Context, Dict, pick, Schema, Time } from 'koishi'
 import Scanner, { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
 import { gt, maxSatisfying } from 'semver'
 import { resolve } from 'path'
@@ -47,6 +47,7 @@ declare module '@koishijs/console' {
     'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>
     'market/install-bundle'(request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult>
     'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>
+    'market/update-config'(patch: Partial<Config>): Promise<boolean>
     'market/refresh-dependencies'(): Promise<void>
     'market/package'(name: string): Promise<Registry>
     'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>
@@ -85,6 +86,19 @@ export interface Config {
   frontendMode?: 'performance' | 'polished'
   depsLayout?: 'grid' | 'list'
   marketLayout?: 'grid' | 'list'
+  idleProbe?: boolean
+  idleProbeDelay?: number
+  idleProbeBootDelay?: number
+  idleProbeInterval?: number
+  bulkMode?: boolean
+  removeConfig?: boolean
+  updateIgnoredPackages?: string
+  updateIgnoreDuration?: number
+  updateIgnoreVersions?: number
+  updateIgnorePrerelease?: boolean
+  updateIgnored?: Dict<any>
+  collapsedGroups?: Dict<boolean>
+  bundleRecords?: Dict<PluginBundleRecord>
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -100,6 +114,23 @@ export const Config: Schema<Config> = Schema.object({
     Schema.const('grid').description('网格'),
     Schema.const('list').description('列表'),
   ]).role('radio').default('grid').description('Market page layout.'),
+  idleProbe: Schema.boolean().default(true).description('Run dependency and market metadata probes while Console is idle.'),
+  idleProbeDelay: Schema.number().role('time').default(Time.minute * 5).description('How long Console must stay idle before the background probe starts.'),
+  idleProbeBootDelay: Schema.number().role('time').default(Time.minute).description('Minimum delay after startup before idle probing is allowed.'),
+  idleProbeInterval: Schema.number().role('time').default(Time.hour * 6).description('Minimum interval between idle background probes.'),
+  bulkMode: Schema.boolean().default(false).hidden().description('Batch operation mode for dependency changes.'),
+  removeConfig: Schema.union([
+    Schema.const(undefined).description('Ask every time'),
+    Schema.const(true).description('Always remove plugin config'),
+    Schema.const(false).description('Never remove plugin config'),
+  ]).hidden().description('Whether to remove existing plugin config when uninstalling a plugin.'),
+  updateIgnoredPackages: Schema.string().role('textarea').hidden().description('Dependency package names that should not be checked for updates. One package per line, or separated by commas.'),
+  updateIgnoreDuration: Schema.number().role('time').default(0).hidden().description('Default duration for ignoring one update. 0 means no time-based expiry.'),
+  updateIgnoreVersions: Schema.number().min(1).max(20).step(1).default(1).hidden().description('How many consecutive newer versions should be ignored after ignoring one update.'),
+  updateIgnorePrerelease: Schema.boolean().default(false).hidden().description('Ignore alpha, beta, rc and other prerelease versions when checking updates.'),
+  updateIgnored: Schema.dict(Schema.any()).hidden(),
+  collapsedGroups: Schema.dict(Boolean).hidden(),
+  bundleRecords: Schema.dict(Schema.any()).hidden(),
   registry: Installer.Config,
   search: MarketProvider.Config,
   chatlunaTool: Schema.boolean().default(false).description('Enable ChatLuna plugin market query tool.'),
@@ -164,6 +195,59 @@ function isPluginBundleDependency(name: string) {
   } catch {
     return false
   }
+}
+
+const configPatchKeys: Array<keyof Config> = [
+  'frontendMode',
+  'depsLayout',
+  'marketLayout',
+  'idleProbe',
+  'idleProbeDelay',
+  'idleProbeBootDelay',
+  'idleProbeInterval',
+  'bulkMode',
+  'removeConfig',
+  'updateIgnoredPackages',
+  'updateIgnoreDuration',
+  'updateIgnoreVersions',
+  'updateIgnorePrerelease',
+  'updateIgnored',
+  'collapsedGroups',
+  'bundleRecords',
+]
+
+function findMarketNextConfigNode(plugins: any, currentConfig: Config): { parent: any, key: string, value: any } | undefined {
+  let fallback: { parent: any, key: string, value: any } | undefined
+  for (const key in plugins || {}) {
+    if (key.startsWith('$')) continue
+    const value = plugins[key]
+    if (!value || typeof value !== 'object') continue
+    const disabled = key.startsWith('~')
+    const normalized = disabled ? key.slice(1) : key
+    const [name] = normalized.split(':', 1)
+    if (value === currentConfig || name === 'market-next' || name === 'koishi-plugin-market-next') {
+      if (!disabled) return { parent: plugins, key, value }
+      fallback ||= { parent: plugins, key, value }
+    }
+    const nested = findMarketNextConfigNode(value, currentConfig)
+    if (nested) return nested
+  }
+  return fallback
+}
+
+async function updateMarketNextConfig(ctx: Context, currentConfig: Config, patch: Partial<Config>) {
+  const target = findMarketNextConfigNode(ctx.loader.config?.plugins, currentConfig)
+  if (!target) return false
+  let changed = false
+  for (const key of configPatchKeys) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
+    target.value[key] = patch[key] as never
+    changed = true
+  }
+  if (!changed) return false
+  await ctx.loader.writeConfig(true)
+  await ctx.get('console')?.refresh('config')
+  return true
 }
 
 async function requestPluginRuntime(ctx: Context, name: string) {
@@ -322,8 +406,10 @@ async function assertNoDirectBundleCycles(ctx: Context, packageName: string, mem
 
 async function installBundle(ctx: Context, request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult> {
   const start = Date.now()
+  if (!request.version) throw new Error('bundle package version is required')
   const registry = await ctx.installer.getRegistry(request.package)
-  const remote = registry?.versions?.[request.version]
+  if (!registry?.versions) throw new Error(`bundle package metadata not loaded: ${request.package}`)
+  const remote = registry.versions[request.version]
   if (!remote) throw new Error(`bundle package version not found: ${request.package}@${request.version}`)
   const bundle = parseBundleManifest((remote?.koishi as any)?.bundle)
   const validation = validateBundleManifest(request.package, bundle, {
@@ -332,7 +418,6 @@ async function installBundle(ctx: Context, request: BundleInstallRequest, forced
   if (!validation.valid) {
     throw new Error(`invalid plugin bundle: ${validation.errors.join('; ')}`)
   }
-  if (!request.version) throw new Error('bundle package version is required')
   const manifest = bundle!
 
   const requestMembers = new Map((request.members ?? []).map(member => [`${member.package}\n${member.plugin}`, member]))
@@ -451,6 +536,88 @@ async function installBundle(ctx: Context, request: BundleInstallRequest, forced
   }
 }
 
+function setupIdleProbe(ctx: Context, config: Config) {
+  if (config.idleProbe === false) return
+
+  const logger = ctx.logger('market')
+  const startedAt = Date.now()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let running = false
+  let lastProbe = 0
+
+  const getClientCount = () => Object.keys(ctx.console.clients ?? {}).length
+  const clearIdleTimer = () => {
+    clearTimeout(timer)
+    timer = undefined
+  }
+  const getDelay = () => Math.max(0, config.idleProbeDelay ?? Time.minute * 5)
+  const getBootDelay = () => Math.max(0, config.idleProbeBootDelay ?? Time.minute)
+  const getInterval = () => Math.max(0, config.idleProbeInterval ?? Time.hour * 6)
+
+  const runProbe = async () => {
+    clearIdleTimer()
+    if (!ctx.scope.isActive) return
+    if (getClientCount()) return
+    if (ctx.installer.isInstalling) {
+      logger.debug('skip idle background probe because dependency install is active')
+      schedule(getDelay())
+      return
+    }
+    const bootWait = getBootDelay() - (Date.now() - startedAt)
+    if (bootWait > 0) {
+      schedule(bootWait)
+      return
+    }
+    const intervalWait = lastProbe ? getInterval() - (Date.now() - lastProbe) : 0
+    if (intervalWait > 0) {
+      logger.debug(`skip idle background probe because interval gate is active: remaining=${intervalWait}ms`)
+      schedule(intervalWait)
+      return
+    }
+    if (running) return
+
+    running = true
+    lastProbe = Date.now()
+    logger.info(`idle background probe started: clients=0, delay=${getDelay()}ms, interval=${getInterval()}ms`)
+    try {
+      const market = ctx.get('console.services.market') as any
+      await Promise.all([
+        ctx.installer.probeDependenciesInBackground('idle'),
+        market?.probeInBackground?.('idle probe') ?? Promise.resolve(false),
+      ])
+      logger.info(`idle background probe completed: elapsed=${Date.now() - lastProbe}ms`)
+    } catch (error) {
+      logger.warn(`idle background probe failed: ${error instanceof Error ? error.message : error}`)
+    } finally {
+      running = false
+      if (!getClientCount()) schedule(getInterval())
+    }
+  }
+
+  const schedule = (delay = getDelay()) => {
+    clearIdleTimer()
+    if (!ctx.scope.isActive || config.idleProbe === false) return
+    if (getClientCount()) return
+    timer = setTimeout(() => void runProbe(), Math.max(0, delay))
+    logger.debug(`idle background probe scheduled: delay=${Math.max(0, delay)}ms`)
+  }
+
+  ctx.on('console/connection', () => {
+    if (getClientCount()) {
+      clearIdleTimer()
+      logger.debug(`idle background probe cancelled: clients=${getClientCount()}`)
+    } else {
+      schedule()
+    }
+  })
+
+  ctx.on('ready', () => {
+    if (!getClientCount()) schedule(Math.max(getDelay(), getBootDelay()))
+  })
+
+  ctx.effect(() => () => clearIdleTimer())
+}
+
 export function apply(ctx: Context, config: Config = {}) {
   if (!ctx.loader?.writable) {
     return ctx.logger('app').warn('koishi-plugin-market-next is only available for json/yaml config file')
@@ -561,6 +728,7 @@ export function apply(ctx: Context, config: Config = {}) {
     ctx.plugin(RegistryProvider)
     ctx.plugin(RegistryStatusProvider)
     ctx.plugin(MarketProvider, config.search ?? {})
+    setupIdleProbe(ctx, config)
 
     ctx.console.addEntry({
       dev: resolve(__dirname, '../../client/index.ts'),
@@ -592,6 +760,10 @@ export function apply(ctx: Context, config: Config = {}) {
       return removeBundleConfigs(ctx, request)
     }, { authority: 4 })
 
+    ctx.console.addListener('market/update-config', async (patch) => {
+      return updateMarketNextConfig(ctx, config, patch)
+    }, { authority: 4 })
+
     ctx.console.addListener('market/refresh-dependencies', async () => {
       await ctx.installer.refresh(true)
       await ctx.get('console')?.refresh('config')
@@ -603,9 +775,13 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.console.addListener('market/registry', async (names) => {
       const entries = await pMap(names, async (name) => {
-        const meta = await ctx.installer.getPackage(name)
-        if (!meta) return
-        return [name, meta] as const
+        try {
+          const meta = await ctx.installer.getPackage(name)
+          if (!meta) return
+          return [name, meta] as const
+        } catch (error) {
+          ctx.logger('market').debug(`skip registry metadata for ${name}: ${error instanceof Error ? error.message : error}`)
+        }
       }, { concurrency: ctx.installer.config.concurrency ?? 4 })
       return Object.fromEntries(entries.filter(Boolean))
     }, { authority: 4 })

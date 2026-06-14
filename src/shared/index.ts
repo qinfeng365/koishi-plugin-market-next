@@ -1,4 +1,4 @@
-import { Awaitable, Context, Dict, Logger, Time } from 'koishi'
+import { Awaitable, Context, Dict, Logger } from 'koishi'
 import { DataService } from '@koishijs/console'
 import { SearchObject, SearchResult } from '@koishijs/registry'
 export * from './bundle'
@@ -36,6 +36,9 @@ export interface MarketRouteScore {
   score: number
   successes?: number
   failures?: number
+  consecutiveFailures?: number
+  cooldownUntil?: number
+  coolingDown?: boolean
   averageElapsed?: number
   lastSuccess?: number
   contentEncoding?: string
@@ -76,12 +79,6 @@ export abstract class MarketProvider extends DataService<MarketProvider.Payload>
       await this.start(true)
     }, { authority: 4 })
 
-    ctx.on('console/connection', async (client) => {
-      if (!ctx.console.clients[client.id]) return
-      if (Date.now() - this._timestamp <= Time.hour * 12) return
-      if (await this.ctx.serial('console/intercept', client, { authority: 4 })) return
-      this.start()
-    })
   }
 
   async start(refresh = false): Promise<void> {

@@ -33,6 +33,9 @@ export interface MarketRouteScore {
     score: number;
     successes?: number;
     failures?: number;
+    consecutiveFailures?: number;
+    cooldownUntil?: number;
+    coolingDown?: boolean;
     averageElapsed?: number;
     lastSuccess?: number;
     contentEncoding?: string;

@@ -28,6 +28,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private backgroundSerial?;
     private pendingRefreshTask?;
     private cacheWriteTimer?;
+    private pendingControllers;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
     start(refresh?: boolean): Promise<void>;
@@ -44,6 +45,8 @@ declare class MarketProvider extends BaseMarketProvider {
     private recordRouteSuccess;
     private recordRouteFailure;
     private getRouteScores;
+    private isRouteCoolingDown;
+    private clearRouteCooldowns;
     private getConditionalHeaders;
     private updateCacheState;
     private fetchEndpoint;
@@ -91,9 +94,15 @@ declare class MarketProvider extends BaseMarketProvider {
     private refreshInBackground;
     private notifyMarketRefresh;
     private refreshIndexInBackground;
+    private probeIndexInBackground;
+    probeInBackground(reason?: string): Promise<boolean>;
     private updateDebugInfo;
     private getDebugInfo;
     private isStale;
+    private trackController;
+    private untrackControllers;
+    private abortPendingRequests;
+    private isInternalAbort;
     private log;
 }
 declare namespace MarketProvider {

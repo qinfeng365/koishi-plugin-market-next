@@ -112,9 +112,9 @@
 <script lang="ts" setup>
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
-import { router, store, useConfig, useContext } from '@koishijs/client'
-import { getFrontendMode, getDepsLayout, getLatestVersion, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
-import { addManual, getRegistryStatus, showConfirm } from './utils'
+import { message, router, store, useConfig, useContext } from '@koishijs/client'
+import { getBundleRecords, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig } from '../utils'
+import { addManual, createLocalBundleRecord, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
 import { isBundlePackageName } from '../../src/shared/bundle'
@@ -153,12 +153,21 @@ function getOverride() {
 }
 
 function getCollapsedGroups() {
+  const pluginConfig = getMarketNextConfig()
+  if (pluginConfig) {
+    pluginConfig.collapsedGroups ||= {}
+    return pluginConfig.collapsedGroups
+  }
   if (!config.value.market.collapsedGroups) config.value.market.collapsedGroups = {}
   return config.value.market.collapsedGroups
 }
 
 function getUpdatePolicy() {
-  return config.value.market ?? {}
+  return getMarketNextPolicy(config.value)
+}
+
+function isManageableBundle(name: string) {
+  return !!(getBundleRecords(config.value)[name] || createLocalBundleRecord(name))
 }
 
 const names = computed(() => {
@@ -167,7 +176,7 @@ const names = computed(() => {
     ...getOverride(),
   }
   for (const name of Object.keys(store.packages ?? {})) {
-    if (isUnconfigured(name) || isBundlePackageName(name)) explicit[name] = true
+    if (isUnconfigured(name) || isManageableBundle(name)) explicit[name] = true
   }
   return Object
     .keys(explicit)
@@ -210,10 +219,10 @@ function classify(name: string): ItemKind {
   const override = getOverride()
   const pending = Object.prototype.hasOwnProperty.call(override, name)
   if (pending) return 'pending'
-  if (!dep) return isBundlePackageName(name) && store.packages?.[name] ? 'bundle' : isUnconfigured(name) ? 'unconfigured' : 'manual'
+  if (!dep) return isManageableBundle(name) && store.packages?.[name] ? 'bundle' : isUnconfigured(name) ? 'unconfigured' : 'manual'
   if (dep.workspace) return 'workspace'
   if (dep.invalid) return 'invalid'
-  if (isBundlePackageName(name)) return 'bundle'
+  if (isManageableBundle(name)) return 'bundle'
   if (isUnconfigured(name)) return 'unconfigured'
   const status = getRegistryStatus(name)
   if (status?.error) return 'error'
@@ -228,7 +237,7 @@ function isPluginPackage(name: string) {
 }
 
 function isUnconfigured(name: string) {
-  if (isBundlePackageName(name)) return false
+  if (isManageableBundle(name)) return false
   return !!ctx.configWriter && !!store.packages?.[name] && isPluginPackage(name) && !ctx.configWriter.get(name)?.length
 }
 
@@ -241,7 +250,7 @@ const items = computed<DependencyItem[]>(() => names.value.map(name => ({
 
 const updates = computed(() => items.value.filter(item => item.kind === 'updatable').map(item => item.name))
 
-const prereleaseBlocked = computed(() => !!config.value.market?.updateIgnorePrerelease)
+const prereleaseBlocked = computed(() => !!getUpdatePolicy().updateIgnorePrerelease)
 
 const summary = computed(() => {
   return {
@@ -306,12 +315,18 @@ function isGroupCollapsed(key: ItemKind) {
 }
 
 function toggleGroup(key: ItemKind) {
-  getCollapsedGroups()[key] = !isGroupCollapsed(key)
+  const groups = getCollapsedGroups()
+  groups[key] = !isGroupCollapsed(key)
+  patchMarketNextConfig({ collapsedGroups: groups })
 }
 
 function toggleLayout() {
   if (!config.value.market) config.value.market = {}
-  config.value.market.depsLayout = depsLayout.value === 'grid' ? 'list' : 'grid'
+  const next = depsLayout.value === 'grid' ? 'list' : 'grid'
+  config.value.market.depsLayout = next
+  const pluginConfig = getMarketNextConfig()
+  if (pluginConfig) pluginConfig.depsLayout = next
+  patchMarketNextConfig({ depsLayout: next })
 }
 
 const visibleGroups = computed<DependencyGroup[]>(() => {
@@ -340,8 +355,15 @@ function clearChanges() {
   config.value.market.override = {}
 }
 
-function togglePrereleaseFilter() {
-  config.value.market.updateIgnorePrerelease = !prereleaseBlocked.value
+async function togglePrereleaseFilter() {
+  const policy = getWritableMarketNextPolicy(config.value)
+  const previous = !!policy.updateIgnorePrerelease
+  policy.updateIgnorePrerelease = !previous
+  const saved = await patchMarketNextConfig({ updateIgnorePrerelease: policy.updateIgnorePrerelease })
+  if (!saved) {
+    policy.updateIgnorePrerelease = previous
+    message.error('保存预发布过滤设置失败。')
+  }
 }
 
 ctx.action('dependencies.upgrade', {

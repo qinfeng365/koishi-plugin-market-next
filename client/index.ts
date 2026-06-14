@@ -32,6 +32,10 @@ interface MarketConfig {
   updateIgnoreDuration?: number
   updateIgnoreVersions?: number
   updateIgnorePrerelease?: boolean
+  idleProbe?: boolean
+  idleProbeDelay?: number
+  idleProbeBootDelay?: number
+  idleProbeInterval?: number
   bundleRecords?: Dict<PluginBundleRecord>
   gravatar?: string
   search?: {
@@ -44,6 +48,29 @@ interface MarketConfig {
 
 type MarketStore = typeof store & {
   registryStatus?: Dict<RegistryStatus>
+}
+
+const REGISTRY_STATUS_TIMEOUT = 120000
+const REGISTRY_STATUS_SWEEP_INTERVAL = 15000
+const REGISTRY_STATUS_TIMEOUT_TEXT = 'npm 元数据请求长时间未完成，请刷新依赖版本后重试。'
+
+function sweepRegistryStatus(target: MarketStore = store as MarketStore) {
+  const now = Date.now()
+  const next = { ...target.registryStatus }
+  let changed = false
+  for (const [name, status] of Object.entries(next)) {
+    if (!status?.loading) continue
+    if (status.updatedAt && now - status.updatedAt <= REGISTRY_STATUS_TIMEOUT) continue
+    next[name] = {
+      ...status,
+      loading: false,
+      reason: 'timeout',
+      error: REGISTRY_STATUS_TIMEOUT_TEXT,
+    }
+    changed = true
+  }
+  if (changed) target.registryStatus = next
+  return changed
 }
 
 receive('market/patch', (data) => {
@@ -65,10 +92,15 @@ receive('market/registry', (data) => {
 
 receive('market/registry-status', (data: Dict<RegistryStatus>) => {
   const target = store as MarketStore
-  target.registryStatus = {
-    ...target.registryStatus,
-    ...data,
+  const next = { ...target.registryStatus }
+  for (const [name, status] of Object.entries(data)) {
+    if (!status) continue
+    next[name] = status
   }
+  target.registryStatus = {
+    ...next,
+  }
+  sweepRegistryStatus(target)
 })
 
 receive('market/registry-status/clear', () => {
@@ -78,6 +110,11 @@ receive('market/registry-status/clear', () => {
 
 export default (ctx: Context) => {
   ctx.plugin(extensions)
+
+  ctx.effect(() => {
+    const timer = window.setInterval(() => sweepRegistryStatus(), REGISTRY_STATUS_SWEEP_INTERVAL)
+    return () => window.clearInterval(timer)
+  })
 
   ctx.slot({
     type: 'welcome-choice',
@@ -126,16 +163,20 @@ export default (ctx: Context) => {
     title: '插件市场设置',
     schema: Schema.object({
       market: Schema.object({
-        bulkMode: Schema.boolean().default(false).description('批量操作模式。'),
+        bulkMode: Schema.boolean().default(false).hidden().description('批量操作模式。'),
         removeConfig: Schema.union([
           Schema.const(undefined).description('每次询问'),
           Schema.const(true).description('总是'),
           Schema.const(false).description('从不'),
-        ]).description('移除插件时是否移除其已经存在的配置。'),
-        updateIgnoredPackages: Schema.string().role('textarea').description('不检测更新的依赖名。每行或用逗号分隔一个包名。'),
-        updateIgnoreDuration: Schema.number().role('time').default(0).description('点击“忽略此次更新”后的默认忽略时长。0 表示不按时间过期。'),
-        updateIgnoreVersions: Schema.number().min(1).max(20).step(1).default(1).description('点击“忽略此次更新”后连续忽略几个新版本。1 表示只忽略当前最新版本。'),
-        updateIgnorePrerelease: Schema.boolean().default(false).description('手动开启后，alpha / beta / rc 等预发布版本不会被视为可更新版本。'),
+        ]).hidden().description('移除插件时是否移除其已经存在的配置。'),
+        updateIgnoredPackages: Schema.string().role('textarea').hidden().description('不检测更新的依赖名。每行或用逗号分隔一个包名。'),
+        updateIgnoreDuration: Schema.number().role('time').default(0).hidden().description('点击“忽略此次更新”后的默认忽略时长。0 表示不按时间过期。'),
+        updateIgnoreVersions: Schema.number().min(1).max(20).step(1).default(1).hidden().description('点击“忽略此次更新”后连续忽略几个新版本。1 表示只忽略当前最新版本。'),
+        updateIgnorePrerelease: Schema.boolean().default(false).hidden().description('手动开启后，alpha / beta / rc 等预发布版本不会被视为可更新版本。'),
+        idleProbe: Schema.boolean().default(true).description('Console 空闲时自动探测依赖版本和插件市场数据。'),
+        idleProbeDelay: Schema.number().role('time').default(300000).description('Console 无人在线多久后开始后台探测。'),
+        idleProbeBootDelay: Schema.number().role('time').default(60000).description('Koishi 启动或重载后，至少等待多久才允许空闲探测。'),
+        idleProbeInterval: Schema.number().role('time').default(21600000).description('两次空闲后台探测之间的最小间隔。'),
         override: Schema.dict(String).hidden(),
         collapsedGroups: Schema.dict(Boolean).hidden(),
         updateIgnored: Schema.dict(Schema.any()).hidden(),

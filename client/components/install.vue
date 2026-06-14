@@ -78,7 +78,7 @@
 
     <template v-if="active && !global.static" #footer>
       <div class="left">
-        <el-checkbox v-model="config.market.bulkMode">
+        <el-checkbox v-model="bulkMode">
           批量操作模式
           <k-hint>
             批量操作模式下，你可以同时安装、更新或移除多个插件。勾选此选项后，你的所有操作会被暂存，直到你点击右上角的“应用更改”按钮。
@@ -129,9 +129,9 @@
 <script lang="ts" setup>
 
 import { computed, ref, watch, reactive } from 'vue'
-import { Dict, global, send, store, useContext, useConfig } from '@koishijs/client'
+import { Dict, global, message, send, store, useContext, useConfig } from '@koishijs/client'
 import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
-import { active } from '../utils'
+import { active, getBulkMode, getBundleRecords, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import BundleUninstall from './bundle-uninstall.vue'
@@ -144,12 +144,20 @@ const showRemoveDialog = ref(false)
 const showBundleUninstallDialog = ref(false)
 const bundleUninstallTarget = ref('')
 
+const bulkMode = computed({
+  get: () => getBulkMode(config.value),
+  set: (value: boolean) => {
+    if (config.value.market) config.value.market.bulkMode = value
+    void patchMarketNextConfig({ bulkMode: value })
+  },
+})
+
 function installDep(version: string, checkConfig = false, removeConfig = false) {
   const target = active.value
   if (!target) return
 
   // workspace packages don't need to be installed
-  if (config.value.market.bulkMode && !workspace.value) {
+  if (bulkMode.value && !workspace.value) {
     if (dep.value?.resolved === version || !version && !dep.value) {
       delete config.value.market.override[target]
     } else {
@@ -163,19 +171,18 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
   // 2. The plugin has config entries.
   // 3. `removeConfig` is not set.
   if (checkConfig && ctx.configWriter?.get(target)?.length) {
-    if (typeof config.value.market?.removeConfig !== 'boolean') {
+    const savedRemoveConfig = getRemoveConfig(config.value)
+    if (typeof savedRemoveConfig !== 'boolean') {
       showRemoveDialog.value = true
       return
     } else {
-      removeConfig = config.value.market.removeConfig
+      removeConfig = savedRemoveConfig
     }
   }
 
   if (saveChoice.value) {
-    config.value.market = {
-      ...config.value.market,
-      removeConfig,
-    }
+    if (config.value.market) config.value.market.removeConfig = removeConfig
+    void patchMarketNextConfig({ removeConfig })
   }
   saveChoice.value = false
   showRemoveDialog.value = false
@@ -191,7 +198,10 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
       ctx.configWriter?.remove(target)
     }
     if (!version) {
-      delete config.value.market.bundleRecords?.[target]
+      const records = getWritableBundleRecords(config.value)
+      delete records[target]
+      const saved = await patchMarketNextConfig({ bundleRecords: records })
+      if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
     }
   })
 }
@@ -217,7 +227,7 @@ const selectVersion = computed({
 const versions = reactive<Dict<string>>({})
 
 function getOverride() {
-  return config.value.market.bulkMode ? config.value.market.override : versions
+  return bulkMode.value ? config.value.market.override : versions
 }
 
 function getVersion(name: string) {
@@ -259,18 +269,19 @@ const local = computed(() => store.packages?.[active.value])
 const bundleUninstallRecord = computed(() => {
   const target = bundleUninstallTarget.value
   if (!target || !isBundlePackageName(target)) return
-  return config.value.market?.bundleRecords?.[target] || createLocalBundleRecord(target)
+  return getBundleRecords(config.value)[target] || createLocalBundleRecord(target)
 })
 
 const showRemoveButton = computed(() => {
-  return current.value || store.dependencies?.[active.value] || config.value.market.bulkMode && config.value.market.override[active.value]
+  return current.value || store.dependencies?.[active.value] || bulkMode.value && config.value.market.override[active.value]
 })
 
 const workspace = computed(() => getWorkspaceVersion(active.value))
 
 function requestRemove() {
   const target = active.value
-  if (target && isBundlePackageName(target)) {
+  const record = target && (getBundleRecords(config.value)[target] || createLocalBundleRecord(target))
+  if (target && record) {
     bundleUninstallTarget.value = target
     active.value = ''
     showBundleUninstallDialog.value = true
@@ -343,7 +354,7 @@ watch(() => data.value?.[version.value]?.peers, async (peers) => {
     }
   }
   Object.assign(registry, store.registry)
-  if (config.value.market.bulkMode) return
+  if (bulkMode.value) return
 
   // rebuild versions
   for (const name of Object.keys(versions)) {

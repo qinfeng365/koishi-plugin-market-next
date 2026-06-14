@@ -171,7 +171,7 @@
     </div>
   </article>
 
-  <el-dialog v-model="showIgnoreDialog" class="dep-ignore-dialog" destroy-on-close>
+  <el-dialog v-model="showIgnoreDialog" class="dep-ignore-dialog" append-to-body destroy-on-close>
     <template #header>忽略更新提示</template>
     <div class="dep-ignore-body">
       <p>
@@ -203,7 +203,7 @@
       </template>
       <p class="dep-ignore-note">
         <template v-if="ignorePackagePermanently">
-          永久不检测会写入插件市场设置中的不检测更新名单，可在设置页移除。
+          永久不检测会记录在依赖管理的忽略规则中，可在“不检测更新”分组中恢复。
         </template>
         <template v-else>
           不限时表示不按时间过期；达到连续忽略版本数后，后续新版本会重新提示。
@@ -212,7 +212,7 @@
     </div>
     <template #footer>
       <el-button @click="showIgnoreDialog = false">取消</el-button>
-      <el-button type="primary" @click="confirmIgnoreUpdate">确认忽略</el-button>
+      <el-button type="primary" :loading="ignoreSaving" @click="confirmIgnoreUpdate">确认忽略</el-button>
     </template>
   </el-dialog>
 
@@ -229,7 +229,7 @@ import { computed, ref } from 'vue'
 import { message, store, useConfig, useContext } from '@koishijs/client'
 import type { SearchObject } from '@koishijs/registry'
 import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
-import { createUpdateIgnoreRule, getIgnoredUpdateVersion, getLatestVersion, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored } from '../utils'
+import { createUpdateIgnoreRule, getBundleRecords, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig } from '../utils'
 import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
@@ -258,11 +258,12 @@ const ignoreDurationPreset = ref<'forever' | '1d' | '7d' | '30d' | 'custom'>('fo
 const ignoreCustomDays = ref(7)
 const ignoreCount = ref(1)
 const ignorePackagePermanently = ref(false)
+const ignoreSaving = ref(false)
 
 const dep = computed(() => store.dependencies?.[props.name])
 const local = computed(() => store.packages?.[props.name])
 const marketData = computed(() => store.market?.data?.[props.name])
-const bundleRecord = computed(() => config.value.market?.bundleRecords?.[props.name] || createLocalBundleRecord(props.name))
+const bundleRecord = computed(() => getBundleRecords(config.value)[props.name] || createLocalBundleRecord(props.name))
 const bundleOrigin = computed(() => findBundleOrigin(props.name))
 
 const displayName = computed(() => formatPackageDisplayName(props.name))
@@ -273,12 +274,13 @@ const data = computed(() => {
 })
 
 function getUpdatePolicy() {
-  return config.value.market ?? {}
+  return getMarketNextPolicy(config.value)
 }
 
 function getUpdateIgnored() {
-  if (!config.value.market.updateIgnored) config.value.market.updateIgnored = {}
-  return config.value.market.updateIgnored
+  const policy = getWritableMarketNextPolicy(config.value)
+  policy.updateIgnored ||= {}
+  return policy.updateIgnored
 }
 
 const status = computed(() => getRegistryStatus(props.name))
@@ -302,7 +304,7 @@ const pendingRemove = computed(() => pending.value && !overrideValue.value)
 const updateCheckDisabled = computed(() => isUpdateCheckDisabled(props.name, getUpdatePolicy()))
 const ignoredUpdate = computed(() => updateCheckDisabled.value || isUpdateIgnored(props.name, getUpdatePolicy()))
 const updatable = computed(() => !!hasUpdate(props.name, getUpdatePolicy()))
-const bundlePackage = computed(() => isBundlePackageName(props.name))
+const bundlePackage = computed(() => !!bundleRecord.value)
 const unconfigured = computed(() => {
   if (bundlePackage.value) return false
   return !!ctx.configWriter && !!local.value && isPluginPackage(props.name) && !ctx.configWriter.get(props.name)?.length
@@ -608,10 +610,18 @@ function openIgnoreDialog() {
   showIgnoreDialog.value = true
 }
 
-function confirmIgnoreUpdate() {
+async function confirmIgnoreUpdate() {
+  if (ignoreSaving.value) return
+  ignoreSaving.value = true
   if (ignorePackagePermanently.value) {
     addPackageToIgnoredList(props.name)
     delete getUpdateIgnored()[props.name]
+    const saved = await persistUpdatePolicy()
+    ignoreSaving.value = false
+    if (!saved) {
+      message.error('保存忽略设置失败。')
+      return
+    }
     showIgnoreDialog.value = false
     message.success('已加入不检测更新名单。')
     return
@@ -620,8 +630,17 @@ function confirmIgnoreUpdate() {
     duration: getDialogDuration(),
     count: ignoreCount.value,
   })
-  if (!rule) return
+  if (!rule) {
+    ignoreSaving.value = false
+    return
+  }
   getUpdateIgnored()[props.name] = rule
+  const saved = await persistUpdatePolicy()
+  ignoreSaving.value = false
+  if (!saved) {
+    message.error('保存忽略设置失败。')
+    return
+  }
   showIgnoreDialog.value = false
   message.success('已忽略更新提示。')
 }
@@ -649,35 +668,50 @@ function normalizeDialogCount(value?: number, max = 20) {
 }
 
 function addPackageToIgnoredList(name: string) {
-  const names = (getUpdatePolicy().updateIgnoredPackages ?? '')
+  const policy = getWritableMarketNextPolicy(config.value)
+  const names = (policy.updateIgnoredPackages ?? '')
     .split(/[\s,，;；]+/g)
     .map(item => item.trim())
     .filter(Boolean)
   if (!names.some(item => item.toLowerCase() === name.toLowerCase())) {
     names.push(name)
   }
-  config.value.market.updateIgnoredPackages = names.join('\n')
+  policy.updateIgnoredPackages = names.join('\n')
 }
 
-function restoreUpdate() {
+async function restoreUpdate() {
   delete getUpdateIgnored()[props.name]
   removePackageFromIgnoredList(props.name)
+  const saved = await persistUpdatePolicy()
+  if (!saved) message.error('保存忽略设置失败。')
+}
+
+function persistUpdatePolicy() {
+  const policy = getUpdatePolicy()
+  return patchMarketNextConfig({
+    updateIgnored: policy.updateIgnored,
+    updateIgnoredPackages: policy.updateIgnoredPackages,
+    updateIgnoreDuration: policy.updateIgnoreDuration,
+    updateIgnoreVersions: policy.updateIgnoreVersions,
+    updateIgnorePrerelease: policy.updateIgnorePrerelease,
+  })
 }
 
 function findBundleOrigin(name: string): PluginBundleRecord | undefined {
-  const records = config.value.market?.bundleRecords ?? {}
+  const records = getBundleRecords(config.value)
   return Object.values(records).find(record => {
     return record?.members?.some(member => member.package === name)
   })
 }
 
 function removePackageFromIgnoredList(name: string) {
-  const names = (getUpdatePolicy().updateIgnoredPackages ?? '')
+  const policy = getWritableMarketNextPolicy(config.value)
+  const names = (policy.updateIgnoredPackages ?? '')
     .split(/[\s,，;；]+/g)
     .map(item => item.trim())
     .filter(Boolean)
     .filter(item => item.toLowerCase() !== name.toLowerCase())
-  config.value.market.updateIgnoredPackages = names.join('\n')
+  policy.updateIgnoredPackages = names.join('\n')
 }
 
 function isPluginPackage(name: string) {
@@ -762,6 +796,142 @@ async function configure() {
 }
 
 </script>
+
+<style lang="scss">
+
+.el-dialog.dep-ignore-dialog,
+.dep-ignore-dialog.el-dialog,
+.dep-ignore-dialog .el-dialog {
+  width: min(560px, calc(100vw - 32px)) !important;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border, #dcdfe6));
+  border-radius: 10px;
+  color: var(--fg1, var(--el-text-color-primary));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 5%, transparent), transparent 46%),
+    color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 88%, var(--k-side-bg, var(--el-bg-color)));
+  box-shadow:
+    0 24px 68px rgb(0 0 0 / 32%),
+    0 0 0 1px color-mix(in srgb, var(--fg1, currentColor) 7%, transparent) inset;
+}
+
+.dep-ignore-dialog {
+  .el-dialog__header {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    margin: 0;
+    padding: 13px 44px 12px 18px;
+    border-bottom: 1px solid color-mix(in srgb, var(--k-color-primary) 10%, var(--k-color-border, #dcdfe6));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
+      color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 70%, var(--k-card-bg, var(--el-bg-color)));
+
+    .el-dialog__title {
+      color: var(--fg1, var(--el-text-color-primary));
+      font-weight: 700;
+    }
+  }
+
+  .el-dialog__headerbtn {
+    top: 8px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    color: var(--fg2, var(--el-text-color-regular));
+
+    &:hover {
+      color: var(--k-color-primary, var(--el-color-primary));
+      background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 12%, transparent);
+    }
+  }
+
+  .el-dialog__body {
+    padding: 16px 18px 10px;
+    background: color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 46%, var(--k-card-bg, var(--el-bg-color)));
+  }
+
+  .el-dialog__footer {
+    padding: 10px 18px 14px;
+    border-top: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 70%, transparent);
+    background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 84%, var(--k-side-bg, var(--el-bg-color)));
+  }
+
+  .dep-ignore-body {
+    display: grid;
+    gap: 0.85rem;
+
+    p {
+      margin: 0;
+      color: var(--fg2, var(--el-text-color-regular));
+      line-height: 1.5;
+    }
+
+    strong {
+      color: var(--fg1, var(--el-text-color-primary));
+    }
+  }
+
+  .dep-ignore-field {
+    display: grid;
+    gap: 0.38rem;
+    min-width: 0;
+
+    > span {
+      color: var(--fg2, var(--el-text-color-regular));
+      font-size: 0.86rem;
+    }
+
+    &.inline {
+      grid-template-columns: 8rem minmax(0, 1fr);
+      align-items: center;
+    }
+  }
+
+  .dep-ignore-note {
+    border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 70%, transparent);
+    border-radius: 7px;
+    padding: 0.52rem 0.62rem;
+    color: var(--fg2, var(--el-text-color-regular));
+    background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 5%, var(--k-side-bg, var(--el-bg-color)));
+    font-size: 0.82rem;
+  }
+
+  .el-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.36rem;
+  }
+
+  .el-radio-button__inner {
+    border-radius: 7px !important;
+    border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 82%, transparent) !important;
+    background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 86%, var(--k-side-bg, var(--el-bg-color)));
+    color: var(--fg2, var(--el-text-color-regular));
+    box-shadow: none !important;
+  }
+
+  .el-radio-button__original-radio:checked + .el-radio-button__inner {
+    border-color: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 58%, var(--k-color-border, #dcdfe6)) !important;
+    background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 15%, var(--k-card-bg, var(--el-bg-color)));
+    color: var(--k-color-primary, var(--el-color-primary));
+  }
+}
+
+@media (max-width: 560px) {
+  .dep-ignore-dialog {
+    .el-dialog__body {
+      padding: 14px;
+    }
+
+    .dep-ignore-field.inline {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+</style>
 
 <style lang="scss" scoped>
 
@@ -1167,42 +1337,6 @@ async function configure() {
     &::before {
       display: none;
     }
-  }
-}
-
-.dep-ignore-dialog {
-  .dep-ignore-body {
-    display: grid;
-    gap: 0.85rem;
-
-    p {
-      margin: 0;
-      color: var(--fg2);
-      line-height: 1.5;
-    }
-  }
-
-  .dep-ignore-field {
-    display: grid;
-    gap: 0.38rem;
-
-    > span {
-      color: var(--fg2);
-      font-size: 0.86rem;
-    }
-
-    &.inline {
-      grid-template-columns: 8rem auto;
-      align-items: center;
-    }
-  }
-
-  .dep-ignore-note {
-    border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
-    border-radius: 6px;
-    padding: 0.52rem 0.62rem;
-    background: color-mix(in srgb, var(--k-side-bg) 78%, transparent);
-    font-size: 0.82rem;
   }
 }
 

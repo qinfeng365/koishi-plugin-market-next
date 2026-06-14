@@ -17,4 +17,14 @@ search:
 frontendMode: 前端显示模式。性能模式保持低动效；精致模式启用更细腻的动效和高级样式。
 depsLayout: 依赖管理页布局。网格模式多列展示；列表模式单列宽卡片，信息更密集。
 marketLayout: 插件市场页布局。网格模式多列卡片；列表模式单列紧凑行。
+idleProbe: Console 空闲时自动探测依赖版本和插件市场数据。仅在没有浏览器控制台连接时运行，不会因为刷新页面触发。
+idleProbeDelay: Console 无人在线多久后开始后台探测。
+idleProbeBootDelay: Koishi 启动或重载后，至少等待多久才允许空闲探测。
+idleProbeInterval: 两次空闲后台探测之间的最小间隔。
+bulkMode: 批量操作模式。开启后安装、更新、卸载会先暂存，点击“应用更改”后执行。
+removeConfig: 卸载插件时是否同时删除已有插件配置。未设置时每次询问。
+updateIgnoredPackages: 不检测更新的依赖名。每行一个包名，也可以使用逗号、分号或空格分隔。
+updateIgnoreDuration: 点击“忽略此次更新”后的默认忽略时长。0 表示不按时间过期。
+updateIgnoreVersions: 点击“忽略此次更新”后连续忽略几个新版本。1 表示只忽略当前最新版本。
+updateIgnorePrerelease: 手动开启后，alpha / beta / rc 等预发布版本不会被视为可更新版本。
 chatlunaTool: 启用 ChatLuna 插件市场查询工具。启用后，若当前 Koishi 同时安装了 ChatLuna，会注册只读工具 koishi_plugin_market_search。
