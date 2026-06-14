@@ -703,12 +703,12 @@ ctx.action('dependencies.upgrade', {
 .market-mode-polished .page-deps,
 .market-mode-polished.page-deps,
 .page-deps.market-mode-polished {
-  --deps-polished-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --deps-polished-ease-back: cubic-bezier(0.34, 1.8, 0.64, 1);
-  --deps-polished-glass: color-mix(in srgb, var(--k-card-bg) 86%, transparent);
-  --deps-polished-glass-strong: color-mix(in srgb, var(--k-card-bg) 94%, transparent);
-  --deps-polished-shadow: 0 12px 28px rgb(0 0 0 / 12%), 0 4px 12px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 8%);
-  --deps-polished-line: color-mix(in srgb, var(--k-color-primary) 16%, var(--k-color-border));
+  --deps-polished-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --deps-polished-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --deps-polished-glass: color-mix(in srgb, var(--k-card-bg) 45%, transparent);
+  --deps-polished-glass-strong: color-mix(in srgb, var(--k-card-bg) 60%, transparent);
+  --deps-polished-shadow: 0 6px 16px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --deps-polished-line: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
 
   // scrollbar
   .el-scrollbar__bar.is-vertical .el-scrollbar__thumb {
@@ -717,30 +717,61 @@ ctx.action('dependencies.upgrade', {
     &:hover { background: color-mix(in srgb, var(--k-color-primary) 55%, var(--el-scrollbar-hover-bg-color, rgba(144, 147, 153, 0.5))); }
   }
 
+  // layout container transparent override
+  .layout-main {
+    position: relative;
+    z-index: 1;
+    background-color: var(--k-page-bg, var(--k-bg-darker)) !important;
+    background-image: radial-gradient(color-mix(in srgb, var(--fg1) 8%, transparent) 1.2px, transparent 1.2px) !important;
+    background-size: 24px 24px !important;
+    overflow: hidden;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -10%;
+      background:
+        radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--k-color-primary) 22%, transparent) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--k-color-success) 18%, transparent) 0%, transparent 50%),
+        radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--k-color-warning) 12%, transparent) 0%, transparent 45%);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.75;
+      animation: polished-bg-drift 32s infinite alternate ease-in-out;
+      will-change: transform;
+    }
+  }
+
+  .body-container {
+    position: relative;
+    z-index: 2;
+  }
+
   .deps-toolbar {
     border-bottom-color: var(--deps-polished-line);
     background:
-      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 6%, transparent), transparent 58%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
       var(--deps-polished-glass);
-    box-shadow: 0 4px 14px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 6%);
-    backdrop-filter: blur(6px) saturate(1.04);
+    box-shadow: 0 2px 10px rgb(0 0 0 / 4%), inset 0 1px 0 rgb(255 255 255 / 5%);
+    backdrop-filter: blur(12px) saturate(120%);
   }
 
   .deps-filter-select .el-select__wrapper,
   .deps-search .el-input__wrapper {
     border: 1px solid color-mix(in srgb, var(--k-color-border) 64%, transparent);
     background: var(--deps-polished-glass);
-    backdrop-filter: blur(5px) saturate(1.03);
-    box-shadow: 0 3px 10px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 6%) !important;
+    backdrop-filter: blur(8px) saturate(110%);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 4%), inset 0 1px 0 rgb(255 255 255 / 5%) !important;
     transition:
-      border-color 0.2s var(--deps-polished-ease),
-      box-shadow 0.2s var(--deps-polished-ease),
-      background 0.2s var(--deps-polished-ease);
+      border-color 0.25s var(--deps-polished-ease),
+      box-shadow 0.25s var(--deps-polished-ease),
+      background 0.25s var(--deps-polished-ease);
 
     &.is-focused,
     &.is-focus {
-      border-color: color-mix(in srgb, var(--k-color-primary) 48%, var(--k-color-border));
-      box-shadow: 0 6px 16px rgb(0 0 0 / 8%), 0 0 0 3px color-mix(in srgb, var(--k-color-primary) 15%, transparent), inset 0 1px 0 rgb(255 255 255 / 9%) !important;
+      border-color: color-mix(in srgb, var(--k-color-primary) 40%, var(--k-color-border));
+      background: var(--deps-polished-glass-strong);
+      box-shadow: 0 4px 12px rgb(0 0 0 / 6%), 0 0 0 2px color-mix(in srgb, var(--k-color-primary) 10%, transparent), inset 0 1px 0 rgb(255 255 255 / 7%) !important;
     }
   }
 
@@ -752,19 +783,19 @@ ctx.action('dependencies.upgrade', {
       linear-gradient(180deg, rgb(255 255 255 / 3%), transparent),
       color-mix(in srgb, var(--k-side-bg) 76%, transparent);
     box-shadow: 0 1px 6px rgb(0 0 0 / 4%), inset 0 1px 0 rgb(255 255 255 / 5%);
-    transition: color 0.18s var(--deps-polished-ease), background 0.18s var(--deps-polished-ease), border-color 0.18s var(--deps-polished-ease), box-shadow 0.18s var(--deps-polished-ease), transform 0.18s var(--deps-polished-ease);
+    transition: color 0.18s var(--deps-polished-ease), background 0.18s var(--deps-polished-ease), border-color 0.18s var(--deps-polished-ease), box-shadow 0.18s var(--deps-polished-ease), transform 0.25s var(--deps-polished-ease-spring);
   }
 
   .deps-prerelease-toggle:hover,
   .deps-layout-toggle:hover {
     border-color: color-mix(in srgb, var(--k-color-primary) 40%, var(--k-color-border));
     background: var(--deps-polished-glass-strong);
-    box-shadow: 0 5px 12px rgb(0 0 0 / 8%);
-    transform: translateY(-0.5px);
+    box-shadow: 0 4px 10px rgb(0 0 0 / 6%);
+    transform: translateY(-2px);
   }
 
   .deps-prerelease-toggle.active {
-    box-shadow: 0 6px 16px color-mix(in srgb, var(--k-color-primary) 12%, transparent), inset 0 1px 0 rgb(255 255 255 / 8%);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--k-color-primary) 12%, transparent), inset 0 1px 0 rgb(255 255 255 / 8%);
   }
 
   .deps-group {
@@ -772,78 +803,120 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-group-header {
-    border-color: color-mix(in srgb, var(--group-accent) 22%, var(--k-color-border));
+    border-color: color-mix(in srgb, var(--group-accent, var(--k-color-border)) 24%, var(--k-color-border));
     background:
-      linear-gradient(90deg, color-mix(in srgb, var(--group-accent) 12%, transparent), transparent 42%),
-      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 58%),
+      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 60%),
       var(--deps-polished-glass);
-    box-shadow: 0 4px 12px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 7%);
-    backdrop-filter: blur(5px) saturate(1.03);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 4%), inset 0 1px 0 rgb(255 255 255 / 5%);
+    backdrop-filter: blur(10px) saturate(110%);
     transition:
-      border-color 0.28s var(--deps-polished-ease),
-      background 0.28s var(--deps-polished-ease),
-      box-shadow 0.28s var(--deps-polished-ease),
-      transform 0.28s var(--deps-polished-ease-back);
+      border-color 0.25s var(--deps-polished-ease),
+      background 0.25s var(--deps-polished-ease),
+      box-shadow 0.25s var(--deps-polished-ease),
+      transform 0.3s var(--deps-polished-ease-spring);
 
     h2 {
-      background: linear-gradient(90deg, var(--group-accent), color-mix(in srgb, var(--group-accent) 55%, var(--fg1)));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      color: var(--group-accent, var(--fg1));
     }
 
     p { opacity: 0.75; }
 
     &::before {
-      width: 4px;
-      border-radius: 0 2px 2px 0;
-      box-shadow: 0 0 8px color-mix(in srgb, var(--group-accent) 60%, transparent);
+      width: 3px;
+      border-radius: 0 1.5px 1.5px 0;
+      background: var(--group-accent, var(--k-color-primary));
+      box-shadow: none;
     }
 
     &.collapsible:hover,
     &.collapsible:focus-visible {
-      border-color: color-mix(in srgb, var(--group-accent) 55%, var(--k-color-border));
+      border-color: color-mix(in srgb, var(--group-accent, var(--k-color-primary)) 40%, var(--k-color-border));
+      background: var(--deps-polished-glass-strong);
       box-shadow: var(--deps-polished-shadow);
-      transform: translateY(-1px);
+      transform: translateY(-2px);
     }
   }
 
   .deps-summary span {
     backdrop-filter: blur(4px);
-    transition: transform 0.2s var(--deps-polished-ease-back), box-shadow 0.2s var(--deps-polished-ease);
+    transition: transform 0.25s var(--deps-polished-ease-spring), box-shadow 0.2s var(--deps-polished-ease);
 
-    &:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb(0 0 0 / 10%); }
+    &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgb(0 0 0 / 10%); }
   }
 
   .dep-package-card {
-    border-color: color-mix(in srgb, var(--dep-accent) 20%, var(--k-color-border));
+    border-color: color-mix(in srgb, var(--k-color-border) 70%, transparent);
     background:
-      linear-gradient(135deg, color-mix(in srgb, var(--dep-accent) 6%, transparent), transparent 56%),
-      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 52%),
-      var(--deps-polished-glass);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 6%);
-    backdrop-filter: none;
+      linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%),
+      var(--deps-polished-glass) !important;
+    background-color: transparent !important;
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.04),
+      0 1px 2px rgba(0, 0, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px) saturate(140%);
     transition:
-      border-color 0.28s var(--deps-polished-ease),
-      box-shadow 0.28s var(--deps-polished-ease),
-      transform 0.28s var(--deps-polished-ease-back),
-      background 0.28s var(--deps-polished-ease);
+      border-color 0.3s var(--deps-polished-ease),
+      box-shadow 0.4s var(--deps-polished-ease),
+      transform 0.4s var(--deps-polished-ease-spring),
+      background 0.3s var(--deps-polished-ease);
+    will-change: transform, box-shadow;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -12px;
+      border-radius: 20px;
+      background: radial-gradient(circle at center, color-mix(in srgb, var(--dep-accent) 18%, transparent), transparent 70%);
+      z-index: -1;
+      opacity: 0;
+      filter: blur(20px);
+      transition: opacity 0.4s var(--deps-polished-ease);
+      pointer-events: none;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      border: 1px solid transparent;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 40%) border-box;
+      -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: destination-out;
+      mask-composite: exclude;
+      pointer-events: none;
+      transition: opacity 0.3s var(--deps-polished-ease);
+    }
 
     &:hover {
-      border-color: color-mix(in srgb, var(--dep-accent) 55%, var(--k-color-border));
+      border-color: color-mix(in srgb, var(--dep-accent) 45%, var(--k-color-border));
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%),
+        var(--deps-polished-glass-strong);
       box-shadow:
-        0 8px 20px color-mix(in srgb, var(--dep-accent) 10%, rgb(0 0 0 / 12%)),
-        0 0 0 1px color-mix(in srgb, var(--dep-accent) 30%, transparent),
-        inset 0 1px 0 rgb(255 255 255 / 10%);
-      transform: translateY(-1.5px) scale(1.002);
+        0 16px 36px rgba(0, 0, 0, 0.12),
+        0 4px 10px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      transform: translateY(-4px) scale(1.012);
+
+      &::before {
+        opacity: 1;
+      }
     }
 
     &.expanded {
-      box-shadow: 0 8px 20px color-mix(in srgb, var(--dep-accent) 10%, rgb(0 0 0 / 12%));
+      border-color: color-mix(in srgb, var(--dep-accent) 50%, var(--k-color-border));
+      box-shadow:
+        0 20px 48px rgba(0, 0, 0, 0.16),
+        0 6px 14px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px) scale(1.006);
     }
 
     &:not(.installed)::after {
-      background: linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 14%, transparent), transparent);
+      background: none;
+      display: none;
     }
   }
 
@@ -855,21 +928,22 @@ ctx.action('dependencies.upgrade', {
   }
 
   .dep-status-mark {
-    border-color: color-mix(in srgb, var(--dep-accent) 34%, var(--k-color-border));
+    border-color: color-mix(in srgb, var(--dep-accent) 24%, var(--k-color-border));
     background:
-      linear-gradient(135deg, color-mix(in srgb, var(--dep-accent) 16%, transparent), transparent 64%),
+      linear-gradient(135deg, color-mix(in srgb, var(--dep-accent) 12%, transparent), transparent 64%),
       color-mix(in srgb, var(--k-side-bg) 76%, transparent);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--dep-accent) 14%, transparent), inset 0 1px 0 rgb(255 255 255 / 7%);
+    box-shadow: 0 1px 6px color-mix(in srgb, var(--dep-accent) 10%, transparent), inset 0 1px 0 rgb(255 255 255 / 6%);
+    transition: border-color 0.22s var(--deps-polished-ease), box-shadow 0.22s var(--deps-polished-ease), transform 0.25s var(--deps-polished-ease-spring);
   }
 
   .dep-kind-pill,
   .dep-meta-item {
-    border-color: color-mix(in srgb, var(--dep-accent) 16%, var(--k-color-border));
+    border-color: color-mix(in srgb, var(--dep-accent) 14%, var(--k-color-border));
     background: color-mix(in srgb, var(--k-side-bg) 74%, transparent);
   }
 
   .dep-badge {
-    background: color-mix(in srgb, var(--dep-accent) 11%, var(--k-side-bg));
+    background: color-mix(in srgb, var(--dep-accent) 10%, var(--k-side-bg));
   }
 
   .dep-card-actions {
@@ -877,15 +951,15 @@ ctx.action('dependencies.upgrade', {
   }
 
   .dep-card-actions.floating {
-    border-color: color-mix(in srgb, var(--dep-accent) 32%, var(--k-color-border));
+    border-color: color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
     background:
-      linear-gradient(135deg, color-mix(in srgb, var(--dep-accent) 8%, transparent), transparent 70%),
+      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 60%),
       var(--deps-polished-glass-strong);
-    box-shadow: 0 8px 20px rgb(0 0 0 / 12%), inset 0 1px 0 rgb(255 255 255 / 6%);
-    backdrop-filter: blur(5px) saturate(1.03);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px) saturate(120%);
 
     &::before {
-      border-color: color-mix(in srgb, var(--dep-accent) 32%, var(--k-color-border));
+      border-color: color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
       background: var(--deps-polished-glass-strong);
     }
   }
@@ -893,44 +967,59 @@ ctx.action('dependencies.upgrade', {
   .deps-layout-list .deps-grid {
     border-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border));
     background: color-mix(in srgb, var(--k-card-bg) 82%, transparent);
-    box-shadow: 0 5px 18px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 6%);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 5%), inset 0 1px 0 rgb(255 255 255 / 5%);
   }
 
   .deps-list-header {
     background:
-      linear-gradient(90deg, color-mix(in srgb, var(--k-color-primary) 7%, transparent), transparent 58%),
+      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent),
       color-mix(in srgb, var(--k-side-bg) 74%, transparent);
     border-bottom-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
   }
 
   .dep-list-row {
-    background:
-      linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 4%, transparent), transparent 36%),
-      color-mix(in srgb, var(--k-card-bg) 88%, transparent);
+    position: relative;
+    background: var(--deps-polished-glass);
     transition:
-      background 0.16s var(--deps-polished-ease),
-      box-shadow 0.16s var(--deps-polished-ease);
+      background 0.3s var(--deps-polished-ease),
+      box-shadow 0.3s var(--deps-polished-ease),
+      transform 0.35s var(--deps-polished-ease-spring);
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--dep-accent);
+      opacity: 0.35;
+      transition: opacity 0.3s var(--deps-polished-ease);
+    }
 
     &:hover {
-      background:
-        linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 8%, transparent), transparent 42%),
-        var(--deps-polished-glass-strong);
-      box-shadow: inset 3px 0 0 color-mix(in srgb, var(--dep-accent) 56%, transparent);
+      background: var(--deps-polished-glass-strong);
+      box-shadow:
+        0 4px 12px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transform: translateX(4px);
+      
+      &::before {
+        opacity: 1;
+      }
     }
 
     .dep-status-mark {
-      box-shadow: 0 2px 8px color-mix(in srgb, var(--dep-accent) 16%, transparent), inset 0 1px 0 rgb(255 255 255 / 8%);
+      box-shadow: 0 1px 4px color-mix(in srgb, var(--dep-accent) 12%, transparent), inset 0 1px 0 rgb(255 255 255 / 6%);
     }
   }
 }
 
 .deps-apply-bar.market-mode-polished {
-  border-top-color: color-mix(in srgb, var(--k-color-primary) 22%, var(--k-color-border));
+  border-top-color: color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 7%, transparent), transparent 64%),
-    color-mix(in srgb, var(--k-card-bg) 90%, transparent);
-    box-shadow: 0 -10px 26px rgb(0 0 0 / 12%), inset 0 1px 0 rgb(255 255 255 / 6%);
-  backdrop-filter: blur(6px) saturate(1.04);
+    linear-gradient(180deg, rgb(255 255 255 / 3%), transparent),
+    color-mix(in srgb, var(--k-card-bg) 92%, transparent);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 8%), inset 0 1px 0 rgb(255 255 255 / 5%);
+  backdrop-filter: blur(8px) saturate(1.04);
 }
 
 @keyframes deps-polished-enter {
@@ -942,6 +1031,18 @@ ctx.action('dependencies.upgrade', {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes polished-bg-drift {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translate(4%, 5%) scale(1.02) rotate(2deg);
+  }
+  100% {
+    transform: translate(-3%, -4%) scale(0.98) rotate(-2deg);
   }
 }
 

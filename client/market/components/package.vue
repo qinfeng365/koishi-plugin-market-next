@@ -1,5 +1,5 @@
 <template>
-  <a :class="['market-package flex gap-3', config.layout === 'list' ? 'list-mode flex-row' : 'flex-col', { 'bundle-card': bundlePackage }]" target="_blank" :href="homepage">
+  <a :class="['market-package flex gap-3', 'cat-' + resolveCategory(data.category), config.layout === 'list' ? 'list-mode flex-row' : 'flex-col', { 'bundle-card': bundlePackage }]" target="_blank" :href="homepage">
     <div class="header flex flex-row gap-4">
       <div :class="['left', 'shrink-0', 'flex', 'flex-row', 'justify-center', 'items-center', 'cat-' + resolveCategory(data.category)]">
         <market-icon :name="'outline:' + resolveCategory(data.category)"></market-icon>
@@ -172,6 +172,22 @@ if (import.meta.hot) {
   border: 1px solid var(--k-color-border);
   transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
 
+  &.cat-adapter    { --c: #38bdf8; }
+  &.cat-general    { --c: #4ade80; }
+  &.cat-extension  { --c: #a78bfa; }
+  &.cat-webui      { --c: #fb923c; }
+  &.cat-manage     { --c: #facc15; }
+  &.cat-preset     { --c: #60a5fa; }
+  &.cat-image      { --c: #f472b6; }
+  &.cat-media      { --c: #e879f9; }
+  &.cat-tool       { --c: #94a3b8; }
+  &.cat-life       { --c: #34d399; }
+  &.cat-ai         { --c: #818cf8; }
+  &.cat-meme       { --c: #fbbf24; }
+  &.cat-game       { --c: #f87171; }
+  &.cat-gametool   { --c: #c084fc; }
+  &.cat-other      { --c: #64748b; }
+
   &:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
     border-color: var(--k-color-primary);
@@ -200,23 +216,6 @@ if (import.meta.hot) {
       svg {
         height: 1.75rem;
       }
-
-      // category theme colors — use color-mix so dark theme gets muted versions automatically
-      &.cat-adapter    { --c: #38bdf8; }
-      &.cat-general    { --c: #4ade80; }
-      &.cat-extension  { --c: #a78bfa; }
-      &.cat-webui      { --c: #fb923c; }
-      &.cat-manage     { --c: #facc15; }
-      &.cat-preset     { --c: #60a5fa; }
-      &.cat-image      { --c: #f472b6; }
-      &.cat-media      { --c: #e879f9; }
-      &.cat-tool       { --c: #94a3b8; }
-      &.cat-life       { --c: #34d399; }
-      &.cat-ai         { --c: #818cf8; }
-      &.cat-meme       { --c: #fbbf24; }
-      &.cat-game       { --c: #f87171; }
-      &.cat-gametool   { --c: #c084fc; }
-      &.cat-other      { --c: #64748b; }
 
       background: linear-gradient(135deg,
         color-mix(in srgb, var(--c) 18%, var(--k-card-bg)),
@@ -377,11 +376,12 @@ if (import.meta.hot) {
   }
 }
 
-// Plugin bundle: distinct visual treatment
+  // Plugin bundle: distinct visual treatment
 .market-package.bundle-card {
   --bundle-color: #8b5cf6;
   border-color: color-mix(in srgb, var(--bundle-color) 32%, var(--k-color-border));
   background:
+    linear-gradient(90deg, color-mix(in srgb, var(--bundle-color) 86%, transparent), color-mix(in srgb, var(--bundle-color) 26%, transparent) 54%, transparent) top left / 100% 3px no-repeat,
     linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 10%, transparent) 0%, transparent 55%),
     var(--k-color-card, var(--k-card-bg));
   box-shadow: 0 2px 12px color-mix(in srgb, var(--bundle-color) 12%, transparent), 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -457,6 +457,10 @@ if (import.meta.hot) {
     .text-right {
       flex: 0 0 auto;
     }
+  }
+
+  &::before {
+    height: 2px;
   }
 
   .desc {

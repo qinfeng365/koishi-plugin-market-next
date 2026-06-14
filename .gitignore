@@ -5,3 +5,10 @@ Thumbs.db
 *.log
 tsconfig.tsbuildinfo
 FRONTEND_HANDOFF.md
+.history/
+.omo/
+.tmp/
+suggest/
+changelog_handoff.md
+read_styles.js
+test_write.txt

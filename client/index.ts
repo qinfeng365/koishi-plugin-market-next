@@ -1,7 +1,7 @@
 import { defineComponent, h, ref, watch } from 'vue'
 import { Context, Dict, global, message, receive, router, Schema, send, store, useConfig } from '@koishijs/client'
 import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
-import type { IgnoredUpdates } from './utils'
+import type { FrontendMode, IgnoredUpdates, LayoutMode } from './utils'
 import { showConfirm, showManual } from './components/utils'
 import extensions from './extensions'
 import Dependencies from './components/dependencies.vue'
@@ -25,6 +25,9 @@ declare module '@koishijs/client' {
 interface MarketConfig {
   bulkMode?: boolean
   removeConfig?: boolean
+  frontendMode?: FrontendMode
+  depsLayout?: LayoutMode
+  marketLayout?: LayoutMode
   override?: Dict<string>
   collapsedGroups?: Dict<boolean>
   updateIgnored?: IgnoredUpdates
@@ -163,6 +166,18 @@ export default (ctx: Context) => {
     title: '插件市场设置',
     schema: Schema.object({
       market: Schema.object({
+        frontendMode: Schema.union([
+          Schema.const('performance').description('性能模式'),
+          Schema.const('polished').description('精致模式'),
+        ]).role('radio').default('performance').description('前端显示模式。'),
+        depsLayout: Schema.union([
+          Schema.const('grid').description('网格模式'),
+          Schema.const('list').description('列表模式'),
+        ]).role('radio').default('grid').description('依赖管理页布局。'),
+        marketLayout: Schema.union([
+          Schema.const('grid').description('网格模式'),
+          Schema.const('list').description('列表模式'),
+        ]).role('radio').default('grid').description('插件市场页布局。'),
         bulkMode: Schema.boolean().default(false).hidden().description('批量操作模式。'),
         removeConfig: Schema.union([
           Schema.const(undefined).description('每次询问'),

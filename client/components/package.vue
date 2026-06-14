@@ -977,7 +977,7 @@ async function configure() {
     inset: 0 auto 0 0;
     width: 3px;
     border-radius: 10px 0 0 10px;
-    background: color-mix(in srgb, var(--dep-accent) 55%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--dep-accent) 82%, transparent), color-mix(in srgb, var(--dep-accent) 24%, transparent));
   }
 
   // status-specific accents
@@ -1000,7 +1000,9 @@ async function configure() {
     position: absolute;
     inset: 0 auto 0 3px;
     width: 3rem;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 8%, transparent), transparent);
+    background:
+      radial-gradient(circle at left center, color-mix(in srgb, var(--dep-accent) 14%, transparent), transparent 62%),
+      linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 8%, transparent), transparent);
     pointer-events: none;
   }
 }
@@ -1417,7 +1419,7 @@ async function configure() {
   }
 
   &.pending   { --dep-accent: var(--k-color-primary); background: color-mix(in srgb, var(--k-color-primary) 4%, var(--k-card-bg)); }
-  &.bundle    { --dep-accent: #9b74df; background: color-mix(in srgb, #9b74df 4%, var(--k-card-bg)); }
+  &.bundle    { --dep-accent: #9b74df; background: linear-gradient(90deg, color-mix(in srgb, #9b74df 42%, transparent), transparent 46%) top left / 100% 2px no-repeat, color-mix(in srgb, #9b74df 4%, var(--k-card-bg)); }
   &.updatable { --dep-accent: var(--k-color-success); }
   &.error, &.invalid { --dep-accent: var(--danger); background: color-mix(in srgb, var(--danger) 4%, var(--k-card-bg)); }
   &.unconfigured { --dep-accent: var(--warning); background: color-mix(in srgb, var(--warning) 3%, var(--k-card-bg)); }

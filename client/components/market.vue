@@ -580,21 +580,20 @@ function formatNumber(value?: number) {
 }
 
 .page-market.market-mode-polished {
-  --market-polished-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --market-polished-ease-back: cubic-bezier(0.34, 1.8, 0.64, 1);
-  --market-polished-shadow: 0 18px 44px rgb(0 0 0 / 18%), 0 6px 18px rgb(0 0 0 / 10%), inset 0 1px 0 rgb(255 255 255 / 9%);
-  --market-polished-shadow-glow: 0 20px 48px rgb(0 0 0 / 20%), 0 8px 22px rgb(0 0 0 / 11%), 0 0 0 1px color-mix(in srgb, var(--k-color-primary) 42%, transparent), 0 0 22px color-mix(in srgb, var(--k-color-primary) 10%, transparent), inset 0 1px 0 rgb(255 255 255 / 12%);
-  --market-polished-glass: color-mix(in srgb, var(--k-card-bg) 86%, transparent);
-  --market-polished-glass-hover: color-mix(in srgb, var(--k-card-bg) 94%, transparent);
-  --market-polished-line: color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
+  --market-polished-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --market-polished-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --market-polished-shadow: 0 4px 12px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --market-polished-shadow-glow: 0 20px 38px rgba(0, 0, 0, 0.15), 0 6px 12px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  --market-polished-glass: color-mix(in srgb, var(--k-card-bg) 45%, transparent);
+  --market-polished-glass-hover: color-mix(in srgb, var(--k-card-bg) 60%, transparent);
+  --market-polished-line: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
 
   .layout-left {
+    position: relative;
+    z-index: 2;
     border-right-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border));
-    background:
-      radial-gradient(ellipse 80% 40% at 50% 0%, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent),
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent) 0%, transparent 55%),
-      color-mix(in srgb, var(--k-side-bg) 72%, transparent);
-    backdrop-filter: blur(10px) saturate(1.08) brightness(1.01);
+    background: color-mix(in srgb, var(--k-side-bg) 35%, transparent) !important;
+    backdrop-filter: blur(12px) saturate(110%) !important;
 
     h2 {
       background: linear-gradient(90deg, var(--k-color-primary), color-mix(in srgb, var(--k-color-primary) 55%, var(--el-text-color-secondary)));
@@ -605,7 +604,33 @@ function formatNumber(value?: number) {
     }
   }
 
+  .layout-main {
+    position: relative;
+    z-index: 1;
+    background-color: var(--k-page-bg, var(--k-bg-darker)) !important;
+    background-image: radial-gradient(color-mix(in srgb, var(--fg1) 8%, transparent) 1.2px, transparent 1.2px) !important;
+    background-size: 24px 24px !important;
+    overflow: hidden;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -10%;
+      background:
+        radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--k-color-primary) 22%, transparent) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--k-color-success) 18%, transparent) 0%, transparent 50%),
+        radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--k-color-warning) 12%, transparent) 0%, transparent 45%);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.75;
+      animation: polished-bg-drift 32s infinite alternate ease-in-out;
+      will-change: transform;
+    }
+  }
+
   .layout-main .el-scrollbar__view {
+    position: relative;
+    z-index: 2;
     animation: market-polished-enter 0.5s var(--market-polished-ease) both;
   }
 
@@ -624,44 +649,37 @@ function formatNumber(value?: number) {
 
   .search-box {
     border-color: var(--market-polished-line);
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 7%, transparent) 0%, transparent 54%),
-      var(--market-polished-glass);
-    box-shadow: 0 4px 14px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 8%);
-    backdrop-filter: blur(6px) saturate(1.04);
+    background: var(--market-polished-glass);
+    box-shadow: var(--market-polished-shadow);
+    backdrop-filter: blur(12px) saturate(120%);
     transition:
-      border-color 0.28s var(--market-polished-ease),
-      box-shadow 0.28s var(--market-polished-ease),
-      transform 0.28s var(--market-polished-ease-back);
+      border-color 0.3s var(--market-polished-ease),
+      box-shadow 0.3s var(--market-polished-ease),
+      transform 0.4s var(--market-polished-ease-spring);
 
     &:focus-within {
-      border-color: color-mix(in srgb, var(--k-color-primary) 60%, var(--k-color-border));
+      border-color: color-mix(in srgb, var(--k-color-primary) 50%, var(--k-color-border));
+      background: var(--market-polished-glass-hover);
       box-shadow:
-        0 8px 22px rgb(0 0 0 / 10%),
-        0 0 0 3px color-mix(in srgb, var(--k-color-primary) 16%, transparent),
-        inset 0 1px 0 rgb(255 255 255 / 12%);
-      transform: translateY(-0.5px);
+        0 12px 28px rgba(0, 0, 0, 0.12),
+        0 0 0 3px color-mix(in srgb, var(--k-color-primary) 15%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
     }
   }
 
   .market-hint {
-    opacity: 0.9;
-    background: linear-gradient(90deg, var(--el-text-color-regular), color-mix(in srgb, var(--k-color-primary) 52%, var(--el-text-color-regular)));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    opacity: 0.8;
   }
 
   .market-stale.k-comment,
   .market-debug.k-comment,
   .market-loading-warning.k-comment,
   .market-error.k-comment {
-    border-color: color-mix(in srgb, var(--k-color-primary) 20%, var(--k-color-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 6%, transparent), transparent 70%),
-      var(--market-polished-glass);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 6%);
-    backdrop-filter: blur(6px) saturate(1.04);
+    border-color: color-mix(in srgb, var(--k-color-primary) 16%, var(--k-color-border));
+    background: var(--market-polished-glass);
+    box-shadow: var(--market-polished-shadow);
+    backdrop-filter: blur(10px) saturate(110%);
   }
 
   // scrollbar
@@ -676,7 +694,7 @@ function formatNumber(value?: number) {
   // sidebar filter items
   :deep(.market-filter-item) {
     border-radius: 8px;
-    transition: color 0.18s var(--market-polished-ease), background 0.18s var(--market-polished-ease), transform 0.22s var(--market-polished-ease-back), box-shadow 0.18s var(--market-polished-ease);
+    transition: color 0.18s var(--market-polished-ease), background 0.18s var(--market-polished-ease), transform 0.25s var(--market-polished-ease-spring), box-shadow 0.18s var(--market-polished-ease);
 
     &:hover {
       background: color-mix(in srgb, var(--k-color-primary) 7%, var(--k-hover-bg, rgba(128, 128, 128, 0.08)));
@@ -714,102 +732,126 @@ function formatNumber(value?: number) {
   }
 
   .market-package {
-    border-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+    border-color: color-mix(in srgb, var(--k-color-border) 70%, transparent);
     background:
-      linear-gradient(145deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent) 0%, transparent 48%),
-      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 44%),
-      var(--market-polished-glass);
-    box-shadow: 0 2px 10px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 6%);
-    backdrop-filter: none;
+      linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 100%),
+      var(--market-polished-glass) !important;
+    background-color: transparent !important;
+    box-shadow: var(--market-polished-shadow);
+    backdrop-filter: blur(16px) saturate(140%);
     transition:
-      transform 0.32s var(--market-polished-ease-back),
-      box-shadow 0.32s var(--market-polished-ease),
-      border-color 0.22s var(--market-polished-ease),
-      background 0.22s var(--market-polished-ease);
-    will-change: transform;
+      transform 0.4s var(--market-polished-ease-spring),
+      box-shadow 0.4s var(--market-polished-ease),
+      border-color 0.3s var(--market-polished-ease),
+      background 0.3s var(--market-polished-ease);
+    will-change: transform, box-shadow;
 
     &::before {
       content: '';
       position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background:
-        linear-gradient(90deg, color-mix(in srgb, var(--c, var(--k-color-primary)) 38%, transparent), transparent 36%),
-        radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--c, var(--k-color-primary)) 14%, transparent) 0%, transparent 56%);
+      inset: -12px;
+      border-radius: 24px;
+      background: radial-gradient(circle at center, color-mix(in srgb, var(--c, var(--k-color-primary)) 22%, transparent), transparent 70%);
+      z-index: -1;
       opacity: 0;
-      transition: opacity 0.28s var(--market-polished-ease);
+      filter: blur(20px);
+      transition: opacity 0.4s var(--market-polished-ease);
       pointer-events: none;
     }
 
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      border: 1px solid transparent;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 40%) border-box;
+      -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: destination-out;
+      mask-composite: exclude;
+      pointer-events: none;
+      transition: opacity 0.3s var(--market-polished-ease);
+    }
+
     &:hover {
-      border-color: color-mix(in srgb, var(--c, var(--k-color-primary)) 48%, var(--k-color-border));
+      border-color: color-mix(in srgb, var(--c, var(--k-color-primary)) 45%, var(--k-color-border));
       box-shadow: var(--market-polished-shadow-glow);
       background:
-        linear-gradient(145deg, color-mix(in srgb, var(--c, var(--k-color-primary)) 7%, transparent) 0%, transparent 55%),
-        linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 46%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%),
         var(--market-polished-glass-hover);
-      transform: translateY(-2px) scale(1.003);
+      transform: translateY(-4px) scale(1.012);
 
       &::before {
         opacity: 1;
       }
 
       .header .left {
-        transform: scale(1.08) rotate(-2deg);
+        transform: translateY(-2px) scale(1.08) rotate(-1deg);
         box-shadow:
-          inset 0 1px 0 rgb(255 255 255 / 18%),
-          0 8px 18px color-mix(in srgb, var(--c) 30%, transparent);
-        border-color: color-mix(in srgb, var(--c) 48%, var(--k-color-border));
+          inset 0 1px 0 rgba(255, 255, 255, 0.15),
+          0 8px 18px color-mix(in srgb, var(--c) 25%, transparent);
+        border-color: color-mix(in srgb, var(--c) 45%, var(--k-color-border));
       }
 
       .title {
-        background: linear-gradient(90deg, var(--k-text-dark, var(--k-text-normal)), color-mix(in srgb, var(--k-color-primary) 50%, var(--k-text-dark, var(--k-text-normal))));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: var(--c, var(--k-color-primary));
+        text-shadow: 0 0 12px color-mix(in srgb, var(--c, var(--k-color-primary)) 20%, transparent);
       }
     }
 
     .header .left {
+      position: relative;
+      overflow: hidden;
       box-shadow:
-        inset 0 1px 0 rgb(255 255 255 / 9%),
-        0 4px 10px color-mix(in srgb, var(--c) 14%, transparent);
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 4px 10px color-mix(in srgb, var(--c) 12%, transparent);
       transition:
-        transform 0.32s var(--market-polished-ease-back),
-        box-shadow 0.32s var(--market-polished-ease),
-        border-color 0.22s var(--market-polished-ease);
+        transform 0.4s var(--market-polished-ease-spring),
+        box-shadow 0.4s var(--market-polished-ease),
+        border-color 0.3s var(--market-polished-ease);
+
+      &::after {
+        content: '';
+        position: absolute;
+        inset: -30% -70%;
+        background: linear-gradient(115deg, transparent 40%, color-mix(in srgb, var(--c) 24%, transparent) 50%, transparent 62%);
+        opacity: 0.3;
+        transform: translateX(-18%);
+        transition: transform 0.5s var(--market-polished-ease), opacity 0.3s var(--market-polished-ease);
+        pointer-events: none;
+      }
     }
 
     h2 .icon {
-      border-color: color-mix(in srgb, currentColor 24%, transparent);
-      background: color-mix(in srgb, currentColor 10%, var(--k-card-bg));
-      box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+      border-color: color-mix(in srgb, currentColor 20%, transparent);
+      background: color-mix(in srgb, currentColor 8%, var(--k-card-bg));
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
     }
 
     .desc {
-      color: color-mix(in srgb, var(--k-text-light, var(--fg2)) 88%, var(--fg1));
+      color: var(--k-text-light, var(--fg2));
     }
 
     .rating .market-icon {
-      filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--k-color-warning) 40%, transparent));
+      filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--k-color-warning) 30%, transparent));
     }
 
     .footer {
-      border-top: 1px solid color-mix(in srgb, var(--k-color-border) 60%, transparent);
+      border-top: 1px solid color-mix(in srgb, var(--k-color-border) 40%, transparent);
       padding-top: 0.5rem;
       margin-top: -0.25rem;
       height: 2rem;
       overflow: visible;
-      color: color-mix(in srgb, var(--k-text-light, var(--fg2)) 82%, var(--fg1));
+      color: var(--k-text-light, var(--fg2));
     }
 
     .avatars img {
-      box-shadow: 0 2px 6px rgb(0 0 0 / 16%), 0 0 0 1.5px color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
-      transition: transform 0.22s var(--market-polished-ease-back), box-shadow 0.22s var(--market-polished-ease);
+      box-shadow: 0 1px 4px rgb(0 0 0 / 12%), 0 0 0 1px color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border));
+      transition: transform 0.25s var(--market-polished-ease-spring), box-shadow 0.2s var(--market-polished-ease);
 
       &:hover {
-      transform: scale(1.12) translateY(-1px);
-        box-shadow: 0 3px 8px rgb(0 0 0 / 18%), 0 0 0 2px color-mix(in srgb, var(--k-color-primary) 32%, transparent);
+        transform: translateY(-2px) scale(1.1);
+        box-shadow: 0 3px 8px rgb(0 0 0 / 15%), 0 0 0 1.5px color-mix(in srgb, var(--k-color-primary) 28%, transparent);
       }
     }
 
@@ -818,8 +860,13 @@ function formatNumber(value?: number) {
       border-radius: 10px;
       padding: 0.58rem 0.9rem;
 
+      &::before {
+        inset: -8px;
+        border-radius: 20px;
+      }
+
       &:hover {
-        transform: translateY(-2px);
+        transform: translateY(-2px) scale(1.004);
       }
 
       .header .left {
@@ -849,6 +896,18 @@ function formatNumber(value?: number) {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes polished-bg-drift {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translate(4%, 5%) scale(1.02) rotate(2deg);
+  }
+  100% {
+    transform: translate(-3%, -4%) scale(0.98) rotate(-2deg);
   }
 }
 
@@ -928,22 +987,21 @@ function formatNumber(value?: number) {
   .layout-toggle-btn {
     border-radius: 12px;
     border-color: var(--market-polished-line);
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 7%, transparent), transparent 62%),
-      color-mix(in srgb, var(--k-card-bg) 88%, transparent);
-    box-shadow: 0 4px 12px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 7%);
-    backdrop-filter: blur(5px) saturate(1.03);
+    background: var(--market-polished-glass);
+    box-shadow: var(--market-polished-shadow);
+    backdrop-filter: blur(12px) saturate(120%);
     transition:
-      color 0.18s var(--market-polished-ease),
-      border-color 0.18s var(--market-polished-ease),
-      box-shadow 0.18s var(--market-polished-ease),
-      transform 0.22s var(--market-polished-ease-back);
+      color 0.3s var(--market-polished-ease),
+      border-color 0.3s var(--market-polished-ease),
+      box-shadow 0.3s var(--market-polished-ease),
+      transform 0.4s var(--market-polished-ease-spring);
 
     &:hover {
       color: var(--k-color-primary);
       border-color: color-mix(in srgb, var(--k-color-primary) 46%, var(--k-color-border));
-      transform: translateY(-0.5px);
-      box-shadow: 0 6px 16px color-mix(in srgb, var(--k-color-primary) 10%, rgb(0 0 0 / 8%)), inset 0 1px 0 rgb(255 255 255 / 9%);
+      background: var(--market-polished-glass-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.12);
     }
   }
 }
