@@ -166,16 +166,14 @@ if (import.meta.hot) {
   box-sizing: border-box;
   position: relative;
   contain: layout paint style;
-  content-visibility: auto;
   contain-intrinsic-size: 12.5rem;
   border-radius: 12px;
   background-color: var(--k-color-card, var(--k-card-bg));
   border: 1px solid var(--k-color-border);
-  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
 
   &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
     border-color: var(--k-color-primary);
   }
 
@@ -338,7 +336,7 @@ if (import.meta.hot) {
     font-size: 13px;
     color: var(--k-text-light, #888);
     transition: color 0.3s ease;
-    overflow: hidden;
+    overflow: visible;
 
     > * {
       flex: 0 0 auto;
@@ -362,6 +360,8 @@ if (import.meta.hot) {
     .avatars {
       display: flex;
       gap: 0.25rem;
+      align-items: center;
+      min-height: 1.5rem;
 
       .avatar {
         cursor: pointer;

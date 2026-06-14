@@ -1,5 +1,7 @@
 <template>
-  <slot name="header" v-bind="{ all, packages, hasFilter: hasFilter(modelValue) }"></slot>
+  <div v-if="$slots.header" ref="header" class="market-list-header">
+    <slot name="header" v-bind="{ all, packages, hasFilter: hasFilter(modelValue) }"></slot>
+  </div>
   <template v-if="packages.length">
     <div ref="list" :class="['package-list', { settled }, config.layout === 'list' ? 'list-layout' : '']">
       <div v-if="topSpacer" class="virtual-spacer" :style="{ height: topSpacer + 'px' }"></div>
@@ -61,6 +63,7 @@ const batchSize = computed(() => {
   return 24
 })
 
+const header = ref<HTMLElement>()
 const sentinel = ref<HTMLElement>()
 const list = ref<HTMLElement>()
 const visible = ref(batchSize.value)
@@ -74,10 +77,12 @@ let observer: IntersectionObserver
 let scrollParent: HTMLElement | Window
 let resizeObserver: ResizeObserver
 let observedList: HTMLElement | undefined
+let observedHeader: HTMLElement | undefined
 let frame = 0
 let filterFrame = 0
 let settledTimer = 0
 let lastVirtualDebugAt = 0
+let listTop = 0
 let debugState = {
   timings: {} as Record<string, number>,
   total: 0,
@@ -197,9 +202,12 @@ function bindList() {
   if (observedList === list.value && scrollParent) return
   removeScrollListener()
   if (observedList) resizeObserver?.unobserve(observedList)
+  if (observedHeader) resizeObserver?.unobserve(observedHeader)
   observedList = list.value
+  observedHeader = header.value
   scrollParent = getScrollParent()
   resizeObserver?.observe(observedList)
+  if (observedHeader) resizeObserver?.observe(observedHeader)
   addScrollListener()
 }
 
@@ -216,11 +224,23 @@ function measureLayout() {
   const style = getComputedStyle(list.value)
   const gap = parseFloat(style.columnGap) || parseFloat(style.gap) || 16
   const width = list.value.clientWidth
-  columns.value = config.layout === 'list'
+  const nextColumns = config.layout === 'list'
     ? 1
     : Math.max(1, Math.floor((width + gap) / (336 + gap)))
   const card = list.value.querySelector<HTMLElement>('.market-package')
-  rowHeight.value = (card?.offsetHeight || 202) + gap
+  const nextRowHeight = (card?.offsetHeight || 202) + gap
+  const nextListTop = getListTop()
+  if (columns.value !== nextColumns) columns.value = nextColumns
+  if (rowHeight.value !== nextRowHeight) rowHeight.value = nextRowHeight
+  if (listTop !== nextListTop) listTop = nextListTop
+}
+
+function getListTop() {
+  if (!list.value || !scrollParent) return 0
+  const listRect = list.value.getBoundingClientRect()
+  if (scrollParent instanceof Window) return listRect.top + window.scrollY
+  const scrollRect = scrollParent.getBoundingClientRect()
+  return listRect.top - scrollRect.top + scrollParent.scrollTop
 }
 
 function scheduleVirtual() {
@@ -234,10 +254,6 @@ function updateVirtual() {
 
   const scrollTop = scrollParent instanceof Window ? window.scrollY : scrollParent.scrollTop
   const viewportHeight = scrollParent instanceof Window ? window.innerHeight : scrollParent.clientHeight
-  const listRect = list.value.getBoundingClientRect()
-  const listTop = scrollParent instanceof Window
-    ? listRect.top + window.scrollY
-    : listRect.top - scrollParent.getBoundingClientRect().top + scrollParent.scrollTop
   const offset = Math.max(0, scrollTop - listTop)
   const totalRows = Math.ceil(loadedPackages.value.length / columns.value)
   const overscan = 3
@@ -245,10 +261,14 @@ function updateVirtual() {
   const visibleRows = Math.ceil(viewportHeight / rowHeight.value) + overscan * 2
   const endRow = Math.min(totalRows, startRow + visibleRows)
 
-  startIndex.value = startRow * columns.value
-  endIndex.value = Math.min(loadedPackages.value.length, endRow * columns.value)
-  topSpacer.value = startRow * rowHeight.value
-  bottomSpacer.value = Math.max(0, (totalRows - endRow) * rowHeight.value)
+  const nextStartIndex = startRow * columns.value
+  const nextEndIndex = Math.min(loadedPackages.value.length, endRow * columns.value)
+  const nextTopSpacer = startRow * rowHeight.value
+  const nextBottomSpacer = Math.max(0, (totalRows - endRow) * rowHeight.value)
+  if (startIndex.value !== nextStartIndex) startIndex.value = nextStartIndex
+  if (endIndex.value !== nextEndIndex) endIndex.value = nextEndIndex
+  if (topSpacer.value !== nextTopSpacer) topSpacer.value = nextTopSpacer
+  if (bottomSpacer.value !== nextBottomSpacer) bottomSpacer.value = nextBottomSpacer
 
   const loadedHeight = listTop + totalRows * rowHeight.value
   if (hasMore.value && scrollTop + viewportHeight > loadedHeight - rowHeight.value * 4) {
@@ -303,6 +323,10 @@ function onQuery(word: string) {
     grid-template-columns: 1fr;
     justify-items: stretch;
   }
+}
+
+.market-list-header {
+  display: block;
 }
 
 .virtual-spacer {

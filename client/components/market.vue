@@ -582,10 +582,11 @@ function formatNumber(value?: number) {
 .page-market.market-mode-polished {
   --market-polished-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --market-polished-ease-back: cubic-bezier(0.34, 1.8, 0.64, 1);
-  --market-polished-shadow: 0 28px 64px rgb(0 0 0 / 26%), 0 8px 24px rgb(0 0 0 / 14%), inset 0 1px 0 rgb(255 255 255 / 10%);
-  --market-polished-shadow-glow: 0 28px 64px rgb(0 0 0 / 26%), 0 8px 24px rgb(0 0 0 / 14%), 0 0 0 1.5px color-mix(in srgb, var(--k-color-primary) 55%, transparent), 0 0 32px color-mix(in srgb, var(--k-color-primary) 12%, transparent), inset 0 1px 0 rgb(255 255 255 / 14%);
-  --market-polished-glass: color-mix(in srgb, var(--k-card-bg) 78%, transparent);
-  --market-polished-glass-hover: color-mix(in srgb, var(--k-card-bg) 90%, transparent);
+  --market-polished-shadow: 0 18px 44px rgb(0 0 0 / 18%), 0 6px 18px rgb(0 0 0 / 10%), inset 0 1px 0 rgb(255 255 255 / 9%);
+  --market-polished-shadow-glow: 0 20px 48px rgb(0 0 0 / 20%), 0 8px 22px rgb(0 0 0 / 11%), 0 0 0 1px color-mix(in srgb, var(--k-color-primary) 42%, transparent), 0 0 22px color-mix(in srgb, var(--k-color-primary) 10%, transparent), inset 0 1px 0 rgb(255 255 255 / 12%);
+  --market-polished-glass: color-mix(in srgb, var(--k-card-bg) 86%, transparent);
+  --market-polished-glass-hover: color-mix(in srgb, var(--k-card-bg) 94%, transparent);
+  --market-polished-line: color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
 
   .layout-left {
     border-right-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border));
@@ -593,7 +594,7 @@ function formatNumber(value?: number) {
       radial-gradient(ellipse 80% 40% at 50% 0%, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent),
       linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent) 0%, transparent 55%),
       color-mix(in srgb, var(--k-side-bg) 72%, transparent);
-    backdrop-filter: blur(14px) saturate(1.16) brightness(1.02);
+    backdrop-filter: blur(10px) saturate(1.08) brightness(1.01);
 
     h2 {
       background: linear-gradient(90deg, var(--k-color-primary), color-mix(in srgb, var(--k-color-primary) 55%, var(--el-text-color-secondary)));
@@ -622,12 +623,12 @@ function formatNumber(value?: number) {
   }
 
   .search-box {
-    border-color: color-mix(in srgb, var(--k-color-primary) 22%, var(--k-color-border));
+    border-color: var(--market-polished-line);
     background:
-      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 6%, transparent) 0%, transparent 55%),
+      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 7%, transparent) 0%, transparent 54%),
       var(--market-polished-glass);
-    box-shadow: 0 8px 32px rgb(0 0 0 / 10%), inset 0 1px 0 rgb(255 255 255 / 10%);
-    backdrop-filter: blur(16px) saturate(1.18);
+    box-shadow: 0 4px 14px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 8%);
+    backdrop-filter: blur(6px) saturate(1.04);
     transition:
       border-color 0.28s var(--market-polished-ease),
       box-shadow 0.28s var(--market-polished-ease),
@@ -636,15 +637,16 @@ function formatNumber(value?: number) {
     &:focus-within {
       border-color: color-mix(in srgb, var(--k-color-primary) 60%, var(--k-color-border));
       box-shadow:
-        0 16px 48px rgb(0 0 0 / 14%),
-        0 0 0 3px color-mix(in srgb, var(--k-color-primary) 18%, transparent),
+        0 8px 22px rgb(0 0 0 / 10%),
+        0 0 0 3px color-mix(in srgb, var(--k-color-primary) 16%, transparent),
         inset 0 1px 0 rgb(255 255 255 / 12%);
-      transform: translateY(-2px);
+      transform: translateY(-0.5px);
     }
   }
 
   .market-hint {
-    background: linear-gradient(90deg, var(--el-text-color-regular), color-mix(in srgb, var(--k-color-primary) 60%, var(--el-text-color-regular)));
+    opacity: 0.9;
+    background: linear-gradient(90deg, var(--el-text-color-regular), color-mix(in srgb, var(--k-color-primary) 52%, var(--el-text-color-regular)));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -658,8 +660,8 @@ function formatNumber(value?: number) {
     background:
       linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 6%, transparent), transparent 70%),
       var(--market-polished-glass);
-    box-shadow: 0 8px 28px rgb(0 0 0 / 10%);
-    backdrop-filter: blur(12px) saturate(1.12);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 6%);
+    backdrop-filter: blur(6px) saturate(1.04);
   }
 
   // scrollbar
@@ -712,47 +714,52 @@ function formatNumber(value?: number) {
   }
 
   .market-package {
-    border-color: color-mix(in srgb, var(--k-color-primary) 10%, var(--k-color-border));
+    border-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
     background:
-      linear-gradient(145deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent) 0%, transparent 50%),
+      linear-gradient(145deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent) 0%, transparent 48%),
+      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 44%),
       var(--market-polished-glass);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 7%), inset 0 1px 0 rgb(255 255 255 / 7%);
-    backdrop-filter: blur(10px) saturate(1.08);
+    box-shadow: 0 2px 10px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 6%);
+    backdrop-filter: none;
     transition:
       transform 0.32s var(--market-polished-ease-back),
       box-shadow 0.32s var(--market-polished-ease),
       border-color 0.22s var(--market-polished-ease),
       background 0.22s var(--market-polished-ease);
+    will-change: transform;
 
     &::before {
       content: '';
       position: absolute;
       inset: 0;
       border-radius: inherit;
-      background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--k-color-primary) 16%, transparent) 0%, transparent 70%);
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--c, var(--k-color-primary)) 38%, transparent), transparent 36%),
+        radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--c, var(--k-color-primary)) 14%, transparent) 0%, transparent 56%);
       opacity: 0;
-      transition: opacity 0.4s var(--market-polished-ease);
+      transition: opacity 0.28s var(--market-polished-ease);
       pointer-events: none;
     }
 
     &:hover {
-      border-color: color-mix(in srgb, var(--k-color-primary) 65%, var(--k-color-border));
+      border-color: color-mix(in srgb, var(--c, var(--k-color-primary)) 48%, var(--k-color-border));
       box-shadow: var(--market-polished-shadow-glow);
       background:
-        linear-gradient(145deg, color-mix(in srgb, var(--k-color-primary) 10%, transparent) 0%, transparent 55%),
+        linear-gradient(145deg, color-mix(in srgb, var(--c, var(--k-color-primary)) 7%, transparent) 0%, transparent 55%),
+        linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 46%),
         var(--market-polished-glass-hover);
-      transform: translateY(-10px) scale(1.016);
+      transform: translateY(-2px) scale(1.003);
 
       &::before {
         opacity: 1;
       }
 
       .header .left {
-        transform: scale(1.14) rotate(-4deg);
+        transform: scale(1.08) rotate(-2deg);
         box-shadow:
-          inset 0 1px 0 rgb(255 255 255 / 22%),
-          0 14px 32px color-mix(in srgb, var(--c) 50%, transparent);
-        border-color: color-mix(in srgb, var(--c) 55%, var(--k-color-border));
+          inset 0 1px 0 rgb(255 255 255 / 18%),
+          0 8px 18px color-mix(in srgb, var(--c) 30%, transparent);
+        border-color: color-mix(in srgb, var(--c) 48%, var(--k-color-border));
       }
 
       .title {
@@ -765,12 +772,22 @@ function formatNumber(value?: number) {
 
     .header .left {
       box-shadow:
-        inset 0 1px 0 rgb(255 255 255 / 10%),
-        0 6px 16px color-mix(in srgb, var(--c) 18%, transparent);
+        inset 0 1px 0 rgb(255 255 255 / 9%),
+        0 4px 10px color-mix(in srgb, var(--c) 14%, transparent);
       transition:
         transform 0.32s var(--market-polished-ease-back),
         box-shadow 0.32s var(--market-polished-ease),
         border-color 0.22s var(--market-polished-ease);
+    }
+
+    h2 .icon {
+      border-color: color-mix(in srgb, currentColor 24%, transparent);
+      background: color-mix(in srgb, currentColor 10%, var(--k-card-bg));
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+    }
+
+    .desc {
+      color: color-mix(in srgb, var(--k-text-light, var(--fg2)) 88%, var(--fg1));
     }
 
     .rating .market-icon {
@@ -781,15 +798,43 @@ function formatNumber(value?: number) {
       border-top: 1px solid color-mix(in srgb, var(--k-color-border) 60%, transparent);
       padding-top: 0.5rem;
       margin-top: -0.25rem;
+      height: 2rem;
+      overflow: visible;
+      color: color-mix(in srgb, var(--k-text-light, var(--fg2)) 82%, var(--fg1));
     }
 
     .avatars img {
-      box-shadow: 0 2px 6px rgb(0 0 0 / 18%), 0 0 0 1.5px color-mix(in srgb, var(--k-color-primary) 20%, var(--k-color-border));
+      box-shadow: 0 2px 6px rgb(0 0 0 / 16%), 0 0 0 1.5px color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
       transition: transform 0.22s var(--market-polished-ease-back), box-shadow 0.22s var(--market-polished-ease);
 
       &:hover {
-        transform: scale(1.18) translateY(-1px);
-        box-shadow: 0 4px 10px rgb(0 0 0 / 22%), 0 0 0 2px color-mix(in srgb, var(--k-color-primary) 40%, transparent);
+      transform: scale(1.12) translateY(-1px);
+        box-shadow: 0 3px 8px rgb(0 0 0 / 18%), 0 0 0 2px color-mix(in srgb, var(--k-color-primary) 32%, transparent);
+      }
+    }
+
+    &.list-mode {
+      min-height: 4.2rem;
+      border-radius: 10px;
+      padding: 0.58rem 0.9rem;
+
+      &:hover {
+        transform: translateY(-2px);
+      }
+
+      .header .left {
+        width: 2.7rem;
+        height: 2.7rem;
+
+        svg {
+          height: 1.35rem;
+        }
+      }
+
+      .footer {
+        height: auto;
+        padding-top: 0;
+        border-top: 0;
       }
     }
   }
@@ -882,13 +927,23 @@ function formatNumber(value?: number) {
 .page-market.market-mode-polished {
   .layout-toggle-btn {
     border-radius: 12px;
-    border-color: color-mix(in srgb, var(--k-color-primary) 22%, var(--k-color-border));
-    background: color-mix(in srgb, var(--k-card-bg) 80%, transparent);
-    backdrop-filter: blur(10px);
+    border-color: var(--market-polished-line);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 7%, transparent), transparent 62%),
+      color-mix(in srgb, var(--k-card-bg) 88%, transparent);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 6%), inset 0 1px 0 rgb(255 255 255 / 7%);
+    backdrop-filter: blur(5px) saturate(1.03);
+    transition:
+      color 0.18s var(--market-polished-ease),
+      border-color 0.18s var(--market-polished-ease),
+      box-shadow 0.18s var(--market-polished-ease),
+      transform 0.22s var(--market-polished-ease-back);
 
     &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px color-mix(in srgb, var(--k-color-primary) 15%, transparent);
+      color: var(--k-color-primary);
+      border-color: color-mix(in srgb, var(--k-color-primary) 46%, var(--k-color-border));
+      transform: translateY(-0.5px);
+      box-shadow: 0 6px 16px color-mix(in srgb, var(--k-color-primary) 10%, rgb(0 0 0 / 8%)), inset 0 1px 0 rgb(255 255 255 / 9%);
     }
   }
 }
