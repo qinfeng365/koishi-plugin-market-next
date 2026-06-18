@@ -5,7 +5,13 @@
       <market-icon :name="markIcon"></market-icon>
     </div>
     <div class="col-name">
-      <span class="name-display" :title="name">{{ displayName }}</span>
+      <span class="name-display" :title="name">
+        <span class="name-label">{{ displayName }}</span>
+        <span v-if="bundlePackage" class="dep-list-kind-pill" title="插件包">
+          <market-icon name="file-archive"></market-icon>
+          插件包
+        </span>
+      </span>
       <span class="name-full" :title="name">{{ name }}</span>
     </div>
     <div class="col-version">{{ currentText }}</div>
@@ -54,7 +60,9 @@
         <div class="dep-title-line">
           <h3 :title="name">{{ displayName }}</h3>
           <span v-if="showIdentityPill" class="dep-kind-pill">
-            <market-icon :name="identityIcon"></market-icon>
+            <span class="dep-kind-icon">
+              <market-icon :name="identityIcon"></market-icon>
+            </span>
             {{ identityText }}
           </span>
           <span v-if="showStatusBadge" :class="['dep-badge', statusClass]">
@@ -229,7 +237,7 @@ import { computed, ref } from 'vue'
 import { message, store, useConfig, useContext } from '@koishijs/client'
 import type { SearchObject } from '@koishijs/registry'
 import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
-import { createUpdateIgnoreRule, getBundleRecords, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig } from '../utils'
+import { createUpdateIgnoreRule, getBundleRecords, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
@@ -270,7 +278,7 @@ const displayName = computed(() => formatPackageDisplayName(props.name))
 
 const data = computed(() => {
   if (dep.value?.workspace || dep.value?.invalid) return
-  return analyzeVersions(props.name, (name) => config.value.market.override[name])
+  return analyzeVersions(props.name, (name) => getPendingOverrides()[name])
 })
 
 function getUpdatePolicy() {
@@ -294,7 +302,7 @@ const latestVersion = computed(() => {
 })
 
 const overrideValue = computed(() => {
-  const override = config.value.market.override
+  const override = getPendingOverrides()
   if (!Object.prototype.hasOwnProperty.call(override, props.name)) return
   return override[props.name]
 })
@@ -318,12 +326,13 @@ const selectedVersion = computed({
   },
   set(value: string) {
     if (value === removeValue) {
-      config.value.market.override[props.name] = ''
+      getPendingOverrides()[props.name] = ''
     } else if (value === dep.value?.resolved || !value && !dep.value) {
-      delete config.value.market.override[props.name]
+      delete getPendingOverrides()[props.name]
     } else {
-      config.value.market.override[props.name] = value
+      getPendingOverrides()[props.name] = value
     }
+    void patchMarketNextData({ override: { ...getPendingOverrides() } })
   },
 })
 
@@ -585,10 +594,12 @@ function openBundlePanel() {
 
 function clearOverride() {
   const pendingBundle = pendingBundleUninstalls.value[props.name]
-  delete config.value.market.override[props.name]
+  const override = getPendingOverrides()
+  delete override[props.name]
   for (const member of pendingBundle?.members ?? []) {
-    delete config.value.market.override[member]
+    delete override[member]
   }
+  void patchMarketNextData({ override: { ...override } })
   delete pendingBundleUninstalls.value[props.name]
 }
 
@@ -686,15 +697,18 @@ async function restoreUpdate() {
   if (!saved) message.error('保存忽略设置失败。')
 }
 
-function persistUpdatePolicy() {
+async function persistUpdatePolicy() {
   const policy = getUpdatePolicy()
-  return patchMarketNextConfig({
-    updateIgnored: policy.updateIgnored,
+  const configSaved = await patchMarketNextConfig({
     updateIgnoredPackages: policy.updateIgnoredPackages,
     updateIgnoreDuration: policy.updateIgnoreDuration,
     updateIgnoreVersions: policy.updateIgnoreVersions,
     updateIgnorePrerelease: policy.updateIgnorePrerelease,
   })
+  const dataSaved = await patchMarketNextData({
+    updateIgnored: policy.updateIgnored,
+  })
+  return configSaved && dataSaved
 }
 
 function findBundleOrigin(name: string): PluginBundleRecord | undefined {
@@ -1139,16 +1153,27 @@ async function configure() {
   height: 1.16rem;
   border: 1px solid color-mix(in srgb, var(--dep-accent) 22%, var(--k-color-border));
   border-radius: 6px;
-  padding: 0 0.38rem;
+  padding: 0 0.42rem 0 0.26rem;
   color: var(--dep-accent);
   background: color-mix(in srgb, var(--dep-accent) 9%, transparent);
   font-size: 0.7rem;
   font-weight: 500;
+  white-space: nowrap;
+
+  .dep-kind-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 0.86rem;
+    height: 0.86rem;
+    flex: 0 0 auto;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--dep-accent) 14%, transparent);
+  }
 
   .market-icon {
-    width: 0.78rem;
-    height: 0.78rem;
-    flex: 0 0 auto;
+    width: 0.66rem;
+    height: 0.66rem;
+    display: block;
   }
 }
 
@@ -1375,11 +1400,42 @@ async function configure() {
     gap: 0.1rem;
 
     .name-display {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
       font-size: 0.875rem;
       font-weight: 600;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+
+      .name-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    .dep-list-kind-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.24rem;
+      height: 1.05rem;
+      padding: 0 0.34rem;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, #9b74df 28%, var(--k-color-border));
+      color: #9b74df;
+      background: color-mix(in srgb, #9b74df 9%, transparent);
+      font-size: 0.68rem;
+      font-weight: 500;
+      line-height: 1;
+      white-space: nowrap;
+
+      .market-icon {
+        width: 0.68rem;
+        height: 0.68rem;
+        flex: 0 0 auto;
+      }
     }
 
     .name-full {

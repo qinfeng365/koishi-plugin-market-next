@@ -1,6 +1,7 @@
 type:
   sort: 並び順
   filter: 絞り込み
+  advanced: 詳細
   category: カテゴリ
 badge:
   installed: ダウンロード済
@@ -11,10 +12,19 @@ badge:
   portable: 快速体验
 sort:
   default: 全般
-  rating: レーティング
   download: ダウンロード
   created: 作成日時
   updated: 更新日時
+advanced:
+  createdWithin: 直近N日以内に作成
+  updatedWithin: 直近N日以内に更新
+  createdAfter: 作成日以後
+  createdBefore: 作成日以前
+  updatedAfter: 更新日以後
+  updatedBefore: 更新日以前
+  clearDates: 日付条件をクリア
+  datePlaceholder: YYYY-MM-DD
+  daysPlaceholder: 日数
 category:
   all: 利用可能なプラグイン
   other: カテゴリなし
@@ -36,5 +46,6 @@ time:
   minutes-ago: '{0} 分前'
   hours-ago: '{0} 時間前'
   days-ago: '{0} 日前'
+  updated-ago: '{0}更新'
 search:
   placeholder: 输入想要查询的插件名

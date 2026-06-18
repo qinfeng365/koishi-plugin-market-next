@@ -23,3 +23,8 @@ commands.plugin.upgrade:
     prompt: 输入「Y」升级全部依赖，输入「N」取消操作。
     cancelled: Operation canceled.
     success: Upgrade Successful!
+
+commands.plugin.clear-avatar-cache:
+  description: Clear market-next avatar cache
+  messages:
+    success: Cleared avatar cache: {0} memory entries, {1} disk files.

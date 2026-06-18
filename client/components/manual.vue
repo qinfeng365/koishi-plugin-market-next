@@ -20,11 +20,11 @@
 
 import { computed, ref, watch } from 'vue'
 import type { Registry } from '@koishijs/registry'
-import { store, useConfig } from '@koishijs/client'
+import { store } from '@koishijs/client'
 import { useDebounceFn } from '@vueuse/core'
 import { showManual, addManual } from './utils'
+import { getPendingOverrides, patchMarketNextData } from '../utils'
 
-const config = useConfig()
 const invalid = computed(() => false)
 const name = ref('')
 const remote = ref<Registry>()
@@ -45,7 +45,9 @@ watch(name, (name2) => {
 function onEnter() {
   if (!remote.value) return
   const { name } = remote.value
-  config.value.market.override[name] = remote.value['dist-tags'].latest
+  const override = getPendingOverrides()
+  override[name] = remote.value['dist-tags'].latest
+  void patchMarketNextData({ override: { ...override } })
   showManual.value = false
 }
 

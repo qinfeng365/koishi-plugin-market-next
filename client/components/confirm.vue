@@ -17,7 +17,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(version, name) in config.market.override" :key="name">
+        <tr v-for="(version, name) in overrides" :key="name">
           <td>{{ name }}</td>
           <td>{{ store.dependencies?.[name]?.resolved || '未安装' }}</td>
           <td class="arrow"><span><k-icon name="arrow-right"></k-icon></span></td>
@@ -43,27 +43,31 @@
 
 import { computed, ref } from 'vue'
 import { message, send, store, useContext, useConfig } from '@koishijs/client'
-import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls } from './utils'
-import { getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
+import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from './utils'
+import { getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
 
 const ctx = useContext()
 const config = useConfig()
+const overrides = computed(() => getPendingOverrides())
 
 const removeConfig = ref(getRemoveConfig(config.value))
 
 function clear() {
   showConfirm.value = false
-  config.value.market.override = {}
+  const override = getPendingOverrides()
+  for (const key of Object.keys(override)) delete override[key]
+  void patchMarketNextData({ override: { ...override } })
   pendingBundleUninstalls.value = {}
 }
 
 const hasRemove = computed(() => {
-  return Object.values(config.value.market.override).some(version => !version)
+  return Object.values(overrides.value).some(version => !version)
 })
 
 function confirm() {
   showConfirm.value = false
-  const override = { ...config.value.market.override }
+  const override = { ...overrides.value }
+  const selfUpdate = Object.prototype.hasOwnProperty.call(override, MARKET_NEXT_PACKAGE)
   const removed = Object.entries(override)
     .filter(([, value]) => !value)
     .map(([name]) => name)
@@ -72,10 +76,12 @@ function confirm() {
   const bundlePackages = new Set(Object.keys(bundleRemovals))
   const bundleMembers = new Set(Object.values(bundleRemovals)
     .flatMap(item => item.members ?? []))
-  return install(config.value.market.override, async () => {
-    await ensureInstalledConfigs(ctx, Object.entries(override)
+  return install(override, async () => {
+    const installNames = Object.entries(override)
       .filter(([, value]) => value)
-      .map(([name]) => name), true)
+      .map(([name]) => name)
+      .filter(name => name !== MARKET_NEXT_PACKAGE)
+    await ensureInstalledConfigs(ctx, installNames, true)
     for (const [name, item] of Object.entries(bundleRemovals)) {
       if (!item.cleanup) continue
       await send('market/remove-bundle-configs', {
@@ -94,9 +100,20 @@ function confirm() {
       delete getWritableBundleRecords(config.value)[name]
       delete pendingBundleUninstalls.value[name]
     }
-    const saved = await patchMarketNextConfig({ bundleRecords: getWritableBundleRecords(config.value) })
+    for (const key of Object.keys(getPendingOverrides())) delete getPendingOverrides()[key]
+    const saved = await patchMarketNextData({
+      override: {},
+      bundleRecords: getWritableBundleRecords(config.value),
+    })
     if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
-  })
+  }, undefined, selfUpdate ? {
+    loadingText: '正在更新 market-next……',
+    successText: 'market-next 更新已提交，Console 正在重载。',
+    errorText: 'market-next 更新失败！',
+    timeoutText: 'market-next 更新超时！',
+    selfUpdate: true,
+    skipCallbackOnDisconnect: true,
+  } : undefined)
 }
 
 </script>

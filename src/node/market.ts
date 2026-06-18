@@ -14,9 +14,9 @@ const FALLBACK_ENDPOINTS = [
   'https://koishi.itzdrli.cc',
   'https://registry.koishi.chat/index.json',
 ]
-const ROUTE_STAGGER = 120
+const ROUTE_STAGGER = 80
 const FIRST_PAYLOAD_TIMEOUT = Time.second * 1.5
-const FAST_ROUTE_THRESHOLD = Time.second * 0.8
+const FAST_ROUTE_THRESHOLD = Time.second * 0.5
 const MAX_CACHE_ENTRIES = 3
 const CACHE_ENTRY_TTL = Time.day * 30
 const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
@@ -37,6 +37,12 @@ interface CacheFile {
   result: SearchResult
 }
 
+interface CacheEntry extends Omit<CacheFile, 'result'> {
+  result?: SearchResult
+  file?: string
+  objects?: number
+}
+
 interface PersistedRouteStats {
   averageElapsed?: number
   lastSuccess?: number
@@ -47,8 +53,8 @@ interface PersistedRouteStats {
 }
 
 interface CacheStore {
-  version: 2
-  entries: Dict<CacheFile>
+  version: 3
+  entries: Dict<CacheEntry>
   lastUsed?: string
   routeStats?: Dict<PersistedRouteStats>
 }
@@ -98,7 +104,8 @@ class MarketProvider extends BaseMarketProvider {
   private forceRefresh = false
   private indexMode: 'modern' | 'legacy' = 'modern'
   private cacheFile: string
-  private cacheEntries: Dict<CacheFile> = {}
+  private cacheDir: string
+  private cacheEntries: Dict<CacheEntry> = {}
   private cacheMeta?: CacheMeta
   private conditionMeta?: CacheMeta
   private cacheResult?: SearchResult
@@ -108,6 +115,8 @@ class MarketProvider extends BaseMarketProvider {
   private backgroundSerial?: number
   private pendingRefreshTask?: Promise<any>
   private cacheWriteTimer?: ReturnType<typeof setTimeout>
+  private routeStatsWriteTimer?: ReturnType<typeof setTimeout>
+  private warmDiskCacheTask?: Promise<boolean>
   private pendingControllers = new Set<AbortController>()
   private flushData: () => void
 
@@ -117,11 +126,13 @@ class MarketProvider extends BaseMarketProvider {
       this.disposed = true
       this.serial++
       clearTimeout(this.cacheWriteTimer)
+      clearTimeout(this.routeStatsWriteTimer)
       this.abortPendingRequests('market provider disposed')
     })
     config.endpoint ||= DEFAULT_ENDPOINT
     this.endpoint = config.endpoint
     this.cacheFile = resolve(ctx.baseDir, 'cache', 'market-next-index.json')
+    this.cacheDir = resolve(ctx.baseDir, 'cache', 'market-next-index')
     this.http = ctx.http.extend(config)
     this.flushData = ctx.throttle(() => {
       if (this.disposed || !this.scanner || !ctx.scope.isActive) return
@@ -141,6 +152,9 @@ class MarketProvider extends BaseMarketProvider {
       })
       this.tempCache = {}
     }, 500)
+    ctx.on('ready', () => {
+      void this.warmDiskCache('startup')
+    })
   }
 
   async start(refresh = false) {
@@ -487,21 +501,27 @@ class MarketProvider extends BaseMarketProvider {
     if (!stats) return score
 
     const total = stats.successes + stats.failures
-    if (total) score += (stats.successes / total - 0.5) * 4
+    if (total) {
+      const successRate = stats.successes / total
+      score += (successRate - 0.5) * 6
+      if (total >= 3 && successRate >= 0.8) score += 1.5
+      if (total >= 3 && successRate < 0.35) score -= 2
+    }
     score += stats.score
-    score += Math.min(1.5, stats.successes * 0.3)
-    score -= Math.min(6, stats.failures * 1.2)
+    score += Math.min(2, stats.successes * 0.25)
+    score -= Math.min(2, stats.failures * 0.2)
     if (stats.averageElapsed != null) {
-      if (stats.averageElapsed <= 600) score += 4
-      else if (stats.averageElapsed <= FAST_ROUTE_THRESHOLD) score += 3
-      else if (stats.averageElapsed <= 1200) score += 2
-      else if (stats.averageElapsed <= 2500) score += 0
-      else if (stats.averageElapsed <= 4000) score -= 2
-      else score -= 4
+      if (stats.averageElapsed <= 300) score += 1.5
+      else if (stats.averageElapsed <= FAST_ROUTE_THRESHOLD) score += 1
+      else if (stats.averageElapsed <= 1200) score += 0.5
+      else if (stats.averageElapsed <= 2500) score -= 0.3
+      else if (stats.averageElapsed <= 4000) score -= 1
+      else score -= 2
     }
     if (stats.contentEncoding === 'br') score += 0.5
     if (stats.contentEncoding === 'gzip') score += 0.2
-    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 0.5
+    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 1.5
+    score -= Math.min(5, (stats.consecutiveFailures ?? 0) * 1.5)
     return score
   }
 
@@ -510,13 +530,15 @@ class MarketProvider extends BaseMarketProvider {
     stats.successes++
     stats.consecutiveFailures = 0
     stats.cooldownUntil = undefined
-    stats.score = clamp(stats.score + (result.elapsed <= FAST_ROUTE_THRESHOLD ? 0.5 : -0.5), -6, 3)
+    stats.failures = Math.max(0, Math.floor(stats.failures * 0.6))
+    stats.score = clamp(stats.score + (result.elapsed <= FAST_ROUTE_THRESHOLD ? 0.4 : 0.1), -6, 3)
     stats.lastSuccess = Date.now()
     stats.contentEncoding = result.contentEncoding
     stats.averageElapsed = stats.averageElapsed == null
       ? result.elapsed
       : stats.averageElapsed * 0.7 + result.elapsed * 0.3
     this.log('debug', `route success updated: endpoint=${result.endpoint}, elapsed=${result.elapsed}ms, source=${result.source}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, average=${Math.round(stats.averageElapsed)}ms, encoding=${stats.contentEncoding ?? 'identity'}`)
+    this.scheduleRouteStatsWrite()
   }
 
   private recordRouteFailure(endpoint: string) {
@@ -524,8 +546,9 @@ class MarketProvider extends BaseMarketProvider {
     stats.failures++
     stats.consecutiveFailures = (stats.consecutiveFailures ?? 0) + 1
     stats.cooldownUntil = Date.now() + getRouteCooldown(stats.consecutiveFailures)
-    stats.score = clamp(stats.score - 2, -10, 3)
+    stats.score = clamp(stats.score - 1.2, -10, 3)
     this.log('debug', `route failure updated: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, consecutive=${stats.consecutiveFailures}, cooldownUntil=${formatTime(stats.cooldownUntil)}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
+    this.scheduleRouteStatsWrite()
   }
 
   private getRouteScores(endpoints = this.getEndpointCandidates()) {
@@ -562,6 +585,7 @@ class MarketProvider extends BaseMarketProvider {
       stats.consecutiveFailures = 0
     }
     this.log('debug', `market route cooldowns cleared: reason=${reason}`)
+    this.scheduleRouteStatsWrite()
   }
 
   private getConditionalHeaders(endpoint: string) {
@@ -731,9 +755,29 @@ class MarketProvider extends BaseMarketProvider {
         debug: this.getDebugInfo(),
       }
     }
+    if (!this.hasCurrentMarketData()) {
+      const warmTask = this.warmDiskCacheTask
+      if (warmTask) {
+        const ready = await waitFor(warmTask, FIRST_PAYLOAD_TIMEOUT)
+        if (ready && this.hasCurrentMarketData()) {
+          this.log('debug', `return warm disk cache market payload, elapsed=${Date.now() - start}ms`)
+          return this.createPayload(start, !!this.backgroundTask)
+        }
+      } else {
+        const ready = await waitFor(this.warmDiskCache('first get'), Math.min(400, FIRST_PAYLOAD_TIMEOUT))
+        if (ready && this.hasCurrentMarketData()) {
+          this.log('debug', `return first-get disk cache market payload, elapsed=${Date.now() - start}ms`)
+          return this.createPayload(start, !!this.backgroundTask)
+        }
+      }
+    }
     const task = this.prepare()
-    if (!this.scanner && !this.payload) {
-      const ready = await waitFor(task, FIRST_PAYLOAD_TIMEOUT)
+    if (!this.hasCurrentMarketData()) {
+      const ready = await waitFor(task, Math.max(0, FIRST_PAYLOAD_TIMEOUT - (Date.now() - start)))
+      if (this.hasCurrentMarketData()) {
+        this.log('debug', `return market payload after first-load wait, elapsed=${Date.now() - start}ms`)
+        return this.createPayload(start, !!this.backgroundTask)
+      }
       if (!ready) {
         this.refreshAfterPrepare(task)
         this.log('debug', `return loading market payload while waiting for network, elapsed=${Date.now() - start}ms`)
@@ -855,6 +899,33 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   private async applyDiskCache(serial: number) {
+    const warmTask = this.warmDiskCacheTask
+    if (warmTask) {
+      const warmed = await warmTask
+      if (warmed && !this.isStale(serial) && this.scanner) return true
+    }
+    return this.loadDiskCache(serial)
+  }
+
+  private warmDiskCache(reason: string) {
+    if (this.warmDiskCacheTask) return this.warmDiskCacheTask
+    const serial = this.serial
+    this.createScanner()
+    this.warmDiskCacheTask = this.loadDiskCache(serial)
+      .then((loaded) => {
+        if (loaded) {
+          this.log('debug', `warm market disk cache completed: reason=${reason}, serial=${serial}, objects=${this.scanner?.total ?? 0}`)
+          if (this.ctx.scope.isActive && !this.disposed) void this.notifyMarketRefresh()
+        }
+        return loaded
+      })
+      .finally(() => {
+        if (this.warmDiskCacheTask) this.warmDiskCacheTask = undefined
+      })
+    return this.warmDiskCacheTask
+  }
+
+  private async loadDiskCache(serial: number) {
     const start = Date.now()
     try {
       this.log('debug', `read market disk cache: file=${this.cacheFile}, preferred=${this.config.endpoint}, candidates=${this.getEndpointCandidates().join(', ')}`)
@@ -862,19 +933,22 @@ class MarketProvider extends BaseMarketProvider {
       const content = await fsp.readFile(this.cacheFile, 'utf8')
       const readElapsed = Date.now() - readStart
       const parseStart = Date.now()
-      const store = normalizeCacheStore(JSON.parse(content))
+      const rawStore = JSON.parse(content)
+      const shouldMigrate = isLegacyInlineCacheStore(rawStore)
+      const store = normalizeCacheStore(rawStore)
       const parseElapsed = Date.now() - parseStart
       this.cacheEntries = { ...this.cacheEntries, ...store.entries }
       if (store.routeStats) {
         for (const [endpoint, stats] of Object.entries(store.routeStats)) {
           if (!stats) continue
           // restore learned performance data, reset session counters
+          const hasRecentSuccess = stats.lastSuccess && Date.now() - stats.lastSuccess < Time.day
           this.routeStats[endpoint] = {
-            score: stats.score,
+            score: hasRecentSuccess ? clamp(stats.score, -1, 3) : clamp(stats.score, -4, 3),
             successes: 0,
             failures: 0,
-            consecutiveFailures: stats.consecutiveFailures,
-            cooldownUntil: stats.cooldownUntil,
+            consecutiveFailures: hasRecentSuccess ? 0 : stats.consecutiveFailures,
+            cooldownUntil: hasRecentSuccess ? undefined : stats.cooldownUntil,
             averageElapsed: stats.averageElapsed,
             lastSuccess: stats.lastSuccess,
             contentEncoding: stats.contentEncoding,
@@ -884,7 +958,7 @@ class MarketProvider extends BaseMarketProvider {
       }
       this.log('debug', `market disk cache store parsed: bytes=${formatBytes(Buffer.byteLength(content))}, entries=${Object.keys(store.entries).length}, lastUsed=${store.lastUsed ?? '-'}, parse=${parseElapsed}ms, endpoints=${formatCacheEntries(store.entries)}`)
       const staleEndpoints = Object.values(store.entries)
-        .filter((e): e is CacheFile => !!e && Date.now() - e.fetchedAt > CACHE_ENTRY_TTL)
+        .filter((e): e is CacheEntry => !!e && Date.now() - e.fetchedAt > CACHE_ENTRY_TTL)
         .map(e => e.endpoint)
       if (staleEndpoints.length) {
         this.log('debug', `market disk cache has ${staleEndpoints.length} stale entries (>${CACHE_ENTRY_TTL / Time.day}d), will prune on next write: ${staleEndpoints.join(', ')}`)
@@ -893,7 +967,7 @@ class MarketProvider extends BaseMarketProvider {
           this.cacheWriteTimer = undefined
           if (this.conditionMeta) {
             void this.writeDiskCache({
-              version: 2,
+              version: 3,
               entries: this.pruneCacheEntries(this.conditionMeta.endpoint),
               lastUsed: this.conditionMeta.endpoint,
               routeStats: this.serializeRouteStats(),
@@ -901,7 +975,7 @@ class MarketProvider extends BaseMarketProvider {
           }
         }, 5000)
       }
-      const cache = this.pickDiskCache()
+      const cache = await this.pickDiskCache()
       if (!cache) {
         this.log('debug', `skip market disk cache because no cached endpoint matches candidates: ${Object.keys(store.entries).join(', ')}`)
         return false
@@ -947,6 +1021,18 @@ class MarketProvider extends BaseMarketProvider {
       }, 'initial')
       this.log('debug', `loaded market index from disk cache: ${this.scanner.total}/${cache.result.objects.length} objects, endpoint=${cache.endpoint}, cachedAt=${new Date(cache.fetchedAt).toISOString()}, entries=${Object.keys(this.cacheEntries).length}, elapsed=${Date.now() - start}ms`)
       this.log('info', `market disk cache loaded: endpoint=${cache.endpoint}, objects=${this.scanner.total}, cachedAt=${formatTime(cache.fetchedAt)}, age=${formatAge(Date.now() - cache.fetchedAt)}, entries=${Object.keys(this.cacheEntries).length}, elapsed=${Date.now() - start}ms, size=${formatBytes(cache.size)}, wireSize=${formatBytes(cache.wireSize)}, encoding=${cache.contentEncoding ?? 'identity'}`)
+      if (shouldMigrate) {
+        this.log('debug', 'schedule market disk cache migration to split v3 layout')
+        setTimeout(() => {
+          if (this.disposed || !this.ctx.scope.isActive) return
+          void this.writeDiskCache({
+            version: 3,
+            entries: this.pruneCacheEntries(cache.endpoint),
+            lastUsed: cache.endpoint,
+            routeStats: this.serializeRouteStats(),
+          })
+        }, 1000)
+      }
       return true
     } catch (error) {
       if ((error as any)?.code !== 'ENOENT') {
@@ -958,29 +1044,48 @@ class MarketProvider extends BaseMarketProvider {
     }
   }
 
-  private pickDiskCache() {
+  private async pickDiskCache() {
     const endpoints = this.getEndpointCandidates()
     const primary = this.cacheEntries[this.config.endpoint]
     this.log('debug', `pick market disk cache: preferred=${this.config.endpoint}, endpointCandidates=${endpoints.join(', ')}, cachedEntries=${formatCacheEntries(this.cacheEntries)}`)
-    if (primary && Array.isArray(primary.result?.objects)) {
-      this.log('debug', `pick market disk cache primary hit: endpoint=${primary.endpoint}, score=${this.getCacheScore(primary).toFixed(2)}, cachedAt=${formatTime(primary.fetchedAt)}, objects=${primary.result.objects.length}`)
-      return primary
+    const primaryCache = primary ? await this.loadCacheEntryResult(primary) : undefined
+    if (primaryCache) {
+      this.log('debug', `pick market disk cache primary hit: endpoint=${primaryCache.endpoint}, score=${this.getCacheScore(primaryCache).toFixed(2)}, cachedAt=${formatTime(primaryCache.fetchedAt)}, objects=${primaryCache.result.objects.length}`)
+      return primaryCache
     }
     const candidates = endpoints
       .filter(endpoint => endpoint !== this.config.endpoint)
       .map(endpoint => this.cacheEntries[endpoint])
-      .filter((cache): cache is CacheFile => !!cache && Array.isArray(cache.result?.objects))
-    if (!candidates.length) return
-    const sorted = candidates.sort((a, b) => {
-      const delta = this.getCacheScore(b) - this.getCacheScore(a)
-      if (delta) return delta
-      return b.fetchedAt - a.fetchedAt
-    })
-    this.log('debug', `pick market disk cache fallback hit: endpoint=${sorted[0].endpoint}, candidates=${sorted.map(cache => `${cache.endpoint} score=${this.getCacheScore(cache).toFixed(2)} age=${formatAge(Date.now() - cache.fetchedAt)} objects=${cache.result.objects.length}`).join(' | ')}`)
-    return sorted[0]
+      .filter((cache): cache is CacheEntry => !!cache && hasCacheResultReference(cache))
+      .sort((a, b) => {
+        const delta = this.getCacheScore(b) - this.getCacheScore(a)
+        if (delta) return delta
+        return b.fetchedAt - a.fetchedAt
+      })
+    for (const entry of candidates) {
+      const cache = await this.loadCacheEntryResult(entry)
+      if (!cache) continue
+      this.log('debug', `pick market disk cache fallback hit: endpoint=${cache.endpoint}, candidates=${candidates.map(item => `${item.endpoint} score=${this.getCacheScore(item).toFixed(2)} age=${formatAge(Date.now() - item.fetchedAt)} objects=${item.result?.objects?.length ?? item.objects ?? '-'}`).join(' | ')}`)
+      return cache
+    }
   }
 
-  private getCacheScore(cache: CacheFile) {
+  private async loadCacheEntryResult(entry: CacheEntry): Promise<CacheFile | undefined> {
+    if (Array.isArray(entry.result?.objects)) return entry as CacheFile
+    if (!entry.file) return
+    try {
+      const content = await fsp.readFile(resolve(this.cacheDir, entry.file), 'utf8')
+      const result = JSON.parse(content) as SearchResult
+      if (!Array.isArray(result?.objects)) return
+      const cache: CacheFile = { ...entry, result }
+      this.cacheEntries[entry.endpoint] = cache
+      return cache
+    } catch (error) {
+      this.log('debug', `failed to read market split cache entry: endpoint=${entry.endpoint}, file=${entry.file}, error=${formatError(error)}`)
+    }
+  }
+
+  private getCacheScore(cache: CacheEntry) {
     const age = Number.isFinite(cache.fetchedAt) ? Date.now() - cache.fetchedAt : Infinity
     let score = this.getRouteScore(cache.endpoint)
     if (age <= Time.hour * 12) score += 3
@@ -988,6 +1093,39 @@ class MarketProvider extends BaseMarketProvider {
     else score -= 1
     if (cache.endpoint === this.config.endpoint) score += 0.5
     return score
+  }
+
+  private getCacheEntryFilename(endpoint: string) {
+    return `${createHash('sha1').update(endpoint).digest('hex').slice(0, 16)}.json`
+  }
+
+  private createSplitCacheEntry(entry: CacheFile): CacheEntry {
+    const { result, ...meta } = entry
+    return {
+      ...meta,
+      file: this.getCacheEntryFilename(entry.endpoint),
+      objects: result.objects.length,
+    }
+  }
+
+  private async writeCacheEntryFile(entry: CacheFile) {
+    await fsp.mkdir(this.cacheDir, { recursive: true })
+    const file = resolve(this.cacheDir, this.getCacheEntryFilename(entry.endpoint))
+    const tempFile = `${file}.${process.pid}.${Date.now()}.tmp`
+    await fsp.writeFile(tempFile, JSON.stringify(entry.result))
+    await fsp.rename(tempFile, file)
+  }
+
+  private async pruneSplitCacheFiles(entries: Dict<CacheEntry>) {
+    try {
+      const keep = new Set(Object.values(entries).map(entry => entry?.file).filter(Boolean))
+      const files = await fsp.readdir(this.cacheDir).catch(() => [])
+      await Promise.all(files
+        .filter(file => file.endsWith('.json') && !keep.has(file))
+        .map(file => fsp.unlink(resolve(this.cacheDir, file)).catch(() => {})))
+    } catch (error) {
+      this.log('debug', `failed to prune split market cache files: ${formatError(error)}`)
+    }
   }
 
   private scheduleDiskCacheWrite(result: SearchResult, meta = this.conditionMeta) {
@@ -1001,7 +1139,7 @@ class MarketProvider extends BaseMarketProvider {
     }
     this.cacheEntries[entry.endpoint] = entry
     const cache: CacheStore = {
-      version: 2,
+      version: 3,
       entries: this.pruneCacheEntries(entry.endpoint),
       lastUsed: entry.endpoint,
       routeStats: this.serializeRouteStats(),
@@ -1012,6 +1150,40 @@ class MarketProvider extends BaseMarketProvider {
       this.cacheWriteTimer = undefined
       void this.writeDiskCache(cache)
     }, 0)
+  }
+
+  private scheduleRouteStatsWrite() {
+    clearTimeout(this.routeStatsWriteTimer)
+    this.routeStatsWriteTimer = setTimeout(() => {
+      this.routeStatsWriteTimer = undefined
+      if (this.disposed || !this.ctx.scope.isActive) return
+      void this.writeRouteStatsCache()
+    }, 1000)
+  }
+
+  private async writeRouteStatsCache() {
+    const lastUsed = this.conditionMeta?.endpoint ?? this.config.endpoint
+    let entries = this.pruneCacheEntries(lastUsed)
+    let storeLastUsed = lastUsed
+    if (!Object.keys(entries).length) {
+      try {
+        const content = await fsp.readFile(this.cacheFile, 'utf8')
+        const store = normalizeCacheStore(JSON.parse(content))
+        entries = store.entries
+        storeLastUsed = store.lastUsed ?? lastUsed
+        this.cacheEntries = { ...store.entries, ...this.cacheEntries }
+      } catch (error) {
+        if ((error as any)?.code !== 'ENOENT') {
+          this.log('debug', `failed to merge market cache before route stats write: ${formatError(error)}`)
+        }
+      }
+    }
+    await this.writeDiskCache({
+      version: 3,
+      entries,
+      lastUsed: storeLastUsed,
+      routeStats: this.serializeRouteStats(),
+    })
   }
 
   private serializeRouteStats(): Dict<PersistedRouteStats> {
@@ -1033,7 +1205,7 @@ class MarketProvider extends BaseMarketProvider {
   private pruneCacheEntries(lastUsed: string) {
     const entries = Object
       .values(this.cacheEntries)
-      .filter((cache): cache is CacheFile => !!cache && Array.isArray(cache.result?.objects) && Date.now() - cache.fetchedAt <= CACHE_ENTRY_TTL)
+      .filter((cache): cache is CacheEntry => !!cache && hasCacheResultReference(cache) && Date.now() - cache.fetchedAt <= CACHE_ENTRY_TTL)
       .sort((a, b) => {
         if (a.endpoint === lastUsed) return -1
         if (b.endpoint === lastUsed) return 1
@@ -1044,7 +1216,7 @@ class MarketProvider extends BaseMarketProvider {
         return b.fetchedAt - a.fetchedAt
       })
       .slice(0, MAX_CACHE_ENTRIES)
-    this.log('debug', `prune market disk cache entries: lastUsed=${lastUsed}, kept=${entries.map(entry => `${entry.endpoint} score=${this.getCacheScore(entry).toFixed(2)} age=${formatAge(Date.now() - entry.fetchedAt)} objects=${entry.result.objects.length}`).join(' | ')}`)
+    this.log('debug', `prune market disk cache entries: lastUsed=${lastUsed}, kept=${entries.map(entry => `${entry.endpoint} score=${this.getCacheScore(entry).toFixed(2)} age=${formatAge(Date.now() - entry.fetchedAt)} objects=${entry.result?.objects?.length ?? entry.objects ?? '-'}`).join(' | ')}`)
     return Object.fromEntries(entries.map(entry => [entry.endpoint, entry]))
   }
 
@@ -1052,7 +1224,25 @@ class MarketProvider extends BaseMarketProvider {
     if (this.disposed || !this.ctx.scope.isActive) return
     try {
       await fsp.mkdir(dirname(this.cacheFile), { recursive: true })
-      await fsp.writeFile(this.cacheFile, JSON.stringify(cache))
+      const entries: Dict<CacheEntry> = {}
+      for (const [endpoint, entry] of Object.entries(cache.entries)) {
+        if (!entry) continue
+        if (Array.isArray(entry.result?.objects)) {
+          await this.writeCacheEntryFile(entry as CacheFile)
+          entries[endpoint] = this.createSplitCacheEntry(entry as CacheFile)
+        } else if (entry.file) {
+          entries[endpoint] = entry
+        }
+      }
+      const nextStore = JSON.stringify({
+        ...cache,
+        version: 3,
+        entries,
+      })
+      const tempFile = `${this.cacheFile}.${process.pid}.${Date.now()}.tmp`
+      await fsp.writeFile(tempFile, nextStore)
+      await fsp.rename(tempFile, this.cacheFile)
+      await this.pruneSplitCacheFiles(entries)
       const endpoints = Object.keys(cache.entries)
       this.log('debug', `wrote market disk cache store: entries=${endpoints.length}, lastUsed=${cache.lastUsed ?? 'unknown'}, endpoints=${endpoints.join(', ')}`)
     } catch (error) {
@@ -1401,12 +1591,12 @@ function formatRouteScores(routes?: MarketPerformance['routeScores']) {
   ].join(' ')).join(' | ')
 }
 
-function formatCacheEntries(entries: Dict<CacheFile>) {
-  const values = Object.values(entries).filter((entry): entry is CacheFile => !!entry)
+function formatCacheEntries(entries: Dict<CacheEntry>) {
+  const values = Object.values(entries).filter((entry): entry is CacheEntry => !!entry)
   if (!values.length) return '-'
   return values.map(entry => [
     entry.endpoint,
-    `objects=${entry.result?.objects?.length ?? '-'}`,
+    `objects=${entry.result?.objects?.length ?? entry.objects ?? '-'}`,
     `cachedAt=${formatTime(entry.fetchedAt)}`,
     `age=${formatAge(Date.now() - entry.fetchedAt)}`,
     `hash=${shortHash(entry.hash) ?? '-'}`,
@@ -1417,24 +1607,38 @@ function formatCacheEntries(entries: Dict<CacheFile>) {
 }
 
 function normalizeCacheStore(value: any): CacheStore {
-  if (value?.version === 2 && value.entries && typeof value.entries === 'object') {
-    const entries: Dict<CacheFile> = {}
+  if ((value?.version === 2 || value?.version === 3) && value.entries && typeof value.entries === 'object') {
+    const entries: Dict<CacheEntry> = {}
     for (const endpoint in value.entries) {
       const entry = normalizeCacheEntry(value.entries[endpoint])
       if (entry) entries[entry.endpoint] = entry
     }
     const routeStats = normalizePersistedRouteStats(value.routeStats)
-    return { version: 2, entries, lastUsed: value.lastUsed, routeStats }
+    return { version: 3, entries, lastUsed: value.lastUsed, routeStats }
+  }
+  if ((value?.version === 2 || value?.version === 3) && value.routeStats && typeof value.routeStats === 'object') {
+    return {
+      version: 3,
+      entries: {},
+      lastUsed: value.lastUsed,
+      routeStats: normalizePersistedRouteStats(value.routeStats),
+    }
   }
   const entry = normalizeCacheEntry(value)
   if (entry) {
     return {
-      version: 2,
+      version: 3,
       entries: { [entry.endpoint]: entry },
       lastUsed: entry.endpoint,
     }
   }
-  return { version: 2, entries: {} }
+  return { version: 3, entries: {} }
+}
+
+function isLegacyInlineCacheStore(value: any) {
+  if (!value || typeof value !== 'object') return false
+  if (value.version !== 3) return true
+  return Object.values(value.entries ?? {}).some((entry: any) => Array.isArray(entry?.result?.objects))
 }
 
 function normalizePersistedRouteStats(value: any): Dict<PersistedRouteStats> | undefined {
@@ -1462,12 +1666,17 @@ function finiteNumber(value: any) {
   return Number.isFinite(number) ? number : undefined
 }
 
-function normalizeCacheEntry(value: any): CacheFile | undefined {
+function normalizeCacheEntry(value: any): CacheEntry | undefined {
   const fetchedAt = Number(value?.fetchedAt)
   if (typeof value?.endpoint !== 'string') return
   if (!Number.isFinite(fetchedAt)) return
-  if (!Array.isArray(value.result?.objects)) return
+  if (!hasCacheResultReference(value)) return
   return { ...value, fetchedAt }
+}
+
+function hasCacheResultReference(value: any): value is CacheEntry {
+  return Array.isArray(value?.result?.objects)
+    || typeof value?.file === 'string'
 }
 
 function clamp(value: number, min: number, max: number) {

@@ -7,7 +7,7 @@
 
 `koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-`3.5.5` 是本项目的第一个正式 release。`3.5.6` 整合了 alpha 系列验证过的依赖管理页改版、npm 路由优化、更新忽略策略和可选精致模式，是当前推荐的稳定版本。
+`3.5.5` 是本项目的第一个正式 release。`3.6.0` 是当前推荐的稳定版本，整合了依赖管理页重做、插件包、安全卸载、后台空闲探测、独立数据存储、永久市场过滤、头像缓存、缓存拆分和前端显示模式等一整轮 alpha 验证内容。
 
 ## 为什么做 Next
 
@@ -35,6 +35,11 @@ market-next 的目标不是破坏 Koishi 原有管理链路，而是在兼容原
 - 依赖刷新解耦：市场索引加载不再被 npm 包元数据刷新拖住。
 - npm 元数据路由探测：依赖版本刷新先选一个代表包测试最快可用 npm 源，后续包复用同一轮结果。
 - 安装后自动补配置：新安装插件会自动创建默认停用配置项，例如 `~schedule:xxxxxx: {}`。
+- 插件包：支持 `koishi-plugin-pa-*` / `@scope/koishi-plugin-pa-*` 插件包，安装、成员配置和卸载都走专用确认流程。
+- 空闲后台探测：Console 无人在线时自动刷新市场和依赖元数据，浏览器 F5 不再隐式触发依赖探测。
+- 独立数据存储：待应用变更、忽略更新和插件包归属写入 `data/market-next.json`，插件配置项仍保存在 Koishi 配置树。
+- 永久市场过滤：可在配置页添加预览版、不安全、插件包、创建/更新时间等静默规则。
+- 头像缓存：维护者头像经后端代理和本地缓存，避免重复请求，并阻止头像 URL 访问内网地址。
 - 更完整的错误提示：页面显示实际 registry、缓存状态、stale 状态和失败原因。
 - 日志页诊断增强：`search.logLevel: debug` 时，关键调试信息会以 `[debug]` 前缀写入日志页。
 - 可选 ChatLuna Tool：让 ChatLuna / AI 查询 Koishi 插件市场，支持搜索、推荐、最近新增、热门、风险状态和对比。
@@ -66,6 +71,7 @@ plugins:
       retry: 1
       concurrency: 4
     frontendMode: performance
+    idleProbe: true
     chatlunaTool: false
 ```
 
@@ -84,10 +90,17 @@ plugins:
 | `registry.retry` | `1` | 每个 npm 源失败后的重试次数。 |
 | `registry.concurrency` | `4` | 批量获取依赖版本时的最大并发数。 |
 | `frontendMode` | `performance` | 前端显示模式：`performance` 为低动效高密度，`polished` 为精致动效和高级样式。 |
+| `depsLayout` | `grid` | 依赖管理页布局：`grid` 或 `list`。 |
+| `marketLayout` | `grid` | 插件市场页布局：`grid` 或 `list`。 |
+| `idleProbe` | `true` | Console 空闲时是否自动探测市场索引和依赖 npm 元数据。 |
+| `idleProbeDelay` | `5m` | Console 无客户端后等待多久启动空闲探测。 |
+| `idleProbeBootDelay` | `1m` | Koishi 启动后至少等待多久才允许空闲探测。 |
+| `idleProbeInterval` | `6h` | 两次空闲探测之间的最小间隔。 |
 | `updateIgnoredPackages` | 空 | 不检测更新的依赖名，每行或用逗号分隔。 |
 | `updateIgnoreDuration` | `0` | “忽略此次更新”的默认忽略时长，`0` 表示默认不限时。 |
 | `updateIgnoreVersions` | `1` | “忽略此次更新”默认连续忽略几个新版本。 |
 | `updateIgnorePrerelease` | `false` | 手动开启后，`alpha` / `beta` / `rc` 等预发布版本不会被视为可更新目标。 |
+| `marketSilentRules` | 空 | 插件市场永久静默过滤规则。命中插件会从市场页隐藏。 |
 | `chatlunaTool` | `false` | 是否注册 ChatLuna 插件市场查询工具。 |
 
 ## 市场源和自动路由
@@ -121,7 +134,7 @@ market-next 区分两类源：
 
 依赖管理页显示“可更新版本”时，请求的不是 4MB 左右的市场索引，而是每个依赖包自己的 npm 元数据，例如 `https://registry.npmjs.org/koishi-plugin-xxx`。如果弱网环境下每个包都分别尝试多个 npm 源，132 个依赖就可能放大成大量超时等待。
 
-`3.5.6` 中，依赖版本刷新会先进行一次 npm registry route probe：
+`3.6.0` 中，依赖版本刷新会先进行一次 npm registry route probe：
 
 - 代表包选择顺序：`koishi`、`@koishijs/plugin-console`、第一个 Koishi 插件包、第一个普通依赖。
 - 当前 `registry.endpoint` 始终作为主源先请求。
@@ -142,7 +155,7 @@ market-next 区分两类源：
 
 ## 依赖更新提示策略
 
-`3.5.6` 增加了依赖更新提示控制，用来减少不需要处理的更新噪音：
+`3.6.0` 保留并扩展了依赖更新提示控制，用来减少不需要处理的更新噪音：
 
 - 可以在插件市场设置里填写“不检测更新的依赖名”，每行或用逗号分隔一个包名；这些依赖不会进入可更新或已忽略分组。
 - 依赖卡片上的“忽略此次更新”会先询问忽略多久，可选不限时、1 天、7 天、30 天或自定义天数。
@@ -156,7 +169,11 @@ market-next 区分两类源：
 
 ## 缓存策略
 
-market-next 会把市场索引缓存到 Koishi 实例目录下的 `cache/market-next-index.json`。
+market-next 会把市场索引缓存到 Koishi 实例目录下：
+
+- `cache/market-next-index.json`：轻量索引元信息，记录各市场源的缓存文件、ETag、Last-Modified、hash、路由状态等。
+- `cache/market-next-index/`：按市场源拆分保存的索引内容，避免主索引文件长期膨胀。
+- `cache/market-next-avatars/`：维护者头像缓存，过期和超量缓存会自动清理。
 
 缓存策略：
 
@@ -171,6 +188,47 @@ market-next 会把市场索引缓存到 Koishi 实例目录下的 `cache/market-
 - 市场源和 npm registry 的路由评分会持久化，重启后不必完全冷启动重新试源。
 
 这套策略的目的不是永远显示旧市场，而是让弱网用户先能操作，再在后台确认数据是否更新。
+
+## 数据存储
+
+market-next 区分“插件配置”和“运行数据”：
+
+- Koishi 配置树：保存 `frontendMode`、布局、空闲探测、永久过滤、更新策略等用户配置。
+- `data/market-next.json`：保存待应用依赖变更、单次忽略更新记录和插件包归属记录。
+- `cache/`：保存市场索引、路由统计和头像缓存。
+
+这样做是为了避免把临时状态和运行数据塞进 `koishi.yml`，同时仍然让真正的插件设置由 Koishi 配置系统管理。
+
+## 空闲后台探测
+
+默认开启 `idleProbe` 后，market-next 会在 Console 无客户端连接一段时间后静默探测：
+
+- 刷新市场索引缓存。
+- 刷新本地依赖的 npm 元数据和 latest 状态。
+- 更新市场源和 npm registry 的路由统计。
+- 保留现有页面数据，失败时只记录日志，不清空列表。
+
+浏览器 F5、WebSocket 重连或重新打开依赖页不会隐式触发依赖元数据刷新；用户点击“刷新依赖”仍然会立即执行手动刷新。
+
+## 市场过滤与搜索
+
+市场页支持临时搜索条件，也支持配置页里的永久静默规则。
+
+临时搜索适合当前这次浏览，例如：
+
+- `is:bundle`
+- `not:preview`
+- `created<2024-01-01`
+- `updated>2025-01-01`
+- `updated<30d`
+
+永久静默规则适合长期隐藏不想看到的插件。规则可以按状态、创建时间、更新时间、最近 N 天或自定义搜索条件匹配。命中的插件会直接从市场页列表中移除，不再显示为搜索栏 token。
+
+## 头像缓存
+
+维护者头像会先按用户身份 key 查询本地缓存，再尝试外部头像候选。成功头像会被后端代理为 base64 并写入 `cache/market-next-avatars/`，缓存最长保留 7 天，最多保留 512 个条目。
+
+头像代理会拒绝访问 localhost、私网地址、无效协议和过大的响应，避免市场源或用户资料中的头像 URL 变成后端内网探测入口。
 
 ## 安装后配置补齐
 
@@ -270,7 +328,7 @@ market-next 识别插件包的方式：
 - 用户选择“移动已有配置到插件包分组”时才会移动配置。
 - 不会静默启用成员插件，不会静默删除用户配置。
 
-卸载插件包时，market-next 会显示成员列表。默认只卸载插件包自身；用户可以选择把由该包记录的成员一起加入卸载。成员配置仍需要用户自行检查和清理。
+卸载插件包时，market-next 会显示成员列表和处理策略。默认卸载插件包自身；由该包安装且没有外部分组配置的成员可以一并勾选卸载。若成员在插件包分组外还有原本存在的配置，market-next 只清理插件包分组下的配置副本，不会删除用户原配置。
 
 ### 发布校验
 
@@ -382,7 +440,7 @@ market-next 不移除原有 Console 事件：
 - `market/refresh-dependencies`
 - `market/ensure-config`
 
-配置兼容原 market 的 `market.override`、`bulkMode`、`removeConfig`、`gravatar` 等前端配置。
+配置兼容原 market 的 `bulkMode`、`removeConfig`、`gravatar` 等前端配置。`override`、`updateIgnored` 和 `bundleRecords` 等运行数据会迁移并保存在 `data/market-next.json`。
 
 ## 开发
 
@@ -432,7 +490,29 @@ npm pack --dry-run
 - 手动发布只能在默认分支执行。
 - 发布前检查 npm 是否已经存在同版本。
 - 使用 npm Trusted Publishing，不需要 `NPM_TOKEN`。
-- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.5.6-alpha.4` 发布到 `alpha`，正式版本发布到 `latest`。
+- 预发布版本会按版本后缀选择 npm dist-tag，例如 `3.6.0-alpha.7` 发布到 `alpha`，正式版本发布到 `latest`。
+
+## 3.6.0 Release Notes
+
+`3.6.0` 是 market-next 第二个正式稳定版，也是从 `3.5.6` 以来最大的一次功能更新。
+
+这一版重点包含：
+
+- 新增插件包能力：识别 `koishi-plugin-pa-*`、`@scope/koishi-plugin-pa-*` 和 `market:package`，通过 `koishi.bundle` 声明成员。
+- 插件包安装进入专用确认 GUI，展示成员、版本范围、来源、风险、预设配置和最终 diff。
+- 插件包预设配置不静默写入，成员配置默认停用，用户确认后才会写入插件包分组。
+- 插件包卸载支持只卸载包自身、同时卸载成员、只清理包分组配置等策略，不删除外部原配置。
+- 插件包归属记录用于依赖管理分组、成员来源展示和卸载辅助。
+- 依赖管理页、市场页和配置页的插件包入口统一到专用安装/维护面板。
+- 新增 Console 空闲后台探测，F5 不再触发依赖元数据刷新。
+- 待应用变更、忽略更新和插件包记录迁到 `data/market-next.json`，避免污染 Koishi 插件配置。
+- 市场索引缓存拆分为轻量主索引和分源缓存文件，降低单个 JSON 文件体积。
+- 新增永久市场静默规则，可按预览版、不安全、插件包、创建/更新时间和自定义条件隐藏插件。
+- 删除插件评分相关 UI 与排序入口，默认排序回到更稳定的市场内置排序/更新时间兜底。
+- 维护者头像增加后端代理、身份 key 缓存、过期清理和 SSRF 防护。
+- 安装队列、失败回滚、批量元数据请求隔离、路由取消/退避等链路继续收紧，降低弱网和并发操作下的损坏风险。
+- 前端性能模式与精致模式继续分离，市场页、依赖页、插件包弹窗和移动端样式做了大量兼容修复。
+- README、发布校验和包内容检查同步更新到插件包与 3.6.0 工作流。
 
 ## 3.5.6 Release Notes
 

@@ -23,3 +23,8 @@ commands.plugin.upgrade:
     prompt: 輸入「Y」升級全部依賴，輸入「N」取消操作。
     cancelled: 已取消操作。
     success: 升級成功！
+
+commands.plugin.clear-avatar-cache:
+  description: 清理 market-next 頭像快取
+  messages:
+    success: 已清理頭像快取：記憶體 {0} 條，磁碟 {1} 個檔案。

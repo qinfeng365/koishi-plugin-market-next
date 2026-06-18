@@ -23,3 +23,8 @@ commands.plugin.upgrade:
     prompt: 输入「Y」升级全部依赖，输入「N」取消操作。
     cancelled: 已取消操作。
     success: 升级成功！
+
+commands.plugin.clear-avatar-cache:
+  description: 清理 market-next 头像缓存
+  messages:
+    success: 已清理头像缓存：内存 {0} 条，磁盘 {1} 个文件。

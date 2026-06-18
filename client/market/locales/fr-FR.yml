@@ -1,6 +1,7 @@
 type:
   sort: Ordre
   filter: Filtre
+  advanced: Avancé
   category: Catégories
 badge:
   installed: Téléchargées
@@ -11,10 +12,19 @@ badge:
   portable: 快速体验
 sort:
   default: Générales
-  rating: Par score
   download: Par téléchargées
   created: Par date de création
   updated: Par date de mise à jour
+advanced:
+  createdWithin: Créé depuis N jours
+  updatedWithin: Mis à jour depuis N jours
+  createdAfter: Créé après
+  createdBefore: Créé avant
+  updatedAfter: Mis à jour après
+  updatedBefore: Mis à jour avant
+  clearDates: Effacer les dates
+  datePlaceholder: YYYY-MM-DD
+  daysPlaceholder: jours
 category:
   all: Plugins disponibles
   other: Non catégorisé
@@ -36,5 +46,6 @@ time:
   minutes-ago: 'Il y a {0} minute(s)'
   hours-ago: 'Il y a {0} heure(s)'
   days-ago: 'Il y a {0} jour(s)'
+  updated-ago: 'Mis à jour {0}'
 search:
   placeholder: 输入想要查询的插件名

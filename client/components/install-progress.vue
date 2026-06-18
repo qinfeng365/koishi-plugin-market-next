@@ -73,10 +73,17 @@ const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 const viewport = ref<HTMLElement>()
 
 const statusText = computed(() => {
+  const selfUpdateText = installProgressState.selfUpdate
   switch (installProgressState.status) {
-    case 'running': return '正在应用依赖变更，请勿关闭页面……'
-    case 'success': return '依赖安装成功！控制台正在重载服务。'
-    case 'error': return '依赖安装失败，请检查控制台输出。'
+    case 'running': return selfUpdateText
+      ? '正在更新 market-next，请勿关闭页面……'
+      : '正在应用依赖变更，请勿关闭页面……'
+    case 'success': return selfUpdateText
+      ? 'market-next 更新成功，控制台正在重载。'
+      : '依赖安装成功！控制台正在重载服务。'
+    case 'error': return selfUpdateText
+      ? 'market-next 更新失败，请检查控制台输出。'
+      : '依赖安装失败，请检查控制台输出。'
     default: return '准备就绪'
   }
 })

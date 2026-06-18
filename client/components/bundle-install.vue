@@ -16,7 +16,10 @@
         <div class="bundle-hero-text">
           <div class="bundle-hero-title">
             <span>{{ title }}</span>
-            <span class="bundle-badge">插件包</span>
+            <span class="bundle-badge">
+              <market-icon name="file-archive"></market-icon>
+              插件包
+            </span>
           </div>
           <div v-if="activeBundle" class="bundle-hero-meta">
             <span>{{ activeBundle.package.name }}</span>
@@ -327,7 +330,7 @@
 <script setup lang="ts">
 
 import { computed, reactive, ref, watch } from 'vue'
-import { message, send, store, useConfig, useContext } from '@koishijs/client'
+import { message, send, socket, store, useConfig, useContext } from '@koishijs/client'
 import type { Registry } from '@koishijs/registry'
 import {
   BundleInstallMember,
@@ -343,7 +346,7 @@ import { activeBundle, getBundleMemberConfigState, installProgressState } from '
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import { satisfies } from 'semver'
-import { getFrontendMode, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
+import { getFrontendMode } from '../utils'
 
 const loading = ref(false)
 const installing = ref(false)
@@ -600,9 +603,32 @@ async function confirmInstall() {
   installProgressState.logs = []
   installProgressState.status = 'running'
   installProgressState.visible = true
+  installProgressState.selfUpdate = false
+  installProgressState.logs.push({
+    type: 'stdout',
+    line: '已提交插件包安装请求，正在等待后端处理依赖与配置分组……',
+  })
 
+  let disconnectedBeforeResponse = false
+  let resolveDisconnected: (value: undefined) => void
+  const disconnected = new Promise<undefined>((resolve) => {
+    resolveDisconnected = resolve
+  })
+  const dispose = watch(socket, (value, previous) => {
+    if (value || !previous) return
+    disconnectedBeforeResponse = true
+    resolveDisconnected(undefined)
+    dispose()
+  })
+  const waitTimer = setTimeout(() => {
+    if (installProgressState.status !== 'running') return
+    installProgressState.logs.push({
+      type: 'stdout',
+      line: '仍在等待包管理器输出；插件包会同时处理多个成员，弱网环境下可能需要更久。',
+    })
+  }, 8000)
   try {
-    const result = await send('market/install-bundle', {
+    const task = send('market/install-bundle', {
       package: activeBundle.value.package.name,
       version: bundleVersion.value,
       bundle: bundle.value,
@@ -610,19 +636,19 @@ async function confirmInstall() {
         ...member,
         createConfig: member.createConfig || !!member.move,
       })),
-    }) as BundleInstallResult
+    }) as Promise<BundleInstallResult> | undefined
+    const result = await Promise.race([task ?? Promise.resolve(undefined), disconnected])
+    if (disconnectedBeforeResponse) {
+      installProgressState.status = 'error'
+      reportInstallError('Console 连接已断开，插件包安装结果无法确认。请刷新依赖页确认实际状态。')
+      return
+    }
     if (result?.code) {
       installProgressState.status = 'error'
       reportInstallError(`包管理器退出码：${result.code}`)
       return
     }
     installProgressState.status = 'success'
-    if (result?.record) {
-      const records = getWritableBundleRecords(config.value)
-      records[result.record.package] = result.record
-      const saved = await patchMarketNextConfig({ bundleRecords: records })
-      if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
-    }
     const moved = result?.moved?.length ? `，移动配置 ${result.moved.length} 项` : ''
     const skipped = result?.skipped?.length ? `，跳过配置 ${result.skipped.length} 项` : ''
     message.success(`插件包安装完成${moved}${skipped}。`)
@@ -632,6 +658,8 @@ async function confirmInstall() {
     installProgressState.status = 'error'
     reportInstallError(formatInstallError(err))
   } finally {
+    clearTimeout(waitTimer)
+    dispose()
     installing.value = false
   }
 }
@@ -757,6 +785,9 @@ function formatInstallError(error: unknown) {
   }
 
   .bundle-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.26rem;
     font-size: 0.7rem;
     padding: 0.08rem 0.45rem;
     border-radius: 999px;
@@ -764,6 +795,12 @@ function formatInstallError(error: unknown) {
     background: var(--bundle-color-soft);
     border: 1px solid var(--bundle-color-border);
     font-weight: 500;
+
+    .market-icon {
+      width: 0.72rem;
+      height: 0.72rem;
+      flex: 0 0 auto;
+    }
   }
 
   .bundle-hero-meta {

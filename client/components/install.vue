@@ -131,7 +131,7 @@
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, message, send, store, useContext, useConfig } from '@koishijs/client'
 import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
-import { active, getBulkMode, getBundleRecords, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
+import { active, getBulkMode, getBundleRecords, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import BundleUninstall from './bundle-uninstall.vue'
@@ -158,11 +158,13 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
 
   // workspace packages don't need to be installed
   if (bulkMode.value && !workspace.value) {
+    const override = getPendingOverrides()
     if (dep.value?.resolved === version || !version && !dep.value) {
-      delete config.value.market.override[target]
+      delete override[target]
     } else {
-      config.value.market.override[target] = version
+      override[target] = version
     }
+    void patchMarketNextData({ override: { ...override } })
     active.value = ''
     return
   }
@@ -200,7 +202,7 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
     if (!version) {
       const records = getWritableBundleRecords(config.value)
       delete records[target]
-      const saved = await patchMarketNextConfig({ bundleRecords: records })
+      const saved = await patchMarketNextData({ bundleRecords: records })
       if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
     }
   })
@@ -227,7 +229,7 @@ const selectVersion = computed({
 const versions = reactive<Dict<string>>({})
 
 function getOverride() {
-  return bulkMode.value ? config.value.market.override : versions
+  return bulkMode.value ? getPendingOverrides() : versions
 }
 
 function getVersion(name: string) {
@@ -273,7 +275,7 @@ const bundleUninstallRecord = computed(() => {
 })
 
 const showRemoveButton = computed(() => {
-  return current.value || store.dependencies?.[active.value] || bulkMode.value && config.value.market.override[active.value]
+  return current.value || store.dependencies?.[active.value] || bulkMode.value && getPendingOverrides()[active.value]
 })
 
 const workspace = computed(() => getWorkspaceVersion(active.value))
@@ -373,7 +375,7 @@ watch(() => data.value?.[version.value]?.peers, async (peers) => {
 watch(active, async (name) => {
   if (!name) return
 
-  version.value = config.value.market.override[active.value]
+  version.value = getPendingOverrides()[active.value]
     || store.dependencies?.[active.value]?.request
     || Object.keys(store.registry?.[name] || {})[0]
 

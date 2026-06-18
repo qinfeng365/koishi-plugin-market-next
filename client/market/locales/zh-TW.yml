@@ -1,6 +1,7 @@
 type:
   sort: 排序
   filter: 篩選
+  advanced: 進階
   category: 分類
 badge:
   installed: 已下載
@@ -11,10 +12,19 @@ badge:
   portable: 快速體驗
 sort:
   default: 綜合
-  rating: 依評分
   download: 依下載量
   created: 依創建時間
   updated: 依更新時間
+advanced:
+  createdWithin: 最近幾天創建
+  updatedWithin: 最近幾天更新
+  createdAfter: 創建晚於
+  createdBefore: 創建早於
+  updatedAfter: 更新晚於
+  updatedBefore: 更新早於
+  clearDates: 清除時間篩選
+  datePlaceholder: YYYY-MM-DD
+  daysPlaceholder: 天數
 category:
   all: 所有外掛程式
   other: 未分類
@@ -36,5 +46,6 @@ time:
   minutes-ago: '{0} 分鐘前'
   hours-ago: '{0} 小時前'
   days-ago: '{0} 天前'
+  updated-ago: '{0}更新'
 search:
   placeholder: 輸入想要查詢的外掛程式名

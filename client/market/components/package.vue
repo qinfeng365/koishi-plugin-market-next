@@ -14,11 +14,9 @@
           </el-tooltip>
         </h2>
         <div class="bottom">
-          <el-tooltip :content="Math.max(Math.min(data.rating ?? 0, 5), 0).toFixed(1)" placement="right">
-            <div class="rating">
-              <market-icon v-for="index in starIndexes" :key="index" :name="index + 0.5 < data.rating ? 'star-full' : 'star-empty'"></market-icon>
-            </div>
-          </el-tooltip>
+          <span class="updated-meta">
+            <market-icon name="heart-pulse"></market-icon>{{ updatedAgo(data.updatedAt) }}
+          </span>
         </div>
       </div>
       <div class="text-right grow-1 shrink-0">
@@ -52,9 +50,22 @@
       </template>
       <span class="long-spacer"></span>
       <div class="avatars">
-        <el-tooltip v-for="user in getUsers(data)" :key="user.email || user.username || user.name" :content="user.name || user.username || user.email" placement="top">
-          <span class="avatar" @click.stop.prevent="user.email && $emit('query', 'email:' + user.email)">
-            <img :src="getAvatar(user)" loading="lazy" decoding="async">
+        <el-tooltip v-for="view in avatarViews" :key="view.key" :content="view.label" placement="top">
+          <span
+            class="avatar"
+            :class="{ placeholder: !view.src }"
+            :data-initial="view.initial"
+            @click.stop.prevent="view.user.email && $emit('query', 'email:' + view.user.email)"
+          >
+            <img
+              v-if="view.src"
+              :key="view.src"
+              :src="view.src"
+              loading="lazy"
+              decoding="async"
+              @error="handleAvatarRenderError(view)"
+              @load="handleAvatarRenderLoad(view)"
+            >
           </span>
         </el-tooltip>
       </div>
@@ -64,10 +75,10 @@
 
 <script lang="ts" setup>
 
-import { computed, inject } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { SearchObject } from '@koishijs/registry'
 import { useI18nText } from '@koishijs/components'
-import { badges, getUserAvatar, getUsers, isBundleSearchObject, resolveCategory, validate } from '../utils'
+import { badges, cacheAvatarFailure, fetchAndCacheAvatar, fetchCachedAvatar, getCachedAvatarFromCandidates, getUserAvatarCandidates, getUserKey, getUsers, isAvatarFailureCached, isBundleSearchObject, resolveCategory, validate } from '../utils'
 import { kConfig } from '../utils'
 import { useI18n } from 'vue-i18n'
 import zhCN from '../locales/zh-CN.yml'
@@ -81,9 +92,11 @@ const props = defineProps<{
 }>()
 
 const config = inject(kConfig, {})
+const avatars = ref<Record<string, string>>({})
+const avatarCursor = ref<Record<string, number>>({})
+const avatarTasks = new Map<string, Promise<void>>()
 
 const tt = useI18nText()
-const starIndexes = [0, 1, 2, 3, 4]
 
 const homepage = computed(() => {
   const { homepage, repository } = props.data.package.links
@@ -108,8 +121,110 @@ const badge = computed(() => {
 
 const bundlePackage = computed(() => isBundleSearchObject(props.data))
 
-function getAvatar(user: ReturnType<typeof getUsers>[number]) {
-  return getUserAvatar(user, props.gravatar)
+type MarketUser = ReturnType<typeof getUsers>[number]
+
+interface AvatarView {
+  key: string
+  user: MarketUser
+  label: string
+  initial: string
+  src: string
+  candidates: ReturnType<typeof getUserAvatarCandidates>
+  signature: string
+  candidate?: ReturnType<typeof getUserAvatarCandidates>[number]
+  cached: boolean
+}
+
+const avatarViews = computed<AvatarView[]>(() => {
+  return getUsers(props.data).map((user, index) => {
+    const candidates = getUserAvatarCandidates(user, props.gravatar)
+    const key = getAvatarIdentity(user, candidates, index)
+    const cached = avatars.value[key] || getCachedAvatarFromCandidates(candidates)
+    const candidate = cached ? undefined : getAvatarSource(key, candidates)
+    return {
+      key,
+      user,
+      label: user.name || user.username || user.email || key,
+      initial: getAvatarInitial(user),
+      src: cached || candidate?.url || '',
+      candidates,
+      signature: getAvatarSignature(candidates),
+      candidate,
+      cached: !!cached,
+    }
+  })
+})
+
+function getAvatarIdentity(user: MarketUser, candidates: ReturnType<typeof getUserAvatarCandidates>, index: number) {
+  return getUserKey(user) || candidates[0]?.cacheKey || `${props.data.package.name}:${index}`
+}
+
+function getAvatarSignature(candidates: ReturnType<typeof getUserAvatarCandidates>) {
+  return candidates.map(candidate => `${candidate.cacheKey}\n${candidate.source}\n${candidate.url}`).join('\n---\n')
+}
+
+function getAvatarInitial(user: MarketUser) {
+  return (user.name || user.username || user.email || '?').trim().slice(0, 1).toUpperCase() || '?'
+}
+
+function getAvatarSource(key: string, candidates: ReturnType<typeof getUserAvatarCandidates>) {
+  if (!candidates.length) return
+  const start = Math.max(0, avatarCursor.value[key] || 0)
+  for (let index = start; index < candidates.length; index++) {
+    const candidate = candidates[index]
+    if (!isAvatarSourceFailed(candidate)) return candidate
+  }
+  return
+}
+
+function isAvatarSourceFailed(candidate: ReturnType<typeof getUserAvatarCandidates>[number]) {
+  return isAvatarFailureCached(getAvatarSourceKey(candidate))
+}
+
+function getAvatarSourceKey(candidate: ReturnType<typeof getUserAvatarCandidates>[number]) {
+  return `${candidate.cacheKey}:${candidate.url}`
+}
+
+function handleAvatarRenderError(view: AvatarView) {
+  const candidate = view.candidate
+  if (!candidate) return
+  cacheAvatarFailure(getAvatarSourceKey(candidate))
+  const currentIndex = Math.max(0, view.candidates.findIndex(item => item.url === candidate.url && item.cacheKey === candidate.cacheKey))
+  avatarCursor.value = { ...avatarCursor.value, [view.key]: currentIndex + 1 }
+  const cached = getCachedAvatarFromCandidates(view.candidates)
+  if (cached) avatars.value = { ...avatars.value, [view.key]: cached }
+}
+
+function handleAvatarRenderLoad(view: AvatarView) {
+  if (!view.candidate) return
+  const taskKey = `${view.key}:${view.signature}:${view.candidate.url}`
+  if (avatarTasks.has(taskKey)) return
+  const task = fetchAndCacheAvatar(view.candidate.cacheKey, view.candidate.url, false)
+    .finally(() => {
+      avatarTasks.delete(taskKey)
+    })
+  avatarTasks.set(taskKey, task)
+}
+
+function hydrateCachedAvatars() {
+  for (const view of avatarViews.value) {
+    if (!view.candidates.length || view.cached) continue
+    const first = view.candidates[0]
+    const taskKey = `${view.key}:${view.signature}:cache`
+    if (avatarTasks.has(taskKey)) continue
+    const task = fetchCachedAvatar(first.cacheKey)
+      .then((src) => {
+        const current = avatarViews.value.some(item => {
+          return item.key === view.key && item.signature === view.signature && !item.src
+        })
+        if (!current) return
+        if (src) avatars.value = { ...avatars.value, [view.key]: src }
+      })
+      .finally(() => {
+        avatarTasks.delete(taskKey)
+      })
+    avatarTasks.set(taskKey, task)
+  }
 }
 
 function formatValue(value: number) {
@@ -136,11 +251,13 @@ function timeAgo(time: string) {
   const now = new Date()
   const input = new Date(time)
   const diff = now.getTime() - input.getTime()
-  if (diff < 30000) return t('time.just-now')
-  if (diff < 3600000) return t('time.minutes-ago', [Math.floor(diff / 60000)])
-  if (diff < 86400000) return t('time.hours-ago', [Math.floor(diff / 3600000)])
+  if (diff < 86400000) return t('time.just-now')
   if (diff < 604800000) return t('time.days-ago', [Math.floor(diff / 86400000)])
   return input.toLocaleDateString()
+}
+
+function updatedAgo(time: string) {
+  return t('time.updated-ago', [timeAgo(time)])
 }
 
 if (import.meta.hot) {
@@ -148,6 +265,16 @@ if (import.meta.hot) {
     setLocaleMessage('zh-CN', module.default)
   })
 }
+
+watch(() => [props.data.package.name, props.gravatar], () => {
+  avatarCursor.value = {}
+  avatarTasks.clear()
+  avatars.value = {}
+})
+
+watch(() => avatarViews.value.map(view => `${view.key}:${view.signature}:${view.src ? '1' : '0'}`), () => {
+  hydrateCachedAvatars()
+}, { immediate: true })
 
 </script>
 
@@ -295,17 +422,23 @@ if (import.meta.hot) {
       min-width: fit-content;
     }
 
-    .rating {
+    .updated-meta {
       height: 1.5rem;
       display: inline-flex;
       align-items: center;
-      gap: 0 0.25rem;
+      gap: 0 0.35rem;
       width: fit-content;
       margin-top: 4px;
+      max-width: 100%;
+      font-size: 12px;
+      line-height: 1;
+      color: var(--k-text-light, #888);
+      white-space: nowrap;
 
       .market-icon {
-        color: var(--k-color-warning);
+        color: var(--c, var(--k-color-primary));
         height: 0.875rem;
+        width: 0.875rem;
         transition: color 0.3s ease;
       }
     }
@@ -364,12 +497,41 @@ if (import.meta.hot) {
 
       .avatar {
         cursor: pointer;
-      }
-
-      img {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
         height: 1.5rem;
         width: 1.5rem;
         border-radius: 100%;
+        overflow: hidden;
+        flex: 0 0 auto;
+        background:
+          linear-gradient(135deg,
+            color-mix(in srgb, var(--c, var(--k-color-primary)) 28%, var(--k-card-bg)),
+            color-mix(in srgb, var(--c, var(--k-color-primary)) 12%, var(--k-card-bg))
+          );
+        border: 1px solid color-mix(in srgb, var(--c, var(--k-color-primary)) 24%, var(--k-color-border));
+        color: color-mix(in srgb, var(--c, var(--k-color-primary)) 74%, var(--k-text-dark, currentColor));
+        font-size: 0.68rem;
+        font-weight: 700;
+        line-height: 1;
+
+        &::before {
+          content: attr(data-initial);
+        }
+
+        &:not(.placeholder)::before {
+          content: '';
+        }
+      }
+
+      img {
+        position: absolute;
+        inset: 0;
+        height: 100%;
+        width: 100%;
+        object-fit: cover;
+        border-radius: inherit;
         vertical-align: middle;
       }
     }

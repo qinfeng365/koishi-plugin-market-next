@@ -17,6 +17,8 @@ search:
 frontendMode: 前端显示模式。性能模式保持低动效；精致模式启用更细腻的动效和高级样式。
 depsLayout: 依赖管理页布局。网格模式多列展示；列表模式单列宽卡片，信息更密集。
 marketLayout: 插件市场页布局。网格模式多列卡片；列表模式单列紧凑行。
+marketSilentRules: 插件市场永久静默过滤。添加后命中的插件会直接隐藏，不会显示在搜索框中。状态类不需要填写值；日期类填写 YYYY-MM-DD；最近 N 天填写数字。
+marketSilentFilters: 旧版永久静默过滤。
 idleProbe: Console 空闲时自动探测依赖版本和插件市场数据。仅在没有浏览器控制台连接时运行，不会因为刷新页面触发。
 idleProbeDelay: Console 无人在线多久后开始后台探测。
 idleProbeBootDelay: Koishi 启动或重载后，至少等待多久才允许空闲探测。

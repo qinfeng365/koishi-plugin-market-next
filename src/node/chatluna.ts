@@ -10,7 +10,7 @@ const DAY = Time.day
 
 const intentValues = ['search', 'recommend', 'recent', 'popular', 'risk', 'compare'] as const
 const statusValues = ['verified', 'insecure', 'preview', 'portable', 'deprecated'] as const
-const sortValues = ['relevance', 'rating', 'downloads', 'created', 'updated'] as const
+const sortValues = ['relevance', 'downloads', 'created', 'updated'] as const
 const orderValues = ['asc', 'desc'] as const
 
 type Intent = typeof intentValues[number]
@@ -114,7 +114,6 @@ interface SearchResultItem {
   shortname: string
   version: string
   category: string
-  rating: number
   downloadsLastMonth: number
   createdAt: string | null
   updatedAt: string | null
@@ -339,7 +338,6 @@ function compareObject(a: MarketObject, b: MarketObject, input: NormalizedSearch
   if (input.intent === 'recommend' && input.sort === 'relevance') {
     return recommendationScore(a, terms) - recommendationScore(b, terms)
   }
-  if (input.sort === 'rating') return (a.rating ?? 0) - (b.rating ?? 0)
   if (input.sort === 'downloads') return (a.downloads?.lastMonth ?? 0) - (b.downloads?.lastMonth ?? 0)
   if (input.sort === 'created') return (parseItemDate(a.createdAt) ?? 0) - (parseItemDate(b.createdAt) ?? 0)
   if (input.sort === 'updated') return (parseItemDate(a.updatedAt) ?? 0) - (parseItemDate(b.updatedAt) ?? 0)
@@ -390,7 +388,6 @@ function defaultSort(intent: Intent): Sort {
 
 function recommendationScore(item: MarketObject, terms: string[]) {
   let score = relevanceScore(item, terms)
-  score += (item.rating ?? 0) * 4
   score += Math.log10((item.downloads?.lastMonth ?? 0) + 1) * 8
   score += recencyScore(item.updatedAt)
   if (item.verified) score += 12
@@ -400,8 +397,8 @@ function recommendationScore(item: MarketObject, terms: string[]) {
 }
 
 function relevanceScore(item: MarketObject, terms: string[]) {
-  if (!terms.length) return item.rating ?? 0
-  return terms.reduce((sum, term) => sum + relevancePart(item, term), 0) + (item.rating ?? 0)
+  if (!terms.length) return recencyScore(item.updatedAt)
+  return terms.reduce((sum, term) => sum + relevancePart(item, term), 0) + recencyScore(item.updatedAt)
 }
 
 function relevancePart(item: MarketObject, term: string) {
@@ -445,7 +442,6 @@ function formatItem(item: MarketObject, rank: number, input: NormalizedSearchInp
     shortname: item.shortname || normalizePackageName(pkg.name),
     version: pkg.version,
     category: resolveCategory(item.category),
-    rating: round(item.rating ?? 0),
     downloadsLastMonth: Math.round(pkgDownloads(item)),
     createdAt: formatDate(item.createdAt),
     updatedAt: formatDate(item.updatedAt),
@@ -689,10 +685,6 @@ function formatError(error: unknown) {
 
 function pkgDownloads(item: MarketObject) {
   return item.downloads?.lastMonth ?? 0
-}
-
-function round(value: number) {
-  return Number.isFinite(value) ? Math.round(value * 100) / 100 : 0
 }
 
 function clamp(value: number, min: number, max: number) {

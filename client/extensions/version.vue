@@ -62,7 +62,7 @@
 
 import { global, message, send, store, useConfig, useContext } from '@koishijs/client'
 import { computed, inject, ComputedRef, ref } from 'vue'
-import { getBulkMode, getBundleRecords, getMarketNextPolicy, getRemoveConfig, getWritableBundleRecords, hasUpdate, patchMarketNextConfig } from '../utils'
+import { getBulkMode, getBundleRecords, getMarketNextPolicy, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, hasUpdate, patchMarketNextData } from '../utils'
 import type {} from '@koishijs/plugin-config'
 import type { PluginBundleRecord } from '../../src/shared/bundle'
 import {
@@ -92,7 +92,7 @@ const showBundleUninstallDialog = ref(false)
 const remoteBundleRecord = ref<BundleRecordView>()
 
 const pendingRemove = computed(() => {
-  const override = config.value.market?.override ?? {}
+  const override = getPendingOverrides()
   return Object.prototype.hasOwnProperty.call(override, name.value) && !override[name.value]
 })
 
@@ -122,7 +122,7 @@ async function addDependency() {
 }
 
 function ensureOverride() {
-  return config.value.market.override ||= {}
+  return getPendingOverrides()
 }
 
 async function requestUninstall() {
@@ -133,7 +133,9 @@ async function requestUninstall() {
     return
   }
   if (getBulkMode(config.value)) {
-    ensureOverride()[name.value] = ''
+    const override = ensureOverride()
+    override[name.value] = ''
+    void patchMarketNextData({ override: { ...override } })
     message.success('卸载已暂存，应用更改后生效。')
     return
   }
@@ -162,10 +164,12 @@ async function loadRemoteBundleRecord() {
 
 function cancelPendingUninstall() {
   const pendingBundle = pendingBundleUninstalls.value[name.value]
-  delete ensureOverride()[name.value]
+  const override = ensureOverride()
+  delete override[name.value]
   for (const member of pendingBundle?.members ?? []) {
-    delete ensureOverride()[member]
+    delete override[member]
   }
+  void patchMarketNextData({ override: { ...override } })
   delete pendingBundleUninstalls.value[name.value]
   message.success('已取消卸载。')
 }
@@ -179,7 +183,7 @@ async function uninstallDependency(removeConfig: boolean) {
       if (removeConfig) ctx.configWriter?.remove(name.value)
       const records = getWritableBundleRecords(config.value)
       delete records[name.value]
-      const saved = await patchMarketNextConfig({ bundleRecords: records })
+      const saved = await patchMarketNextData({ bundleRecords: records })
       if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
     }, undefined, {
       loadingText: '正在卸载插件……',

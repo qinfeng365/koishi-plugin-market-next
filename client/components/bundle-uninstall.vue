@@ -104,7 +104,7 @@ import {
   type BundleRecordView,
   type BundleMemberCleanupTarget,
 } from './utils'
-import { getBulkMode, getFrontendMode, getWritableBundleRecords, patchMarketNextConfig } from '../utils'
+import { getBulkMode, getFrontendMode, getPendingOverrides, getWritableBundleRecords, patchMarketNextData } from '../utils'
 
 type MemberAction = 'config' | 'dependency' | 'keep'
 
@@ -233,7 +233,7 @@ function getDefaultAction(row: (typeof memberRows.value)[number]): MemberAction 
 }
 
 function ensureOverride() {
-  return config.value.market.override ||= {}
+  return getPendingOverrides()
 }
 
 function getCleanupTargets(): BundleMemberCleanupTarget[] {
@@ -254,7 +254,9 @@ async function uninstallBundle() {
   }
 
   if (getBulkMode(config.value)) {
-    Object.assign(ensureOverride(), override)
+    const overrides = ensureOverride()
+    Object.assign(overrides, override)
+    void patchMarketNextData({ override: { ...overrides } })
     pendingBundleUninstalls.value[name] = {
       members,
       cleanup: !!configs.length,
@@ -278,7 +280,7 @@ async function uninstallBundle() {
       }
       const records = getWritableBundleRecords(config.value)
       delete records[name]
-      const saved = await patchMarketNextConfig({ bundleRecords: records })
+      const saved = await patchMarketNextData({ bundleRecords: records })
       if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
       if (props.redirectToPlugins) await router.replace('/plugins')
       emit('done')

@@ -1,6 +1,7 @@
 import { Context, Dict, Schema } from 'koishi';
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry';
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps';
+import { MarketDataStore, MarketDataStorePayload } from './data';
 import Installer from './installer';
 import MarketProvider from './market';
 import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult, PluginBundleRecord } from '../shared/bundle';
@@ -17,6 +18,7 @@ declare module '@koishijs/console' {
             dependencies: DependencyProvider;
             registry: RegistryProvider;
             registryStatus: RegistryStatusProvider;
+            marketData: MarketDataStore;
         }
     }
     interface Events {
@@ -24,10 +26,12 @@ declare module '@koishijs/console' {
         'market/install-bundle'(request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult>;
         'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>;
         'market/update-config'(patch: Partial<Config>): Promise<boolean>;
+        'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>;
         'market/refresh-dependencies'(): Promise<void>;
         'market/package'(name: string): Promise<Registry>;
         'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>;
         'market/ensure-config'(name: string): Promise<boolean>;
+        'market/avatar'(key: string, url?: string): Promise<AvatarFetchResult | undefined>;
     }
 }
 export declare const name = "market";
@@ -40,6 +44,12 @@ export interface Config {
     frontendMode?: 'performance' | 'polished';
     depsLayout?: 'grid' | 'list';
     marketLayout?: 'grid' | 'list';
+    marketSilentStatusRules?: MarketSilentStatusRule[];
+    marketSilentDateRules?: MarketSilentDateRule[];
+    marketSilentRecentRules?: MarketSilentRecentRule[];
+    marketSilentCustomRules?: MarketSilentCustomRule[];
+    marketSilentRules?: MarketSilentRule[];
+    marketSilentFilters?: string;
     idleProbe?: boolean;
     idleProbeDelay?: number;
     idleProbeBootDelay?: number;
@@ -50,9 +60,47 @@ export interface Config {
     updateIgnoreDuration?: number;
     updateIgnoreVersions?: number;
     updateIgnorePrerelease?: boolean;
-    updateIgnored?: Dict<any>;
     collapsedGroups?: Dict<boolean>;
+    updateIgnored?: Dict<any>;
     bundleRecords?: Dict<PluginBundleRecord>;
+}
+interface MarketSilentStatusRule {
+    target?: 'preview' | 'insecure' | 'bundle';
+    note?: string;
+    enabled?: boolean;
+}
+interface MarketSilentDateRule {
+    field?: 'created' | 'updated';
+    relation?: 'before' | 'after';
+    date?: string;
+    note?: string;
+    enabled?: boolean;
+}
+interface MarketSilentRecentRule {
+    field?: 'created' | 'updated';
+    days?: number;
+    note?: string;
+    enabled?: boolean;
+}
+interface MarketSilentCustomRule {
+    query?: string;
+    note?: string;
+    enabled?: boolean;
+}
+interface MarketSilentRule {
+    type?: 'custom' | 'preview' | 'insecure' | 'bundle' | 'created-before' | 'created-after' | 'updated-before' | 'updated-after' | 'created-within' | 'updated-within';
+    value?: string;
+    date?: string;
+    days?: number;
+    query?: string;
+    note?: string;
+    enabled?: boolean;
+}
+interface AvatarFetchResult {
+    data: string;
+    type: string;
+    cached?: boolean;
+    key?: string;
 }
 export declare const Config: Schema<Config>;
 export declare function apply(ctx: Context, config?: Config): void;

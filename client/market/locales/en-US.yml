@@ -1,6 +1,7 @@
 type:
   sort: Sort
   filter: Filter
+  advanced: Advanced
   category: Category
 badge:
   installed: Installed
@@ -12,10 +13,19 @@ badge:
   bundle: Plugin Bundle
 sort:
   default: Overall
-  rating: Rating
   download: Downloads
   created: Created
   updated: Updated
+advanced:
+  createdWithin: Created within days
+  updatedWithin: Updated within days
+  createdAfter: Created after
+  createdBefore: Created before
+  updatedAfter: Updated after
+  updatedBefore: Updated before
+  clearDates: Clear date filters
+  datePlaceholder: YYYY-MM-DD
+  daysPlaceholder: days
 category:
   all: All
   other: Uncategorized
@@ -38,5 +48,6 @@ time:
   minutes-ago: '{0} minute(s) ago'
   hours-ago: '{0} hour(s) ago'
   days-ago: '{0} day(s) ago'
+  updated-ago: 'Updated {0}'
 search:
   placeholder: Search plugins by name

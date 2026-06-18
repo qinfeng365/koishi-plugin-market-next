@@ -16,6 +16,8 @@ search:
 frontendMode: Frontend display mode. Performance mode keeps low-motion dense UI; polished mode enables richer visual effects.
 depsLayout: Dependencies page layout. Grid shows compact cards; list shows a denser single-column view.
 marketLayout: Market page layout. Grid shows multi-column cards; list shows compact rows.
+marketSilentRules: Permanent silent market filters. Matched plugins are hidden from the market page and do not appear in the search box. Status rules need no value; date rules use YYYY-MM-DD; recent rules use a number of days.
+marketSilentFilters: Legacy permanent silent filters.
 idleProbe: Automatically probes dependency versions and market data while Console is idle. It only runs when no browser console is connected, and page reloads do not trigger it.
 idleProbeDelay: How long Console must stay idle before the background probe starts.
 idleProbeBootDelay: Minimum delay after Koishi startup or reload before idle probing is allowed.

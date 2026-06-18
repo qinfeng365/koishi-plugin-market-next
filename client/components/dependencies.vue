@@ -8,7 +8,13 @@
             :key="option.value"
             :value="option.value"
             :label="option.label + (option.count ? ' (' + option.count + ')' : '')"
-          ></el-option>
+          >
+            <span class="deps-filter-option">
+              <market-icon :name="option.icon"></market-icon>
+              <span>{{ option.label }}</span>
+              <span v-if="option.count" class="deps-filter-count">({{ option.count }})</span>
+            </span>
+          </el-option>
         </el-select>
         <button
           :class="['deps-filter', 'deps-prerelease-toggle', { active: prereleaseBlocked }]"
@@ -58,7 +64,10 @@
               @keydown.space.prevent="group.collapsible && toggleGroup(group.key)"
             >
               <div>
-                <h2>{{ group.label }}</h2>
+                <h2>
+                  <market-icon :name="group.icon"></market-icon>
+                  <span>{{ group.label }}</span>
+                </h2>
                 <p>{{ group.description }}</p>
               </div>
               <div class="deps-group-side">
@@ -113,7 +122,7 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { message, router, store, useConfig, useContext } from '@koishijs/client'
-import { getBundleRecords, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig } from '../utils'
+import { getBundleRecords, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { addManual, createLocalBundleRecord, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
@@ -133,6 +142,7 @@ interface DependencyGroup {
   key: ItemKind
   label: string
   description: string
+  icon: string
   items: DependencyItem[]
   collapsed: boolean
   collapsible: boolean
@@ -149,7 +159,7 @@ const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 const layoutClass = computed(() => `deps-layout-${depsLayout.value}`)
 
 function getOverride() {
-  return config.value.market?.override ?? {}
+  return getPendingOverrides()
 }
 
 function getCollapsedGroups() {
@@ -188,7 +198,7 @@ let dispose: WatchStopHandle
 watch(() => store.market?.registry, (registry) => {
   dispose?.()
   if (!registry) return
-  dispose = watch(() => config.value.market?.override, (object) => {
+  dispose = watch(() => getPendingOverrides(), (object) => {
     if (!object) return
     Object.keys(object).forEach(async (name) => {
       if (store.dependencies?.[name]) return
@@ -274,31 +284,31 @@ const refreshing = computed(() => {
 })
 
 const filterOptions = computed(() => [
-  { value: 'all' as const, label: '全部', count: summary.value.total },
-  { value: 'pending' as const, label: '待应用', count: summary.value.pending },
-  { value: 'bundle' as const, label: '插件包', count: summary.value.bundle },
-  { value: 'unconfigured' as const, label: '未配置', count: summary.value.unconfigured },
-  { value: 'updatable' as const, label: '可更新', count: summary.value.updatable },
-  { value: 'ignored' as const, label: '已忽略', count: summary.value.ignored },
-  { value: 'check-disabled' as const, label: '不检测', count: summary.value.checkDisabled },
-  { value: 'invalid' as const, label: '不支持', count: summary.value.invalid },
-  { value: 'error' as const, label: '版本异常', count: summary.value.errors },
-  { value: 'workspace' as const, label: '工作区', count: summary.value.workspace },
-  { value: 'manual' as const, label: '手动添加', count: summary.value.manual },
+  { value: 'all' as const, label: '全部', icon: 'solid:all', count: summary.value.total },
+  { value: 'pending' as const, label: '待应用', icon: 'tag', count: summary.value.pending },
+  { value: 'bundle' as const, label: '插件包', icon: 'file-archive', count: summary.value.bundle },
+  { value: 'unconfigured' as const, label: '未配置', icon: 'preview', count: summary.value.unconfigured },
+  { value: 'updatable' as const, label: '可更新', icon: 'asc', count: summary.value.updatable },
+  { value: 'ignored' as const, label: '已忽略', icon: 'installed', count: summary.value.ignored },
+  { value: 'check-disabled' as const, label: '不检测', icon: 'installed', count: summary.value.checkDisabled },
+  { value: 'invalid' as const, label: '不支持', icon: 'insecure', count: summary.value.invalid },
+  { value: 'error' as const, label: '版本异常', icon: 'insecure', count: summary.value.errors },
+  { value: 'workspace' as const, label: '工作区', icon: 'file-archive', count: summary.value.workspace },
+  { value: 'manual' as const, label: '手动添加', icon: 'search', count: summary.value.manual },
 ])
 
 const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items' | 'collapsed' | 'collapsible'>> = {
-  pending: { key: 'pending', label: '待应用', description: '这些变更已经暂存，确认后才会真正安装、更新或卸载。' },
-  bundle: { key: 'bundle', label: '插件包', description: '插件包用于安装和管理一组成员插件，本身不会出现在插件配置页。' },
-  updatable: { key: 'updatable', label: '可更新', description: '存在比本地版本更新的 npm 版本。' },
-  ignored: { key: 'ignored', label: '已忽略更新', description: '已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。' },
-  'check-disabled': { key: 'check-disabled', label: '不检测更新', description: '已加入永久不检测更新名单，不会收到版本提示。' },
-  unconfigured: { key: 'unconfigured', label: '已下载未配置', description: '依赖已安装到本地，但插件配置页里还没有对应的配置项。' },
-  invalid: { key: 'invalid', label: '不支持', description: '当前依赖版本区间语法暂不支持自动版本管理，需手动处理。' },
-  error: { key: 'error', label: '版本异常', description: 'npm 元数据暂时不可用，可能是网络、超时或镜像未同步。' },
-  workspace: { key: 'workspace', label: '工作区', description: '来自当前工作区的本地依赖，不参与远端版本更新。' },
-  manual: { key: 'manual', label: '手动添加', description: '已加入待安装列表，但当前尚未安装到本地。' },
-  installed: { key: 'installed', label: '已安装', description: '已安装且当前没有明确需要处理的依赖。' },
+  pending: { key: 'pending', label: '待应用', icon: 'tag', description: '这些变更已经暂存，确认后才会真正安装、更新或卸载。' },
+  bundle: { key: 'bundle', label: '插件包', icon: 'file-archive', description: '插件包用于安装和管理一组成员插件，本身不会出现在插件配置页。' },
+  updatable: { key: 'updatable', label: '可更新', icon: 'asc', description: '存在比本地版本更新的 npm 版本。' },
+  ignored: { key: 'ignored', label: '已忽略更新', icon: 'installed', description: '已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。' },
+  'check-disabled': { key: 'check-disabled', label: '不检测更新', icon: 'installed', description: '已加入永久不检测更新名单，不会收到版本提示。' },
+  unconfigured: { key: 'unconfigured', label: '已下载未配置', icon: 'preview', description: '依赖已安装到本地，但插件配置页里还没有对应的配置项。' },
+  invalid: { key: 'invalid', label: '不支持', icon: 'insecure', description: '当前依赖版本区间语法暂不支持自动版本管理，需手动处理。' },
+  error: { key: 'error', label: '版本异常', icon: 'insecure', description: 'npm 元数据暂时不可用，可能是网络、超时或镜像未同步。' },
+  workspace: { key: 'workspace', label: '工作区', icon: 'file-archive', description: '来自当前工作区的本地依赖，不参与远端版本更新。' },
+  manual: { key: 'manual', label: '手动添加', icon: 'search', description: '已加入待安装列表，但当前尚未安装到本地。' },
+  installed: { key: 'installed', label: '已安装', icon: 'installed', description: '已安装且当前没有明确需要处理的依赖。' },
 }
 
 const groupOrder: ItemKind[] = ['pending', 'bundle', 'unconfigured', 'updatable', 'ignored', 'check-disabled', 'invalid', 'error', 'workspace', 'manual', 'installed']
@@ -352,7 +362,9 @@ const visibleGroups = computed<DependencyGroup[]>(() => {
 })
 
 function clearChanges() {
-  config.value.market.override = {}
+  const override = getPendingOverrides()
+  for (const key of Object.keys(override)) delete override[key]
+  void patchMarketNextData({ override: { ...override } })
 }
 
 async function togglePrereleaseFilter() {
@@ -372,8 +384,9 @@ ctx.action('dependencies.upgrade', {
     for (const name of updates.value) {
       const version = getLatestVersion(name, getUpdatePolicy())
       if (!version) continue
-      config.value.market.override[name] = version
+      getPendingOverrides()[name] = version
     }
+    void patchMarketNextData({ override: { ...getPendingOverrides() } })
   },
 })
 
@@ -505,6 +518,30 @@ ctx.action('dependencies.upgrade', {
   }
 }
 
+.deps-filter-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-width: 0;
+
+  .market-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--k-color-primary) 76%, currentColor);
+  }
+
+  span:not(.deps-filter-count) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.deps-filter-count {
+  color: var(--fg3);
+}
+
 .deps-content {
   padding: 0.75rem var(--card-margin);
   padding-bottom: var(--card-margin);
@@ -572,10 +609,21 @@ ctx.action('dependencies.upgrade', {
   }
 
   h2 {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
     margin: 0;
     font-size: 0.96rem;
     line-height: 1.4;
     font-weight: 600;
+
+    .market-icon {
+      width: 0.95rem;
+      height: 0.95rem;
+      flex: 0 0 auto;
+      color: var(--group-accent);
+      filter: drop-shadow(0 0 6px color-mix(in srgb, var(--group-accent) 24%, transparent));
+    }
   }
 
   p {

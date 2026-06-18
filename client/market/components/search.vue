@@ -2,7 +2,7 @@
   <div class="search-box">
     <div class="search-container">
       <span
-        v-for="(word, index) in modelValue.slice(0, -1)"
+        v-for="(word, index) in displayWords"
         :key="index" class="search-word"
         :class="{ invalid: !validateWord(word) }"
         @click="onClickWord(index)"
@@ -11,11 +11,11 @@
         :placeholder="t('search.placeholder')"
         v-model="lastWord"
         ref="input"
-        @blur="onEnter"
+        @blur="onBlur"
         @keydown.escape="onEscape"
         @keydown.backspace="onBackspace"
-        @keypress.enter.prevent="onEnter"
-        @keypress.space.prevent="onEnter"/>
+        @keydown.enter.prevent="commitInput"
+        @keydown.space.prevent="commitInput"/>
     </div>
     <div class="search-action" @click.stop="onClear">
       <market-icon class="search" name="search"></market-icon>
@@ -41,60 +41,94 @@ const props = defineProps<{
 const emit = defineEmits(['update:modelValue'])
 
 const input = ref<HTMLInputElement>()
-const words = ref<string[]>()
+const words = ref<string[]>([''])
+const draft = ref('')
 
 watch(() => props.modelValue, (value) => {
-  words.value = value.slice()
+  const current = normalizeWords([...getCommittedWords(), draft.value])
+  if (draft.value && document.activeElement === input.value && sameWords(value, current)) return
+  const next = normalizeWords(value)
+  words.value = next
+  draft.value = next[next.length - 1] || ''
 }, { immediate: true, deep: true })
 
 const update = useDebounceFn(() => {
-  emit('update:modelValue', words.value)
+  emit('update:modelValue', normalizeWords([...getCommittedWords(), draft.value]))
 }, 120, { maxWait: 500 })
 
+const committedWords = computed(() => getCommittedWords())
+const displayWords = computed(() => committedWords.value)
+
 const lastWord = computed({
-  get: () => words.value[words.value.length - 1],
+  get: () => draft.value,
   set: (value) => {
-    words.value[words.value.length - 1] = value.toLowerCase()
+    draft.value = value.toLowerCase()
     update()
   },
 })
 
 function onClickWord(index: number) {
-  words.value.splice(index, 1)
+  const tokens = committedWords.value.slice()
+  tokens.splice(index, 1)
+  words.value = normalizeWords([...tokens, draft.value])
   emit('update:modelValue', words.value)
   input.value?.focus()
 }
 
-function onEnter() {
-  const last = words.value[words.value.length - 1]
+function commitInput() {
+  const last = draft.value.trim().toLowerCase()
   if (!last) return
-  if (words.value.slice(0, -1).includes(last)) {
-    words.value.pop()
+  const tokens = committedWords.value.slice()
+  if (!tokens.includes(last)) {
+    tokens.push(last)
   }
-  words.value.push('')
+  draft.value = ''
+  words.value = normalizeWords(tokens)
   emit('update:modelValue', words.value)
 }
 
-function onEscape(event: KeyboardEvent) {
-  words.value[words.value.length - 1] = ''
+function onBlur() {
+  draft.value = draft.value.trim().toLowerCase()
+}
+
+function onEscape() {
+  draft.value = ''
+  words.value = normalizeWords(committedWords.value)
   emit('update:modelValue', words.value)
 }
 
 function onBackspace(event: KeyboardEvent) {
-  if (words.value[words.value.length - 1] === '' && words.value.length > 1) {
+  if (draft.value === '' && committedWords.value.length) {
     event.preventDefault()
-    words.value.splice(words.value.length - 2, 1)
+    const tokens = committedWords.value.slice(0, -1)
+    words.value = normalizeWords(tokens)
     emit('update:modelValue', words.value)
   }
 }
 
 function onClear() {
+  draft.value = ''
   words.value = ['']
   emit('update:modelValue', words.value)
 }
 
 function focus() {
   input.value?.focus()
+}
+
+function normalizeWords(value: string[]) {
+  const tokens = value.filter(Boolean)
+  return tokens.length ? [...tokens, ''] : ['']
+}
+
+function getCommittedWords() {
+  return words.value.slice(0, -1).filter(Boolean)
+}
+
+function sameWords(a: string[], b: string[]) {
+  const left = normalizeWords(a)
+  const right = normalizeWords(b)
+  return left.length === right.length && left.every((word, index) => word === right[index])
 }
 
 defineExpose({ focus })

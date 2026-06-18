@@ -154,7 +154,10 @@ export function resolveBundlePackageFromGroup(groupPath?: string, records: Dict<
     ...Object.keys(store.dependencies ?? {}),
     ...Object.keys(store.packages ?? {}),
   ])
-  return [...names].find(name => isBundlePackageName(name) && getBundleGroupIdent(name) === groupPath.replace(/^group:/, ''))
+  return [...names].find((name) => {
+    const record = createLocalBundleRecord(name)
+    return !!record && getBundleGroupIdent(name) === groupPath.replace(/^group:/, '')
+  })
 }
 
 export function resolveBundleRecordFromGroup(groupPath?: string, records: Dict<PluginBundleRecord> = {}) {
@@ -214,11 +217,14 @@ export interface LogLine {
   line: string
 }
 
+export const MARKET_NEXT_PACKAGE = 'koishi-plugin-market-next'
+
 export const installProgressState = reactive({
   visible: false,
   status: 'idle', // 'idle' | 'running' | 'success' | 'error'
   logs: [] as LogLine[],
   title: '正在应用依赖更改',
+  selfUpdate: false,
 })
 
 receive('market/install-log', (log: LogLine) => {
@@ -232,13 +238,31 @@ interface InstallMessages {
   successText?: string
   errorText?: string
   timeoutText?: string
+  waitingText?: string
+  selfUpdate?: boolean
+  skipCallbackOnDisconnect?: boolean
+  allowDisconnectSuccess?: boolean
+}
+
+export function pushInstallLog(line: string, type: LogLine['type'] = 'stdout') {
+  installProgressState.logs.push({ type, line })
+}
+
+function isSelfUpdate(override: Dict<string>) {
+  return Object.prototype.hasOwnProperty.call(override, MARKET_NEXT_PACKAGE)
 }
 
 export async function install(override: Dict<string>, callback?: () => Awaitable<void>, forced?: boolean, messages: InstallMessages = {}) {
-  installProgressState.title = messages.loadingText ?? '正在更新依赖……'
+  const selfUpdate = messages.selfUpdate ?? isSelfUpdate(override)
+  installProgressState.title = messages.loadingText ?? (selfUpdate ? '正在更新 market-next……' : '正在更新依赖……')
   installProgressState.logs = []
   installProgressState.status = 'running'
+  installProgressState.selfUpdate = selfUpdate
   installProgressState.visible = true
+  pushInstallLog('已提交依赖变更，正在等待后端启动包管理器……')
+  if (selfUpdate) {
+    pushInstallLog('正在更新当前插件。安装完成后 Console 可能会短暂断开并自动重载。')
+  }
 
   let resolveDisconnected: (value: number) => void
   const disconnected = new Promise<number>((resolve) => {
@@ -251,25 +275,44 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
     resolveDisconnected(0)
     dispose()
   })
+  const waitTimer = setTimeout(() => {
+    if (installProgressState.status !== 'running') return
+    pushInstallLog(messages.waitingText ?? (selfUpdate
+      ? '仍在等待包管理器输出；如果 Console 随后断开连接，这是 market-next 自更新重载的正常过程。'
+      : '仍在等待包管理器输出；大型依赖变更或弱网环境下可能需要更久。'))
+  }, 8000)
   try {
     active.value = ''
     const task = send('market/install', override, forced) ?? Promise.resolve(1)
     const code = await Promise.race([task, disconnected])
+    if (disconnectedBeforeResponse && !selfUpdate && !messages.allowDisconnectSuccess) {
+      installProgressState.status = 'error'
+      pushInstallLog('Console 连接已断开，安装结果无法确认。请刷新依赖页确认实际状态。', 'stderr')
+      message.warning('连接已断开，安装结果无法确认，请刷新后检查。')
+      return
+    }
     if (code) {
       installProgressState.status = 'error'
       message.error(messages.errorText ?? '安装失败！')
     } else {
       installProgressState.status = 'success'
-      try {
-        await callback?.()
-      } catch (error) {
-        if (!disconnectedBeforeResponse) throw error
-        console.warn(error)
+      const shouldSkipCallback = selfUpdate
+        && disconnectedBeforeResponse
+        && messages.skipCallbackOnDisconnect !== false
+      if (!shouldSkipCallback) {
+        try {
+          await callback?.()
+        } catch (error) {
+          if (!disconnectedBeforeResponse) throw error
+          console.warn(error)
+        }
       }
       if (disconnectedBeforeResponse && !socket.value) {
-        message.success(messages.successText ?? '依赖变更已提交，控制台正在重载。')
+        message.success(messages.successText ?? (selfUpdate
+          ? 'market-next 更新已提交，Console 正在重载。'
+          : '依赖变更已提交，控制台正在重载。'))
       } else {
-        message.success(messages.successText ?? '安装成功！')
+        message.success(messages.successText ?? (selfUpdate ? 'market-next 更新完成，Console 即将重载。' : '安装成功！'))
       }
     }
   } catch (err) {
@@ -277,6 +320,7 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
     installProgressState.status = 'error'
     message.error(messages.timeoutText ?? '安装超时！')
   } finally {
+    clearTimeout(waitTimer)
     dispose()
   }
 }

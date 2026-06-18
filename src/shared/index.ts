@@ -89,6 +89,7 @@ export abstract class MarketProvider extends DataService<MarketProvider.Payload>
   }
 
   abstract collect(): Promise<void | SearchResult>
+  probeInBackground?(reason?: string): Promise<boolean>
 
   async prepare(): Promise<SearchResult> {
     return this._task ||= this.collect().catch((error) => {

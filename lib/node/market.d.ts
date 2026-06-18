@@ -18,6 +18,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private forceRefresh;
     private indexMode;
     private cacheFile;
+    private cacheDir;
     private cacheEntries;
     private cacheMeta?;
     private conditionMeta?;
@@ -28,6 +29,8 @@ declare class MarketProvider extends BaseMarketProvider {
     private backgroundSerial?;
     private pendingRefreshTask?;
     private cacheWriteTimer?;
+    private routeStatsWriteTimer?;
+    private warmDiskCacheTask?;
     private pendingControllers;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
@@ -85,9 +88,18 @@ declare class MarketProvider extends BaseMarketProvider {
     private refreshAfterPrepare;
     private applyIndex;
     private applyDiskCache;
+    private warmDiskCache;
+    private loadDiskCache;
     private pickDiskCache;
+    private loadCacheEntryResult;
     private getCacheScore;
+    private getCacheEntryFilename;
+    private createSplitCacheEntry;
+    private writeCacheEntryFile;
+    private pruneSplitCacheFiles;
     private scheduleDiskCacheWrite;
+    private scheduleRouteStatsWrite;
+    private writeRouteStatsCache;
     private serializeRouteStats;
     private pruneCacheEntries;
     private writeDiskCache;

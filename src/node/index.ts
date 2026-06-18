@@ -3,7 +3,12 @@ import Scanner, { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/r
 import { gt, maxSatisfying } from 'semver'
 import { resolve } from 'path'
 import pMap from 'p-map'
+import { lookup } from 'dns/promises'
+import { isIP } from 'net'
+import { promises as fsp } from 'fs'
+import { createHash } from 'crypto'
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
+import { MarketDataStore, MarketDataStorePayload } from './data'
 import Installer, { loadManifest } from './installer'
 import MarketProvider from './market'
 import { applyChatLunaTool } from './chatluna'
@@ -28,6 +33,8 @@ export * from '../shared'
 
 export { Installer }
 
+const SELF_PACKAGE = 'koishi-plugin-market-next'
+
 declare module 'koishi' {
   interface Context {
     installer: Installer
@@ -40,6 +47,7 @@ declare module '@koishijs/console' {
       dependencies: DependencyProvider
       registry: RegistryProvider
       registryStatus: RegistryStatusProvider
+      marketData: MarketDataStore
     }
   }
 
@@ -48,10 +56,12 @@ declare module '@koishijs/console' {
     'market/install-bundle'(request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult>
     'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>
     'market/update-config'(patch: Partial<Config>): Promise<boolean>
+    'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>
     'market/refresh-dependencies'(): Promise<void>
     'market/package'(name: string): Promise<Registry>
     'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>
     'market/ensure-config'(name: string): Promise<boolean>
+    'market/avatar'(key: string, url?: string): Promise<AvatarFetchResult | undefined>
   }
 }
 
@@ -86,6 +96,12 @@ export interface Config {
   frontendMode?: 'performance' | 'polished'
   depsLayout?: 'grid' | 'list'
   marketLayout?: 'grid' | 'list'
+  marketSilentStatusRules?: MarketSilentStatusRule[]
+  marketSilentDateRules?: MarketSilentDateRule[]
+  marketSilentRecentRules?: MarketSilentRecentRule[]
+  marketSilentCustomRules?: MarketSilentCustomRule[]
+  marketSilentRules?: MarketSilentRule[]
+  marketSilentFilters?: string
   idleProbe?: boolean
   idleProbeDelay?: number
   idleProbeBootDelay?: number
@@ -96,10 +112,394 @@ export interface Config {
   updateIgnoreDuration?: number
   updateIgnoreVersions?: number
   updateIgnorePrerelease?: boolean
-  updateIgnored?: Dict<any>
   collapsedGroups?: Dict<boolean>
+  updateIgnored?: Dict<any>
   bundleRecords?: Dict<PluginBundleRecord>
 }
+
+interface MarketSilentStatusRule {
+  target?: 'preview' | 'insecure' | 'bundle'
+  note?: string
+  enabled?: boolean
+}
+
+interface MarketSilentDateRule {
+  field?: 'created' | 'updated'
+  relation?: 'before' | 'after'
+  date?: string
+  note?: string
+  enabled?: boolean
+}
+
+interface MarketSilentRecentRule {
+  field?: 'created' | 'updated'
+  days?: number
+  note?: string
+  enabled?: boolean
+}
+
+interface MarketSilentCustomRule {
+  query?: string
+  note?: string
+  enabled?: boolean
+}
+
+interface MarketSilentRule {
+  type?: 'custom' | 'preview' | 'insecure' | 'bundle' | 'created-before' | 'created-after' | 'updated-before' | 'updated-after' | 'created-within' | 'updated-within'
+  value?: string
+  date?: string
+  days?: number
+  query?: string
+  note?: string
+  enabled?: boolean
+}
+
+interface AvatarFetchResult {
+  data: string
+  type: string
+  cached?: boolean
+  key?: string
+}
+
+const avatarCache = new Map<string, AvatarFetchResult & { expiresAt: number }>()
+const AVATAR_CACHE_TTL = Time.day * 7
+const AVATAR_CACHE_SWEEP_INTERVAL = Time.hour
+const AVATAR_MAX_ENTRIES = 512
+const AVATAR_MAX_SIZE = 96 * 1024
+const AVATAR_BLOCKED_HOSTS = new Set(['localhost', 'localhost.localdomain'])
+const AVATAR_ALLOWED_HOSTS = new Set(['www.npmjs.com', 'npmjs.com', 's.gravatar.com', 'gravatar.com', 'www.gravatar.com', 'cravatar.cn', 'www.cravatar.cn'])
+const AVATAR_DEFAULT_HINTS = new Set(['default', 'mp', 'identicon', 'monsterid', 'wavatar', 'retro', 'robohash', 'blank'])
+const AVATAR_FETCH_TIMEOUT = 3000
+const AVATAR_HEAD_TIMEOUT = 1200
+let avatarDiskCleanupTask: Promise<void> | undefined
+
+interface AvatarDiskCacheEntry extends AvatarFetchResult {
+  key: string
+  url: string
+  cachedAt: number
+}
+
+function cleanupAvatarCache() {
+  const now = Date.now()
+  for (const [key, entry] of avatarCache) {
+    if (entry.expiresAt <= now) avatarCache.delete(key)
+  }
+  while (avatarCache.size > AVATAR_MAX_ENTRIES) {
+    const key = avatarCache.keys().next().value
+    if (!key) break
+    avatarCache.delete(key)
+  }
+}
+
+function cleanupAvatarCaches(ctx: Context) {
+  cleanupAvatarCache()
+  void cleanupAvatarDiskCache(ctx)
+}
+
+function getAvatarCacheDir(ctx: Context) {
+  return resolve(ctx.baseDir, 'cache', 'market-next-avatars')
+}
+
+function normalizeAvatarCacheKey(key: string) {
+  return key.replace(/[^0-9A-Za-z:@._-]/g, '-').slice(0, 128) || `url:${createHash('sha1').update(key).digest('hex')}`
+}
+
+function getAvatarCacheFile(ctx: Context, key: string) {
+  return resolve(getAvatarCacheDir(ctx), `${createHash('sha1').update(normalizeAvatarCacheKey(key)).digest('hex')}.json`)
+}
+
+function normalizeAvatarDiskCache(value: any, key: string): AvatarDiskCacheEntry | undefined {
+  if (!value || typeof value !== 'object') return
+  if (value.key && value.key !== key) return
+  if (!value.key && value.url !== key) return
+  if (typeof value.url !== 'string' || !value.url) return
+  if (typeof value.type !== 'string' || !value.type.startsWith('image/')) return
+  if (typeof value.data !== 'string' || !value.data) return
+  const cachedAt = Number(value.cachedAt)
+  if (!Number.isFinite(cachedAt)) return
+  if (Date.now() - cachedAt > AVATAR_CACHE_TTL) return
+  return { key, url: value.url, type: value.type, data: value.data, cachedAt }
+}
+
+async function readAvatarDiskCache(ctx: Context, key: string): Promise<AvatarFetchResult | undefined> {
+  try {
+    const file = getAvatarCacheFile(ctx, key)
+    const entry = normalizeAvatarDiskCache(JSON.parse(await fsp.readFile(file, 'utf8')), key)
+    if (!entry) {
+      void fsp.unlink(file).catch(() => {})
+      return
+    }
+    if (isAvatarCacheLikelyDefault(entry.url, key)) {
+      void fsp.unlink(file).catch(() => {})
+      return
+    }
+    avatarCache.set(key, { data: entry.data, type: entry.type, expiresAt: entry.cachedAt + AVATAR_CACHE_TTL })
+    return { data: entry.data, type: entry.type, cached: true }
+  } catch (error) {
+    if ((error as any)?.code !== 'ENOENT') {
+      ctx.logger('market').debug(`failed to read avatar disk cache: ${error instanceof Error ? error.message : error}`)
+    }
+  }
+}
+
+async function writeAvatarDiskCache(ctx: Context, key: string, url: string, result: AvatarFetchResult) {
+  try {
+    await fsp.mkdir(getAvatarCacheDir(ctx), { recursive: true })
+    const file = getAvatarCacheFile(ctx, key)
+    const tempFile = `${file}.${process.pid}.${Date.now()}.tmp`
+    const entry: AvatarDiskCacheEntry = {
+      key,
+      url,
+      type: result.type,
+      data: result.data,
+      cachedAt: Date.now(),
+    }
+    await fsp.writeFile(tempFile, JSON.stringify(entry))
+    await fsp.rename(tempFile, file)
+  } catch (error) {
+    ctx.logger('market').debug(`failed to write avatar disk cache: ${error instanceof Error ? error.message : error}`)
+  }
+}
+
+async function cleanupAvatarDiskCache(ctx: Context) {
+  if (avatarDiskCleanupTask) return avatarDiskCleanupTask
+  avatarDiskCleanupTask = (async () => {
+    try {
+      const dir = getAvatarCacheDir(ctx)
+      const files = await fsp.readdir(dir).catch(() => [])
+      const entries = await Promise.all(files
+        .filter(file => file.endsWith('.json'))
+        .map(async (file) => {
+          const path = resolve(dir, file)
+          try {
+            const stat = await fsp.stat(path)
+            let cachedAt = stat.mtimeMs
+            try {
+              const value = JSON.parse(await fsp.readFile(path, 'utf8'))
+              cachedAt = Number(value.cachedAt) || cachedAt
+              if (!value?.key || !value?.url || typeof value?.data !== 'string' || typeof value?.type !== 'string') {
+                await fsp.unlink(path).catch(() => {})
+                return
+              }
+              if (isAvatarCacheLikelyDefault(value.url, normalizeAvatarCacheKey(value.key))) {
+                await fsp.unlink(path).catch(() => {})
+                return
+              }
+            } catch {
+              await fsp.unlink(path).catch(() => {})
+              return
+            }
+            if (Date.now() - cachedAt > AVATAR_CACHE_TTL) {
+              await fsp.unlink(path).catch(() => {})
+              return
+            }
+            return { path, cachedAt }
+          } catch {
+            return
+          }
+        }))
+      const alive = entries
+        .filter((entry): entry is { path: string, cachedAt: number } => !!entry)
+        .sort((a, b) => b.cachedAt - a.cachedAt)
+      await Promise.all(alive.slice(AVATAR_MAX_ENTRIES).map(entry => fsp.unlink(entry.path).catch(() => {})))
+    } finally {
+      avatarDiskCleanupTask = undefined
+    }
+  })()
+  return avatarDiskCleanupTask
+}
+
+async function clearAvatarCacheStorage(ctx: Context) {
+  const memory = avatarCache.size
+  avatarCache.clear()
+  if (avatarDiskCleanupTask) await avatarDiskCleanupTask.catch(() => {})
+  const dir = getAvatarCacheDir(ctx)
+  const files = await fsp.readdir(dir).catch((error) => {
+    if ((error as any)?.code === 'ENOENT') return [] as string[]
+    throw error
+  })
+  const disk = files.filter(file => file.endsWith('.json')).length
+  await fsp.rm(dir, { recursive: true, force: true })
+  return { memory, disk }
+}
+
+async function fetchAvatar(ctx: Context, rawKey: string, rawUrl?: string): Promise<AvatarFetchResult | undefined> {
+  const cacheKey = normalizeAvatarCacheKey(rawKey)
+  cleanupAvatarCache()
+  const cached = avatarCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    return { data: cached.data, type: cached.type, cached: true }
+  }
+  const diskCached = await readAvatarDiskCache(ctx, cacheKey)
+  if (diskCached || !rawUrl) return diskCached
+
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) return
+  if (await isBlockedAvatarTarget(url)) return
+
+  const sourceUrl = url.toString()
+  try {
+    if (!isAllowedAvatarHost(normalizeAvatarHostname(url.hostname))) try {
+      const head = await ctx.http('HEAD', sourceUrl, {
+        timeout: AVATAR_HEAD_TIMEOUT,
+        validateStatus: status => status >= 200 && status < 600,
+        headers: {
+          accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml;q=0.8,*/*;q=0.1',
+        },
+      })
+      if (head.status < 400) {
+        const headLength = Number(head.headers.get('content-length'))
+        if (Number.isFinite(headLength) && headLength > AVATAR_MAX_SIZE) return
+      }
+    } catch (error) {
+      ctx.logger('market').debug(`avatar HEAD skipped: url=${sourceUrl}, error=${error instanceof Error ? error.message : error}`)
+    }
+
+    const response = await ctx.http(sourceUrl, {
+      timeout: AVATAR_FETCH_TIMEOUT,
+      responseType: 'arraybuffer',
+      validateStatus: status => status >= 200 && status < 600,
+      headers: {
+        accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml;q=0.8,*/*;q=0.1',
+      },
+    })
+    if (response.status >= 500) return
+    if (response.status >= 400) return
+    const type = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() || ''
+    if (!type.startsWith('image/')) {
+      return
+    }
+    const length = Number(response.headers.get('content-length'))
+    if (Number.isFinite(length) && length > AVATAR_MAX_SIZE) {
+      return
+    }
+    if (!response.data.byteLength || response.data.byteLength > AVATAR_MAX_SIZE) {
+      return
+    }
+    if (isAvatarDefaultResponse(response.headers)) return
+
+    const result: AvatarFetchResult = {
+      type,
+      data: Buffer.from(response.data).toString('base64'),
+    }
+    avatarCache.set(cacheKey, { ...result, expiresAt: Date.now() + AVATAR_CACHE_TTL })
+    void writeAvatarDiskCache(ctx, cacheKey, sourceUrl, result)
+    cleanupAvatarCache()
+    return result
+  } catch (error) {
+    throw error
+  }
+}
+
+function isAvatarCacheLikelyDefault(url: string, key: string) {
+  try {
+    const parsed = new URL(url)
+    const hostname = normalizeAvatarHostname(parsed.hostname)
+    const isGravatarHost = ['cravatar.cn', 'www.cravatar.cn', 's.gravatar.com', 'gravatar.com', 'www.gravatar.com'].includes(hostname)
+    if (!isGravatarHost) return false
+    if (getAvatarDefaultMode(parsed)) return true
+    if (!key.startsWith('gravatar:')) return false
+    const mode = (parsed.searchParams.get('d') || parsed.searchParams.get('default') || '').trim().toLowerCase()
+    return mode !== '404'
+  } catch {
+    return false
+  }
+}
+
+function getAvatarDefaultMode(url: URL) {
+  const value = url.searchParams.get('d') || url.searchParams.get('default') || ''
+  const normalized = value.trim().toLowerCase()
+  return normalized && AVATAR_DEFAULT_HINTS.has(normalized) ? normalized : ''
+}
+
+function isAvatarDefaultResponse(headers: Headers) {
+  const from = headers.get('avatar-from')?.trim().toLowerCase()
+  return from === 'default' || from === 'mp'
+}
+
+async function isBlockedAvatarTarget(url: URL) {
+  const hostname = normalizeAvatarHostname(url.hostname)
+  if (!hostname || AVATAR_BLOCKED_HOSTS.has(hostname)) return true
+  if (isAllowedAvatarHost(hostname)) return false
+  const directIp = isIP(hostname)
+  if (directIp) return isPrivateAddress(hostname, directIp)
+  try {
+    const records = await lookup(hostname, { all: true, verbatim: false })
+    if (!records.length) return true
+    return records.some(record => isPrivateAddress(record.address, record.family))
+  } catch {
+    return true
+  }
+}
+
+function isAllowedAvatarHost(hostname: string) {
+  return AVATAR_ALLOWED_HOSTS.has(hostname)
+}
+
+function normalizeAvatarHostname(hostname: string) {
+  return hostname.toLowerCase().replace(/^\[(.*)\]$/, '$1').replace(/\.$/, '')
+}
+
+function isPrivateAddress(address: string, family = isIP(address)) {
+  if (family === 4) {
+    const parts = address.split('.').map(part => Number(part))
+    if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return true
+    const [a, b] = parts
+    return a === 0
+      || a === 10
+      || a === 127
+      || a === 169 && b === 254
+      || a === 172 && b >= 16 && b <= 31
+      || a === 192 && b === 168
+      || a >= 224
+  }
+  if (family === 6) {
+    const value = address.toLowerCase()
+    const first = Number.parseInt(value.split(':')[0] || '0', 16)
+    return value === '::1'
+      || value === '::'
+      || value.startsWith('::ffff:')
+      || (Number.isFinite(first) && (first & 0xffc0) === 0xfe80)
+      || value.startsWith('fc')
+      || value.startsWith('fd')
+      || value.startsWith('ff')
+  }
+  return true
+}
+
+function finiteNumber(value: any) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : undefined
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+const MarketSilentRuleType = Schema.union([
+  Schema.const('preview').description('状态：预览版插件'),
+  Schema.const('insecure').description('状态：不安全插件'),
+  Schema.const('bundle').description('状态：插件包'),
+  Schema.const('created-before').description('创建时间：早于指定日期'),
+  Schema.const('created-after').description('创建时间：晚于指定日期'),
+  Schema.const('updated-before').description('更新时间：早于指定日期'),
+  Schema.const('updated-after').description('更新时间：晚于指定日期'),
+  Schema.const('created-within').description('创建时间：最近 N 天内'),
+  Schema.const('updated-within').description('更新时间：最近 N 天内'),
+  Schema.const('custom').description('自定义高级条件'),
+])
+
+const MarketSilentRules = Schema.array(Schema.object({
+  type: MarketSilentRuleType.default('preview').description('规则类型'),
+  value: Schema.string().default('').description('规则值。状态类留空；日期类填写 YYYY-MM-DD，例如 2024-01-01；最近 N 天填写数字，例如 30；自定义规则填写搜索条件，例如 category:adapter。'),
+  note: Schema.string().default('').description('备注'),
+  enabled: Schema.boolean().default(true).description('是否启用'),
+})).role('table').default([]).description('插件市场永久静默过滤。添加规则后，命中的插件会直接从市场页隐藏，不会显示在搜索框中。状态类不需要填写值；日期类填写 YYYY-MM-DD；最近 N 天填写数字。')
 
 export const Config: Schema<Config> = Schema.object({
   frontendMode: Schema.union([
@@ -128,12 +528,16 @@ export const Config: Schema<Config> = Schema.object({
   updateIgnoreDuration: Schema.number().role('time').default(0).hidden().description('Default duration for ignoring one update. 0 means no time-based expiry.'),
   updateIgnoreVersions: Schema.number().min(1).max(20).step(1).default(1).hidden().description('How many consecutive newer versions should be ignored after ignoring one update.'),
   updateIgnorePrerelease: Schema.boolean().default(false).hidden().description('Ignore alpha, beta, rc and other prerelease versions when checking updates.'),
-  updateIgnored: Schema.dict(Schema.any()).hidden(),
   collapsedGroups: Schema.dict(Boolean).hidden(),
-  bundleRecords: Schema.dict(Schema.any()).hidden(),
   registry: Installer.Config,
   search: MarketProvider.Config,
   chatlunaTool: Schema.boolean().default(false).description('Enable ChatLuna plugin market query tool.'),
+  marketSilentFilters: Schema.string().role('textarea').hidden().description('Legacy permanent silent filters.'),
+  marketSilentStatusRules: Schema.array(Schema.any()).hidden(),
+  marketSilentDateRules: Schema.array(Schema.any()).hidden(),
+  marketSilentRecentRules: Schema.array(Schema.any()).hidden(),
+  marketSilentCustomRules: Schema.array(Schema.any()).hidden(),
+  marketSilentRules: MarketSilentRules,
 }).i18n({
   'zh-CN': require('./locales/schema.zh-CN'),
 })
@@ -201,6 +605,12 @@ const configPatchKeys: Array<keyof Config> = [
   'frontendMode',
   'depsLayout',
   'marketLayout',
+  'marketSilentStatusRules',
+  'marketSilentDateRules',
+  'marketSilentRecentRules',
+  'marketSilentCustomRules',
+  'marketSilentRules',
+  'marketSilentFilters',
   'idleProbe',
   'idleProbeDelay',
   'idleProbeBootDelay',
@@ -211,9 +621,7 @@ const configPatchKeys: Array<keyof Config> = [
   'updateIgnoreDuration',
   'updateIgnoreVersions',
   'updateIgnorePrerelease',
-  'updateIgnored',
   'collapsedGroups',
-  'bundleRecords',
 ]
 
 function findMarketNextConfigNode(plugins: any, currentConfig: Config): { parent: any, key: string, value: any } | undefined {
@@ -229,10 +637,31 @@ function findMarketNextConfigNode(plugins: any, currentConfig: Config): { parent
       if (!disabled) return { parent: plugins, key, value }
       fallback ||= { parent: plugins, key, value }
     }
-    const nested = findMarketNextConfigNode(value, currentConfig)
-    if (nested) return nested
+    if (name === 'group') {
+      const nested = findMarketNextConfigNode(value, currentConfig)
+      if (nested) return nested
+    }
   }
   return fallback
+}
+
+function ensureMarketNextConfigDefaults(ctx: Context, currentConfig: Config) {
+  const target = findMarketNextConfigNode(ctx.loader.config?.plugins, currentConfig)
+  if (!target) return false
+  let changed = false
+  if (target.value.frontendMode !== 'performance' && target.value.frontendMode !== 'polished') {
+    target.value.frontendMode = 'performance'
+    changed = true
+  }
+  if (target.value.depsLayout !== 'grid' && target.value.depsLayout !== 'list') {
+    target.value.depsLayout = 'grid'
+    changed = true
+  }
+  if (target.value.marketLayout !== 'grid' && target.value.marketLayout !== 'list') {
+    target.value.marketLayout = 'grid'
+    changed = true
+  }
+  return changed
 }
 
 async function updateMarketNextConfig(ctx: Context, currentConfig: Config, patch: Partial<Config>) {
@@ -241,13 +670,55 @@ async function updateMarketNextConfig(ctx: Context, currentConfig: Config, patch
   let changed = false
   for (const key of configPatchKeys) {
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
-    target.value[key] = patch[key] as never
+    target.value[key] = key === 'marketSilentRules'
+      ? normalizeMarketSilentRules(patch[key])
+      : patch[key] as never
     changed = true
   }
   if (!changed) return false
   await ctx.loader.writeConfig(true)
+  const parent = findPluginParentContext(ctx.loader.entry, target.parent)
+  if (parent && !target.key.startsWith('~')) {
+    await ctx.loader.reload(parent, target.key, target.value)
+  }
   await ctx.get('console')?.refresh('config')
+  await ctx.get('console')?.refresh('entry')
   return true
+}
+
+function normalizeMarketSilentRules(value: unknown): MarketSilentRule[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((rule): rule is MarketSilentRule => !!rule && typeof rule === 'object')
+    .map((rule) => {
+      const normalized: MarketSilentRule = {
+        type: rule.type,
+        value: normalizeMarketSilentRuleValue(rule),
+        note: rule.note,
+        enabled: rule.enabled,
+      }
+      if (normalized.enabled == null) normalized.enabled = true
+      return normalized
+    })
+}
+
+function normalizeMarketSilentRuleValue(rule: MarketSilentRule) {
+  const value = String(rule.value ?? '').trim()
+  if (value) return value
+  if (rule.date) return String(rule.date).trim()
+  if (rule.days != null) return String(rule.days).trim()
+  if (rule.query) return String(rule.query).trim()
+  return ''
+}
+
+function findPluginParentContext(ctx: Context | undefined, plugins: any): Context | undefined {
+  if (!ctx) return
+  if (ctx.scope.config === plugins) return ctx
+  const record = ctx.scope[Symbol.for('koishi.loader.record')] as Record<string, any> | undefined
+  for (const fork of Object.values(record ?? {})) {
+    const found = findPluginParentContext(fork.ctx, plugins)
+    if (found) return found
+  }
 }
 
 async function requestPluginRuntime(ctx: Context, name: string) {
@@ -256,6 +727,7 @@ async function requestPluginRuntime(ctx: Context, name: string) {
 
 async function ensurePluginConfig(ctx: Context, name: string, write = true) {
   if (!Scanner.isPlugin(name)) return false
+  if (name === SELF_PACKAGE) return false
   if (isPluginBundleDependency(name)) {
     ctx.logger('market').debug(`skip default config entry for plugin bundle: ${name}`)
     return false
@@ -379,7 +851,11 @@ async function removeBundleConfigs(ctx: Context, request: BundleConfigRemoveRequ
       ctx.get('console')?.refresh('packages'),
     ])
     ctx.logger('market').info(`plugin bundle config cleanup completed: bundle=${request.package}, removed=${result.removed.length}, removedGroup=${!!result.removedGroup}`)
-    if (needsFullReload) ctx.loader.fullReload()
+    if (needsFullReload) {
+      setTimeout(() => {
+        if (ctx.scope.isActive) ctx.loader.fullReload()
+      }, Time.second)
+    }
   }
 
   return result
@@ -404,7 +880,7 @@ async function assertNoDirectBundleCycles(ctx: Context, packageName: string, mem
   }
 }
 
-async function installBundle(ctx: Context, request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult> {
+async function installBundle(ctx: Context, dataStore: MarketDataStore, request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult> {
   const start = Date.now()
   if (!request.version) throw new Error('bundle package version is required')
   const registry = await ctx.installer.getRegistry(request.package)
@@ -451,7 +927,6 @@ async function installBundle(ctx: Context, request: BundleInstallRequest, forced
   let wroteConfig = false
   const writeBundleConfigs = async () => {
     if (wroteConfig) return
-    wroteConfig = true
     group = ensureBundleGroup(ctx, request.package, manifest) ?? getBundleGroup(ctx, request.package)
     groupChanged ||= !!group?.changed
     for (const member of selected) {
@@ -491,6 +966,7 @@ async function installBundle(ctx: Context, request: BundleInstallRequest, forced
       configured.push(member.package)
     }
     if (groupChanged || configured.length || moved.length) await ctx.loader.writeConfig()
+    wroteConfig = true
   }
 
   const code = await ctx.installer.install(deps, forced, writeBundleConfigs)
@@ -524,6 +1000,7 @@ async function installBundle(ctx: Context, request: BundleInstallRequest, forced
       usePreset: member.usePreset,
     })),
   }
+  if (record) await dataStore.setBundleRecord(record)
   ctx.logger('market').info(`plugin bundle install completed: bundle=${request.package}, members=${selected.length}, configured=${configured.length}, moved=${moved.length}, skipped=${skipped.length}, code=${code}, elapsed=${Date.now() - start}ms`)
   return {
     code,
@@ -544,8 +1021,14 @@ function setupIdleProbe(ctx: Context, config: Config) {
   let timer: ReturnType<typeof setTimeout> | undefined
   let running = false
   let lastProbe = 0
+  let lastFailure = 0
 
-  const getClientCount = () => Object.keys(ctx.console.clients ?? {}).length
+  const getClientCount = () => {
+    const clients = ctx.console.clients as any
+    if (!clients) return 0
+    if (typeof clients.size === 'number') return clients.size
+    return Object.keys(clients).length
+  }
   const clearIdleTimer = () => {
     clearTimeout(timer)
     timer = undefined
@@ -568,6 +1051,12 @@ function setupIdleProbe(ctx: Context, config: Config) {
       schedule(bootWait)
       return
     }
+    const retryWait = lastFailure ? Math.min(Time.minute * 5, getInterval()) - (Date.now() - lastFailure) : 0
+    if (!lastProbe && retryWait > 0) {
+      logger.debug(`skip idle background probe because retry gate is active: remaining=${retryWait}ms`)
+      schedule(retryWait)
+      return
+    }
     const intervalWait = lastProbe ? getInterval() - (Date.now() - lastProbe) : 0
     if (intervalWait > 0) {
       logger.debug(`skip idle background probe because interval gate is active: remaining=${intervalWait}ms`)
@@ -577,20 +1066,34 @@ function setupIdleProbe(ctx: Context, config: Config) {
     if (running) return
 
     running = true
-    lastProbe = Date.now()
+    const probeStartedAt = Date.now()
     logger.info(`idle background probe started: clients=0, delay=${getDelay()}ms, interval=${getInterval()}ms`)
     try {
-      const market = ctx.get('console.services.market') as any
-      await Promise.all([
-        ctx.installer.probeDependenciesInBackground('idle'),
-        market?.probeInBackground?.('idle probe') ?? Promise.resolve(false),
+      const [depsResult, marketResult] = await Promise.allSettled([
+        ctx.installer.probeDependenciesInBackground('idle').then(() => true),
+        ctx.console.services.market?.probeInBackground?.('idle probe') ?? Promise.resolve(false),
       ])
-      logger.info(`idle background probe completed: elapsed=${Date.now() - lastProbe}ms`)
+      const succeeded = depsResult.status === 'fulfilled' && depsResult.value === true
+        || marketResult.status === 'fulfilled' && marketResult.value !== false
+      if (succeeded) {
+        lastProbe = Date.now()
+        lastFailure = 0
+        logger.info(`idle background probe completed: elapsed=${Date.now() - probeStartedAt}ms`)
+      } else {
+        lastFailure = Date.now()
+        const reason = depsResult.status === 'rejected'
+          ? depsResult.reason
+          : marketResult.status === 'rejected'
+            ? marketResult.reason
+            : 'no probe result'
+        logger.warn(`idle background probe failed: ${reason instanceof Error ? reason.message : reason}`)
+      }
     } catch (error) {
+      lastFailure = Date.now()
       logger.warn(`idle background probe failed: ${error instanceof Error ? error.message : error}`)
     } finally {
       running = false
-      if (!getClientCount()) schedule(getInterval())
+      if (!getClientCount()) schedule(lastProbe ? getInterval() : Math.min(Time.minute * 5, getInterval()))
     }
   }
 
@@ -621,6 +1124,13 @@ function setupIdleProbe(ctx: Context, config: Config) {
 export function apply(ctx: Context, config: Config = {}) {
   if (!ctx.loader?.writable) {
     return ctx.logger('app').warn('koishi-plugin-market-next is only available for json/yaml config file')
+  }
+
+  if (ensureMarketNextConfigDefaults(ctx, config)) {
+    ctx.logger('market').info('created missing market-next display defaults in Koishi config')
+    void ctx.loader.writeConfig(true)
+      .then(() => ctx.get('console')?.refresh('config'))
+      .catch(error => ctx.logger('market').warn(error))
   }
 
   applyChatLunaTool(ctx, config)
@@ -721,12 +1231,19 @@ export function apply(ctx: Context, config: Config = {}) {
         ctx.loader.envData.message = null
         return session.text('.success')
       })
+
+    ctx.command('plugin.clear-avatar-cache', { authority: 4 })
+      .action(async ({ session }) => {
+        const { memory, disk } = await clearAvatarCacheStorage(ctx)
+        return session.text('.success', [memory, disk])
+      })
   })
 
   ctx.inject(['console', 'installer'], (ctx) => {
     ctx.plugin(DependencyProvider)
     ctx.plugin(RegistryProvider)
     ctx.plugin(RegistryStatusProvider)
+    const dataStore = new MarketDataStore(ctx)
     ctx.plugin(MarketProvider, config.search ?? {})
     setupIdleProbe(ctx, config)
 
@@ -739,7 +1256,10 @@ export function apply(ctx: Context, config: Config = {}) {
       const installNames = Object.entries(deps)
         .filter(([, version]) => version)
         .map(([name]) => name)
-      const code = await ctx.installer.install(deps, forced, () => ensurePluginConfigs(ctx, installNames))
+        .filter(name => name !== SELF_PACKAGE)
+      const code = await ctx.installer.install(deps, forced, installNames.length
+        ? () => ensurePluginConfigs(ctx, installNames)
+        : undefined)
       if (!code) {
         await ensurePluginConfigs(ctx, installNames)
       }
@@ -753,7 +1273,7 @@ export function apply(ctx: Context, config: Config = {}) {
     }, { authority: 4 })
 
     ctx.console.addListener('market/install-bundle', async (request, forced) => {
-      return installBundle(ctx, request, forced)
+      return installBundle(ctx, dataStore, request, forced)
     }, { authority: 4 })
 
     ctx.console.addListener('market/remove-bundle-configs', async (request) => {
@@ -762,6 +1282,10 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.console.addListener('market/update-config', async (patch) => {
       return updateMarketNextConfig(ctx, config, patch)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/update-data', async (patch) => {
+      return dataStore.patch(patch)
     }, { authority: 4 })
 
     ctx.console.addListener('market/refresh-dependencies', async () => {
@@ -790,13 +1314,28 @@ export function apply(ctx: Context, config: Config = {}) {
       return ensurePluginConfig(ctx, name)
     }, { authority: 4 })
 
+    ctx.console.addListener('market/avatar', async (key, url) => {
+      try {
+        return await fetchAvatar(ctx, key, url)
+      } catch (error) {
+        ctx.logger('market').debug(`avatar fetch failed: ${error instanceof Error ? error.message : error}`)
+      }
+    }, { authority: 4 })
+
     ctx.on('ready', () => {
+      void dataStore.migrateFromConfig(config)
       const timer = setTimeout(() => {
         if (!ctx.scope.isActive) return
         ctx.logger('market').debug('schedule installed plugin config repair after market-next ready')
         void ensureInstalledPluginConfigs(ctx).catch(error => ctx.logger('market').warn(error))
       }, 1000)
-      ctx.effect(() => () => clearTimeout(timer))
+      void cleanupAvatarDiskCache(ctx)
+      const avatarTimer = setInterval(() => cleanupAvatarCaches(ctx), AVATAR_CACHE_SWEEP_INTERVAL)
+      ctx.effect(() => () => {
+        clearTimeout(timer)
+        clearInterval(avatarTimer)
+        avatarCache.clear()
+      })
     })
   })
 }

@@ -30,8 +30,8 @@
     <el-scrollbar ref="root" v-else-if="store.market.total">
       <market-list
         v-model="words"
-        :data="data"
-        :gravatar="config.market.gravatar || store.market.gravatar"
+        :data="silentData"
+        :gravatar="marketGravatar"
         :debug="!!store.market.debug"
         @debug="updateClientDebug"
         @update:page="scrollToTop">
@@ -125,8 +125,8 @@
 
 import { router, store, global, useConfig } from '@koishijs/client'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { active, getFrontendMode, getMarketLayout, patchMarketNextConfig } from '../utils'
-import { getVisible, kConfig, MarketFilter, MarketList, MarketSearch } from '../market'
+import { active, getFrontendMode, getMarketLayout, getMarketSilentFilters, getMarketSilentRules, getPendingOverrides, patchMarketNextConfig } from '../utils'
+import { getSilentFiltered, getVisible, kConfig, MarketFilter, MarketList, MarketSearch, parseSilentFilters } from '../market'
 import { SearchObject } from '@koishijs/registry'
 import { activeBundle } from './utils'
 import { canInstallBundleSearchObject } from '../market/utils'
@@ -139,17 +139,23 @@ function installed(data: SearchObject) {
   }
 }
 
-provide(kConfig, {
-  installed: global.static ? undefined : installed,
-  get layout() { return marketLayout.value },
-})
-
 const root = ref()
 const searchBox = ref<{ focus?: () => void }>()
 const config = useConfig()
 const frontendMode = computed(() => getFrontendMode(config.value))
 const marketLayout = computed(() => getMarketLayout(config.value))
+const marketGravatar = computed(() => config.value.market?.gravatar || store.market?.gravatar)
+const silentFilters = computed(() => {
+  const rules = getMarketSilentRules(config.value)
+  if (rules.length) return rules
+  return parseSilentFilters(getMarketSilentFilters(config.value))
+})
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
+
+provide(kConfig, {
+  installed: global.static ? undefined : installed,
+  get layout() { return marketLayout.value },
+})
 
 const words = ref<string[]>([''])
 
@@ -157,7 +163,11 @@ const prompt = computed(() => words.value.filter(w => w).join(' '))
 
 const data = computed(() => Object.values(store.market?.data || {}))
 
-const visibleData = computed(() => getVisible(data.value, words.value))
+const silentData = computed(() => getSilentFiltered(data.value, silentFilters.value, {
+  installed: global.static ? undefined : installed,
+}))
+
+const visibleData = computed(() => getVisible(silentData.value, words.value))
 
 const clientDebug = ref<{
   timings?: Record<string, number>
@@ -290,7 +300,7 @@ function scheduleLoadingWarning() {
 
 function getType(data: SearchObject) {
   if (global.static) return 'primary'
-  const version = config.value.market?.override?.[data.package.name]
+  const version = getPendingOverrides()[data.package.name]
   if (installed(data)) {
     if (version === '') return 'danger'
     if (version) return 'warning'
@@ -302,7 +312,7 @@ function getType(data: SearchObject) {
 
 function getText(data: SearchObject) {
   if (global.static) return '配置'
-  const version = config.value.market?.override?.[data.package.name]
+  const version = getPendingOverrides()[data.package.name]
   if (installed(data)) {
     if (version === '') return '等待移除'
     if (version) return '等待更新'
@@ -712,6 +722,34 @@ function formatNumber(value?: number) {
     &.active.insecure { box-shadow: inset 3px 0 0 var(--k-color-danger); }
   }
 
+  :deep(.market-date-row) {
+    span {
+      color: var(--fg2);
+      opacity: 0.9;
+    }
+
+    input {
+      border-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border));
+      background: color-mix(in srgb, var(--k-card-bg) 62%, transparent);
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+
+      &:hover,
+      &:focus {
+        border-color: color-mix(in srgb, var(--k-color-primary) 42%, var(--k-color-border));
+        background: color-mix(in srgb, var(--k-card-bg) 78%, transparent);
+      }
+    }
+  }
+
+  :deep(.market-date-clear) {
+    border-color: color-mix(in srgb, var(--k-color-primary) 16%, var(--k-color-border));
+    background: color-mix(in srgb, var(--k-card-bg) 56%, transparent);
+
+    &:hover {
+      box-shadow: inset 3px 0 0 var(--k-color-primary);
+    }
+  }
+
   // load-complete footer
   .load-complete {
     opacity: 0.55;
@@ -832,8 +870,12 @@ function formatNumber(value?: number) {
       color: var(--k-text-light, var(--fg2));
     }
 
-    .rating .market-icon {
-      filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--k-color-warning) 30%, transparent));
+    .updated-meta {
+      color: color-mix(in srgb, var(--c, var(--k-color-primary)) 62%, var(--k-text-light));
+
+      .market-icon {
+        filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--c, var(--k-color-primary)) 26%, transparent));
+      }
     }
 
     .footer {

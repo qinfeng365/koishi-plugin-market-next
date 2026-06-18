@@ -1,6 +1,7 @@
 type:
   sort: 排序
   filter: 筛选
+  advanced: 高级
   category: 分类
 badge:
   installed: 已下载
@@ -11,10 +12,19 @@ badge:
   portable: 快速体验
 sort:
   default: 综合
-  rating: 按评分
   download: 按下载量
   created: 按创建时间
   updated: 按更新时间
+advanced:
+  createdWithin: 最近几天创建
+  updatedWithin: 最近几天更新
+  createdAfter: 创建晚于
+  createdBefore: 创建早于
+  updatedAfter: 更新晚于
+  updatedBefore: 更新早于
+  clearDates: 清除时间筛选
+  datePlaceholder: YYYY-MM-DD
+  daysPlaceholder: 天数
 category:
   all: 所有插件
   other: 未分类
@@ -36,5 +46,6 @@ time:
   minutes-ago: '{0} 分钟前'
   hours-ago: '{0} 小时前'
   days-ago: '{0} 天前'
+  updated-ago: '{0}更新'
 search:
   placeholder: 输入想要查询的插件名

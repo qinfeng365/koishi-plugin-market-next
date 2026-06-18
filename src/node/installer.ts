@@ -24,11 +24,17 @@ const REGISTRY_FAST_ROUTE_THRESHOLD = Time.second * 0.8
 const REGISTRY_STATS_TTL = Time.day * 30
 const NOT_FOUND_CACHE_TTL = Time.minute * 5
 const FULL_RELOAD_DELAY = Time.second
+const SELF_PACKAGE = 'koishi-plugin-market-next'
 
 interface PersistedRegistryStats {
   score: number
+  successes?: number
+  failures?: number
+  consecutiveFailures?: number
   averageElapsed?: number
   lastSuccess?: number
+  lastFailure?: number
+  lastFailureReason?: RegistryStatus['reason']
   contentEncoding?: string
 }
 
@@ -42,6 +48,7 @@ interface RouteStats {
   score: number
   successes: number
   failures: number
+  consecutiveFailures?: number
   averageElapsed?: number
   lastSuccess?: number
   lastFailure?: number
@@ -202,12 +209,18 @@ class Installer extends Service {
       if (Date.now() - store.savedAt > REGISTRY_STATS_TTL) return
       for (const [endpoint, stats] of Object.entries(store.stats)) {
         if (!stats) continue
+        const successes = Math.max(0, Number(stats.successes) || 0)
+        const failures = Math.max(0, Number(stats.failures) || 0)
+        const hasRecentSuccess = Number(stats.lastSuccess) && Date.now() - Number(stats.lastSuccess) < Time.day
         this.registryRouteStats[endpoint] = {
-          score: stats.score,
-          successes: 0,
-          failures: 0,
+          score: hasRecentSuccess ? clamp(stats.score, -1, 3) : clamp(stats.score, -4, 3),
+          successes,
+          failures: hasRecentSuccess ? Math.min(failures, Math.max(2, Math.ceil(successes / 2))) : Math.min(failures, 12),
+          consecutiveFailures: hasRecentSuccess ? 0 : Math.max(0, Number(stats.consecutiveFailures) || 0),
           averageElapsed: stats.averageElapsed,
           lastSuccess: stats.lastSuccess,
+          lastFailure: stats.lastFailure,
+          lastFailureReason: stats.lastFailureReason,
         }
       }
       logger.debug(`npm registry route stats restored from disk: ${Object.keys(store.stats).join(', ')}`)
@@ -224,7 +237,16 @@ class Installer extends Service {
       const stats: Dict<PersistedRegistryStats> = {}
       for (const [endpoint, s] of Object.entries(this.registryRouteStats)) {
         if (!s) continue
-        stats[endpoint] = { score: clamp(s.score, -6, 3), averageElapsed: s.averageElapsed, lastSuccess: s.lastSuccess }
+        stats[endpoint] = {
+          score: clamp(s.score, -6, 3),
+          successes: s.successes,
+          failures: s.failures,
+          consecutiveFailures: s.consecutiveFailures,
+          averageElapsed: s.averageElapsed,
+          lastSuccess: s.lastSuccess,
+          lastFailure: s.lastFailure,
+          lastFailureReason: s.lastFailureReason,
+        }
       }
       try {
         await fsp.mkdir(resolve(this.statsFile, '..'), { recursive: true })
@@ -449,26 +471,34 @@ class Installer extends Service {
     if (!stats) return score
 
     const total = stats.successes + stats.failures
-    if (total) score += (stats.successes / total - 0.5) * 4
-    score += stats.score
-    score += Math.min(1.5, stats.successes * 0.3)
-    score -= Math.min(6, stats.failures * 1.2)
-    if (stats.averageElapsed != null) {
-      if (stats.averageElapsed <= 300) score += 4
-      else if (stats.averageElapsed <= REGISTRY_FAST_ROUTE_THRESHOLD) score += 3
-      else if (stats.averageElapsed <= 1200) score += 2
-      else if (stats.averageElapsed <= 2500) score += 0
-      else if (stats.averageElapsed <= 4000) score -= 2
-      else score -= 4
+    if (total) {
+      const successRate = stats.successes / total
+      score += (successRate - 0.5) * 6
+      if (total >= 3 && successRate >= 0.8) score += 1.5
+      if (total >= 3 && successRate < 0.35) score -= 2
     }
-    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 0.5
+    score += stats.score
+    score += Math.min(2, stats.successes * 0.25)
+    score -= Math.min(2, stats.failures * 0.2)
+    if (stats.averageElapsed != null) {
+      if (stats.averageElapsed <= 300) score += 1.5
+      else if (stats.averageElapsed <= REGISTRY_FAST_ROUTE_THRESHOLD) score += 1
+      else if (stats.averageElapsed <= 1200) score += 0.5
+      else if (stats.averageElapsed <= 2500) score -= 0.3
+      else if (stats.averageElapsed <= 4000) score -= 1
+      else score -= 2
+    }
+    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 1.5
+    score -= Math.min(5, (stats.consecutiveFailures ?? 0) * 1.5)
     return score
   }
 
   private recordRegistryRouteSuccess(result: RegistryEndpointResult) {
     const stats = this.registryRouteStats[result.endpoint] ||= { score: 0, successes: 0, failures: 0 }
     stats.successes++
-    stats.score = clamp(stats.score + (result.elapsed <= REGISTRY_FAST_ROUTE_THRESHOLD ? 0.5 : -0.5), -6, 3)
+    stats.consecutiveFailures = 0
+    stats.failures = Math.max(0, Math.floor(stats.failures * 0.6))
+    stats.score = clamp(stats.score + (result.elapsed <= REGISTRY_FAST_ROUTE_THRESHOLD ? 0.4 : 0.1), -6, 3)
     stats.lastSuccess = Date.now()
     stats.averageElapsed = stats.averageElapsed == null
       ? result.elapsed
@@ -479,9 +509,10 @@ class Installer extends Service {
   private recordRegistryRouteFailure(endpoint: string, reason?: RegistryStatus['reason']) {
     const stats = this.registryRouteStats[endpoint] ||= { score: 0, successes: 0, failures: 0 }
     stats.failures++
+    stats.consecutiveFailures = (stats.consecutiveFailures ?? 0) + 1
     stats.lastFailure = Date.now()
     stats.lastFailureReason = reason
-    stats.score = clamp(stats.score - getFailurePenalty(stats.lastFailureReason), -8, 3)
+    stats.score = clamp(stats.score - Math.min(1.5, getFailurePenalty(stats.lastFailureReason)), -8, 3)
     this.scheduleStatsWrite()
   }
 
@@ -850,12 +881,24 @@ class Installer extends Service {
     return new Promise<number>((resolve) => {
       if (useJson) args.push('--json')
       const child = spawn(name, args, { cwd: this.cwd })
+      this.ctx.get('console')?.broadcast('market/install-log', {
+        type: 'stdout',
+        line: `package manager started: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}`,
+      })
       child.on('exit', (code) => {
         logger.info(`package manager exited: code=${code}, elapsed=${Date.now() - start}ms`)
+        this.ctx.get('console')?.broadcast('market/install-log', {
+          type: code ? 'stderr' : 'stdout',
+          line: code ? `package manager exited with code ${code}` : 'package manager finished successfully',
+        })
         resolve(code)
       })
       child.on('error', (error) => {
         logger.warn(`package manager failed to start: ${error instanceof Error ? error.message : String(error)}`)
+        this.ctx.get('console')?.broadcast('market/install-log', {
+          type: 'stderr',
+          line: `package manager failed to start: ${error instanceof Error ? error.message : String(error)}`,
+        })
         resolve(-1)
       })
 
@@ -970,10 +1013,18 @@ class Installer extends Service {
   private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>) {
     const start = Date.now()
     logger.info(`dependency install requested: deps=${formatDeps(deps)}, forced=${!!forced}`)
+    this.ctx.get('console')?.broadcast('market/install-log', {
+      type: 'stdout',
+      line: `dependency install requested: ${formatDeps(deps) || '(none)'}`,
+    })
     const snapshot = await this.snapshotPackageManifest()
     const localDeps = this._getLocalDeps(deps)
     logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
     await this.override(deps)
+    this.ctx.get('console')?.broadcast('market/install-log', {
+      type: 'stdout',
+      line: 'package.json dependencies updated, preparing package manager workflow…',
+    })
 
     for (const name in deps) {
       const { resolved, workspace } = localDeps[name] || {}
@@ -984,6 +1035,10 @@ class Installer extends Service {
     }
 
     if (forced) {
+      this.ctx.get('console')?.broadcast('market/install-log', {
+        type: 'stdout',
+        line: 'running package manager install…',
+      })
       const code = await this._install()
       if (code) {
         await this.restorePackageManifest(snapshot, deps, `package manager exited with code ${code}`)
@@ -1010,16 +1065,16 @@ class Installer extends Service {
       logger.debug(`dependency changed may require full reload: ${name}, previous=${resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
     }
     if (beforeReload) {
-      try {
-        logger.debug('run pre-reload dependency hook')
-        await beforeReload()
-      } catch (error) {
-        logger.warn(error)
-      }
+      logger.debug('run pre-reload dependency hook')
+      await beforeReload()
     }
     await this.refreshData()
     logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!forced}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
     if (shouldReload) {
+      this.ctx.get('console')?.broadcast('market/install-log', {
+        type: 'stdout',
+        line: `full reload scheduled in ${FULL_RELOAD_DELAY}ms`,
+      })
       logger.info(`dependency install triggers full reload after ${FULL_RELOAD_DELAY}ms`)
       setTimeout(() => {
         if (this.ctx.scope.isActive) this.ctx.loader.fullReload()
@@ -1042,6 +1097,10 @@ class Installer extends Service {
       this.installActive = false
       release!()
     }
+  }
+
+  isSelfUpdate(deps: Dict<string>) {
+    return Object.prototype.hasOwnProperty.call(deps, SELF_PACKAGE)
   }
 }
 

@@ -114,6 +114,7 @@ declare class Installer extends Service {
     private _getLocalDeps;
     private _installLocked;
     install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>): Promise<number>;
+    isSelfUpdate(deps: Dict<string>): boolean;
 }
 declare namespace Installer {
     interface GetDepsOptions {

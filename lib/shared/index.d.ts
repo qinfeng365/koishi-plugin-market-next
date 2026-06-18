@@ -65,6 +65,7 @@ export declare abstract class MarketProvider extends DataService<MarketProvider.
     constructor(ctx: Context);
     start(refresh?: boolean): Promise<void>;
     abstract collect(): Promise<void | SearchResult>;
+    probeInBackground?(reason?: string): Promise<boolean>;
     prepare(): Promise<SearchResult>;
 }
 export declare namespace MarketProvider {
