@@ -1,6 +1,6 @@
 <template>
   <!-- List row mode -->
-  <div v-if="props.listMode" :class="['dep-list-row', statusClass]" :style="cardStyle">
+  <div v-if="props.listMode" :class="['dep-list-row', modeClass, statusClass]" :style="cardStyle">
     <div class="dep-status-mark" aria-hidden="true">
       <market-icon :name="markIcon"></market-icon>
     </div>
@@ -48,7 +48,7 @@
   <!-- Card mode (default) -->
   <article
     v-else
-    :class="['dep-package-card', statusClass, { expandable: canExpandCard, expanded: editing }]"
+    :class="['dep-package-card', modeClass, statusClass, { expandable: canExpandCard, expanded: editing }]"
     :style="cardStyle"
     @click="toggleCardActions"
   >
@@ -179,7 +179,7 @@
     </div>
   </article>
 
-  <el-dialog v-model="showIgnoreDialog" class="dep-ignore-dialog" append-to-body destroy-on-close>
+  <el-dialog v-model="showIgnoreDialog" :class="['dep-ignore-dialog', modeClass]" append-to-body destroy-on-close>
     <template #header>忽略更新提示</template>
     <div class="dep-ignore-body">
       <p>
@@ -237,7 +237,7 @@ import { computed, ref } from 'vue'
 import { message, store, useConfig, useContext } from '@koishijs/client'
 import type { SearchObject } from '@koishijs/registry'
 import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
-import { createUpdateIgnoreRule, getBundleRecords, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { createUpdateIgnoreRule, getBundleRecords, getFrontendMode, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
@@ -255,6 +255,8 @@ const removeValue = '__market_next_remove__'
 const day = 24 * 60 * 60 * 1000
 const config = useConfig()
 const ctx = useContext()
+const frontendMode = computed(() => getFrontendMode(config.value))
+const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 const configuring = ref(false)
 const editing = computed({
   get: () => expandedDependency.value === props.name,
@@ -818,15 +820,11 @@ async function configure() {
 .dep-ignore-dialog .el-dialog {
   width: min(560px, calc(100vw - 32px)) !important;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border, #dcdfe6));
+  border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 88%, var(--fg1, currentColor) 12%);
   border-radius: 10px;
   color: var(--fg1, var(--el-text-color-primary));
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 5%, transparent), transparent 46%),
-    color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 88%, var(--k-side-bg, var(--el-bg-color)));
-  box-shadow:
-    0 24px 68px rgb(0 0 0 / 32%),
-    0 0 0 1px color-mix(in srgb, var(--fg1, currentColor) 7%, transparent) inset;
+  background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 88%, var(--k-side-bg, var(--el-bg-color)));
+  box-shadow: none;
 }
 
 .dep-ignore-dialog {
@@ -836,10 +834,8 @@ async function configure() {
     min-height: 52px;
     margin: 0;
     padding: 13px 44px 12px 18px;
-    border-bottom: 1px solid color-mix(in srgb, var(--k-color-primary) 10%, var(--k-color-border, #dcdfe6));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
-      color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 70%, var(--k-card-bg, var(--el-bg-color)));
+    border-bottom: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 82%, transparent);
+    background: color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 70%, var(--k-card-bg, var(--el-bg-color)));
 
     .el-dialog__title {
       color: var(--fg1, var(--el-text-color-primary));
@@ -908,7 +904,7 @@ async function configure() {
     border-radius: 7px;
     padding: 0.52rem 0.62rem;
     color: var(--fg2, var(--el-text-color-regular));
-    background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 5%, var(--k-side-bg, var(--el-bg-color)));
+    background: color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 84%, var(--k-card-bg, var(--el-bg-color)));
     font-size: 0.82rem;
   }
 
@@ -930,6 +926,27 @@ async function configure() {
     border-color: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 58%, var(--k-color-border, #dcdfe6)) !important;
     background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 15%, var(--k-card-bg, var(--el-bg-color)));
     color: var(--k-color-primary, var(--el-color-primary));
+  }
+
+  &.market-mode-polished {
+    border-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border, #dcdfe6));
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 5%, transparent), transparent 46%),
+      color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 88%, var(--k-side-bg, var(--el-bg-color)));
+    box-shadow:
+      0 24px 68px rgb(0 0 0 / 32%),
+      0 0 0 1px color-mix(in srgb, var(--fg1, currentColor) 7%, transparent) inset;
+
+    .el-dialog__header {
+      border-bottom-color: color-mix(in srgb, var(--k-color-primary) 10%, var(--k-color-border, #dcdfe6));
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
+        color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 70%, var(--k-card-bg, var(--el-bg-color)));
+    }
+
+    .dep-ignore-note {
+      background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 5%, var(--k-side-bg, var(--el-bg-color)));
+    }
   }
 }
 
@@ -966,8 +983,8 @@ async function configure() {
 
   &:hover {
     border-color: var(--dep-accent-border);
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--dep-accent) 12%, rgba(0,0,0,0.12));
-    transform: translateY(-1px);
+    box-shadow: none;
+    transform: none;
   }
 
   &.expandable { cursor: pointer; }
@@ -975,7 +992,7 @@ async function configure() {
   &.expanded {
     z-index: 8;
     border-color: var(--dep-accent-border);
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--dep-accent) 12%, rgba(0,0,0,0.12));
+    box-shadow: none;
     overflow: visible;
 
     .dep-card-buttons {
@@ -1008,16 +1025,9 @@ async function configure() {
     &::before { background: color-mix(in srgb, var(--dep-accent) 45%, transparent); }
   }
 
-  // non-installed states get a subtle accent glow on the left
+  // Polished mode adds richer state glow from the page-level stylesheet.
   &:not(.installed)::after {
-    content: '';
-    position: absolute;
-    inset: 0 auto 0 3px;
-    width: 3rem;
-    background:
-      radial-gradient(circle at left center, color-mix(in srgb, var(--dep-accent) 14%, transparent), transparent 62%),
-      linear-gradient(90deg, color-mix(in srgb, var(--dep-accent) 8%, transparent), transparent);
-    pointer-events: none;
+    display: none;
   }
 }
 
@@ -1257,10 +1267,8 @@ async function configure() {
     border: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
     border-radius: 8px;
     padding: 0.54rem;
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--dep-accent) 7%, transparent), transparent),
-      var(--k-card-bg);
-    box-shadow: 0 10px 26px rgb(0 0 0 / 18%);
+    background: var(--k-card-bg);
+    box-shadow: none;
 
     &::before {
       content: '';
@@ -1475,7 +1483,7 @@ async function configure() {
   }
 
   &.pending   { --dep-accent: var(--k-color-primary); background: color-mix(in srgb, var(--k-color-primary) 4%, var(--k-card-bg)); }
-  &.bundle    { --dep-accent: #9b74df; background: linear-gradient(90deg, color-mix(in srgb, #9b74df 42%, transparent), transparent 46%) top left / 100% 2px no-repeat, color-mix(in srgb, #9b74df 4%, var(--k-card-bg)); }
+  &.bundle    { --dep-accent: #9b74df; background: color-mix(in srgb, #9b74df 4%, var(--k-card-bg)); }
   &.updatable { --dep-accent: var(--k-color-success); }
   &.error, &.invalid { --dep-accent: var(--danger); background: color-mix(in srgb, var(--danger) 4%, var(--k-card-bg)); }
   &.unconfigured { --dep-accent: var(--warning); background: color-mix(in srgb, var(--warning) 3%, var(--k-card-bg)); }

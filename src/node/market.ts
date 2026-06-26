@@ -752,6 +752,7 @@ class MarketProvider extends BaseMarketProvider {
         error: undefined,
         refreshing: true,
         loading: false,
+        serverNow: Date.now(),
         debug: this.getDebugInfo(),
       }
     }
@@ -793,6 +794,7 @@ class MarketProvider extends BaseMarketProvider {
           cached: false,
           refreshing: true,
           loading: true,
+          serverNow: Date.now(),
           debug: this.getDebugInfo({ total: Date.now() - start }),
         }
       }
@@ -801,7 +803,9 @@ class MarketProvider extends BaseMarketProvider {
     }
     if (!this.scanner) {
       this.log('debug', `get market payload without scanner, cached=${!!this.payload}, elapsed=${Date.now() - start}ms`)
-      return this.payload ? { ...this.payload, debug: this.getDebugInfo() } : { data: {}, failed: 0, total: 0, progress: 0, debug: this.getDebugInfo() }
+      return this.payload
+        ? { ...this.payload, serverNow: Date.now(), debug: this.getDebugInfo() }
+        : { data: {}, failed: 0, total: 0, progress: 0, serverNow: Date.now(), debug: this.getDebugInfo() }
     }
     if (this._error) {
       if (!this.payload && this.hasCurrentMarketData() && this.scanner) {
@@ -817,6 +821,7 @@ class MarketProvider extends BaseMarketProvider {
           error,
           refreshing: false,
           loading: false,
+          serverNow: Date.now(),
           debug: this.getDebugInfo(),
         }
       }
@@ -832,6 +837,7 @@ class MarketProvider extends BaseMarketProvider {
         cached: false,
         refreshing: false,
         loading: false,
+        serverNow: Date.now(),
         debug: this.getDebugInfo(),
       }
     }
@@ -862,6 +868,7 @@ class MarketProvider extends BaseMarketProvider {
       cached: !!this.cacheMeta,
       cachedAt: this.cacheMeta?.fetchedAt,
       validatedAt: this.cacheMeta?.validatedAt,
+      serverNow: Date.now(),
       refreshing,
       loading: false,
       debug: this.getDebugInfo({

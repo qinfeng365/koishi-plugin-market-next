@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-if="store.market?.registry" v-model="showConfirm" class="confirm-panel" destroy-on-close>
+  <el-dialog v-if="store.market?.registry" v-model="showConfirm" :class="['confirm-panel', modeClass]" destroy-on-close>
     <template #header>确认依赖更改</template>
     <table>
       <colgroup>
@@ -44,11 +44,12 @@
 import { computed, ref } from 'vue'
 import { message, send, store, useContext, useConfig } from '@koishijs/client'
 import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from './utils'
-import { getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
+import { getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
 
 const ctx = useContext()
 const config = useConfig()
 const overrides = computed(() => getPendingOverrides())
+const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 
 const removeConfig = ref(getRemoveConfig(config.value))
 
@@ -112,7 +113,6 @@ function confirm() {
     errorText: 'market-next 更新失败！',
     timeoutText: 'market-next 更新超时！',
     selfUpdate: true,
-    skipCallbackOnDisconnect: true,
   } : undefined)
 }
 
@@ -121,21 +121,69 @@ function confirm() {
 <style lang="scss">
 
 .confirm-panel {
+  --confirm-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #18181b)));
+  --confirm-surface-muted: color-mix(in srgb, var(--confirm-surface) 84%, var(--k-side-bg, var(--el-fill-color-light, #f8fafc)) 16%);
+  --confirm-text: var(--fg1, var(--el-text-color-primary, #1e293b));
+  --confirm-text-muted: var(--fg2, var(--el-text-color-regular, #64748b));
+  --confirm-border-base: var(--k-color-border, var(--el-border-color, #d4d8e2));
+  --confirm-border: color-mix(in srgb, var(--confirm-border-base) 78%, var(--confirm-text) 22%);
+  --confirm-border-soft: color-mix(in srgb, var(--confirm-border-base) 72%, transparent);
+  --confirm-primary: var(--k-color-primary, var(--el-color-primary, #3b82f6));
+  --confirm-row-bg: color-mix(in srgb, var(--confirm-surface) 90%, var(--confirm-surface-muted) 10%);
+  --confirm-row-hover: color-mix(in srgb, var(--confirm-text) 5%, var(--confirm-row-bg));
+
+  border: 1px solid var(--confirm-border);
+  border-radius: 12px;
+  overflow: hidden;
+  color: var(--confirm-text);
+  background: var(--confirm-surface);
+  box-shadow: none;
+
+  .el-dialog__header {
+    border-bottom: 1px solid var(--confirm-border-soft);
+    background: color-mix(in srgb, var(--confirm-surface-muted) 72%, var(--confirm-surface));
+  }
+
+  .el-dialog__title {
+    color: var(--confirm-text);
+  }
+
+  .el-dialog__headerbtn {
+    .el-dialog__close {
+      color: var(--confirm-text-muted);
+    }
+
+    &:hover .el-dialog__close {
+      color: var(--confirm-primary);
+    }
+  }
+
+  .el-dialog__body {
+    background: var(--confirm-surface);
+  }
+
+  .el-dialog__footer {
+    border-top: 1px solid var(--confirm-border-soft);
+    background: color-mix(in srgb, var(--confirm-surface) 86%, var(--confirm-surface-muted) 14%);
+  }
+
   table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid var(--k-color-border, #e2e8f0);
+    border: 1px solid var(--confirm-border);
     border-radius: 8px;
     overflow: hidden;
     margin: 0.75rem 0;
+    background: var(--confirm-row-bg);
+    box-shadow: none;
 
     thead, tbody {
       td, th {
         padding: 0.6rem 0.875rem;
         white-space: nowrap;
-        border-bottom: 1px solid var(--k-color-border, #e2e8f0);
-        border-right: 1px solid var(--k-color-border, #e2e8f0);
+        border-bottom: 1px solid var(--confirm-border-soft);
+        border-right: 1px solid var(--confirm-border-soft);
         font-size: 0.82rem;
 
         &:last-child {
@@ -145,8 +193,8 @@ function confirm() {
     }
 
     th {
-      background: color-mix(in srgb, var(--fg1, #1e293b) 4%, var(--k-side-bg, #f8fafc));
-      color: var(--fg2, #64748b);
+      background: color-mix(in srgb, var(--confirm-text) 5%, var(--confirm-surface-muted));
+      color: var(--confirm-text-muted);
       font-weight: 600;
       text-align: left;
     }
@@ -156,17 +204,22 @@ function confirm() {
     }
 
     tbody tr {
-      background: var(--k-card-bg, #ffffff);
-      transition: background 0.15s;
+      background: var(--confirm-row-bg);
+      transition: background-color 0.15s ease;
 
       &:hover {
-        background: color-mix(in srgb, var(--k-color-primary, #3b82f6) 4%, var(--k-card-bg, #ffffff));
+        background: var(--confirm-row-hover);
       }
+    }
+
+    td {
+      color: var(--confirm-text);
     }
   }
 
   td.arrow {
     padding: 0;
+    color: var(--confirm-text-muted);
 
     span {
       display: flex;
@@ -179,6 +232,57 @@ function confirm() {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 0.75rem;
+
+    .left {
+      min-width: 0;
+      color: var(--confirm-text-muted);
+    }
+
+    .right {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+  }
+
+  &.market-mode-polished {
+    --confirm-row-hover: color-mix(in srgb, var(--confirm-primary) 7%, var(--confirm-row-bg));
+
+    border-color: color-mix(in srgb, var(--confirm-border) 84%, var(--confirm-primary) 16%);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--confirm-primary) 5%, transparent), transparent 44%),
+      var(--confirm-surface);
+    box-shadow:
+      0 18px 48px color-mix(in srgb, var(--confirm-text) 18%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--confirm-primary) 10%, transparent) inset;
+
+    .el-dialog__header {
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--confirm-primary) 6%, transparent), transparent 68%),
+        color-mix(in srgb, var(--confirm-surface-muted) 72%, var(--confirm-surface));
+    }
+
+    .el-dialog__body {
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--confirm-primary) 2%, transparent), transparent),
+        var(--confirm-surface);
+    }
+
+    table th {
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--confirm-primary) 6%, transparent), transparent 68%),
+        color-mix(in srgb, var(--confirm-text) 5%, var(--confirm-surface-muted));
+    }
+
+    td.arrow {
+      color: var(--confirm-primary);
+    }
+  }
+
+  &.market-mode-performance {
+    box-shadow: none;
   }
 }
 

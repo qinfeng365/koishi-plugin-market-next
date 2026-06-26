@@ -1,5 +1,5 @@
 <template>
-  <el-dialog :model-value="!!active" @update:model-value="active = ''" class="install-panel" destroy-on-close>
+  <el-dialog :model-value="!!active" @update:model-value="active = ''" :class="['install-panel', modeClass]" destroy-on-close>
     <template v-if="active" #header="{ titleId, titleClass }">
       <span :id="titleId" :class="titleClass">
         {{ active + (workspace ? ' (工作区)' : '') }}
@@ -131,13 +131,15 @@
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, message, send, store, useContext, useConfig } from '@koishijs/client'
 import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
-import { active, getBulkMode, getBundleRecords, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { active, getBulkMode, getBundleRecords, getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import BundleUninstall from './bundle-uninstall.vue'
 
 const ctx = useContext()
 const config = useConfig()
+const frontendMode = computed(() => getFrontendMode(config.value))
+const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const saveChoice = ref(false)
 const showRemoveDialog = ref(false)
@@ -436,15 +438,11 @@ function getResultText(peer: PeerInfo, name: string) {
 .install-panel .el-dialog {
   width: min(720px, calc(100vw - 32px)) !important;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
+  border: 1px solid color-mix(in srgb, var(--k-color-border) 88%, var(--fg1) 12%);
   border-radius: 10px;
   color: var(--fg1);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent), transparent 44%),
-    var(--k-card-bg);
-  box-shadow:
-    0 28px 80px rgb(0 0 0 / 32%),
-    0 0 0 1px color-mix(in srgb, var(--fg1) 8%, transparent) inset;
+  background: var(--k-card-bg);
+  box-shadow: none;
 }
 
 .install-panel {
@@ -454,10 +452,8 @@ function getResultText(peer: PeerInfo, name: string) {
     align-items: center;
     min-height: 62px;
     padding: 14px 44px 12px 20px;
-    border-bottom: 1px solid color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
-      color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
+    border-bottom: 1px solid color-mix(in srgb, var(--k-color-border) 82%, transparent);
+    background: color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
 
     .el-dialog__title {
       min-width: 0;
@@ -522,7 +518,7 @@ function getResultText(peer: PeerInfo, name: string) {
   .peer-table-scroll {
     border-radius: 8px;
     background: var(--k-card-bg);
-    box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
+    box-shadow: none;
   }
 
   table {
@@ -636,8 +632,33 @@ function getResultText(peer: PeerInfo, name: string) {
     align-items: center;
     min-height: 68px;
     padding: 14px 16px;
-    border-top: 1px solid color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+    border-top: 1px solid color-mix(in srgb, var(--k-color-border) 82%, transparent);
     background: color-mix(in srgb, var(--k-side-bg) 50%, var(--k-card-bg));
+  }
+
+  &.market-mode-polished {
+    border-color: color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent), transparent 44%),
+      var(--k-card-bg);
+    box-shadow:
+      0 28px 80px rgb(0 0 0 / 32%),
+      0 0 0 1px color-mix(in srgb, var(--fg1) 8%, transparent) inset;
+
+    .el-dialog__header {
+      border-bottom-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
+        color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
+    }
+
+    .peer-table-scroll {
+      box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
+    }
+
+    .el-dialog__footer {
+      border-top-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+    }
   }
 
   .wrapper {

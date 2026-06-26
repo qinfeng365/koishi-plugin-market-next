@@ -9,7 +9,7 @@ import { promises as fsp } from 'fs'
 import { createHash } from 'crypto'
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
 import { MarketDataStore, MarketDataStorePayload } from './data'
-import Installer, { loadManifest } from './installer'
+import Installer, { InstallFallbackCandidate, InstallOptions, loadManifest } from './installer'
 import MarketProvider from './market'
 import { applyChatLunaTool } from './chatluna'
 import {
@@ -52,8 +52,9 @@ declare module '@koishijs/console' {
   }
 
   interface Events {
-    'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>
-    'market/install-bundle'(request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult>
+    'market/install'(deps: Dict<string>, forced?: boolean, options?: InstallOptions): Promise<number>
+    'market/install-bundle'(request: BundleInstallRequest, forced?: boolean, options?: InstallOptions): Promise<BundleInstallResult>
+    'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>
     'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>
     'market/update-config'(patch: Partial<Config>): Promise<boolean>
     'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>
@@ -880,7 +881,8 @@ async function assertNoDirectBundleCycles(ctx: Context, packageName: string, mem
   }
 }
 
-async function installBundle(ctx: Context, dataStore: MarketDataStore, request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult> {
+async function installBundle(ctx: Context, dataStore: MarketDataStore, request: BundleInstallRequest, forced?: boolean, options: InstallOptions = {}): Promise<BundleInstallResult> {
+  options ||= {}
   const start = Date.now()
   if (!request.version) throw new Error('bundle package version is required')
   const registry = await ctx.installer.getRegistry(request.package)
@@ -969,7 +971,7 @@ async function installBundle(ctx: Context, dataStore: MarketDataStore, request: 
     wroteConfig = true
   }
 
-  const code = await ctx.installer.install(deps, forced, writeBundleConfigs)
+  const code = await ctx.installer.install(deps, forced, writeBundleConfigs, options)
 
   if (!code) {
     await writeBundleConfigs()
@@ -1252,14 +1254,15 @@ export function apply(ctx: Context, config: Config = {}) {
       prod: resolve(__dirname, '../../dist'),
     })
 
-    ctx.console.addListener('market/install', async (deps, forced) => {
+    ctx.console.addListener('market/install', async (deps, forced, options) => {
+      options ||= {}
       const installNames = Object.entries(deps)
         .filter(([, version]) => version)
         .map(([name]) => name)
         .filter(name => name !== SELF_PACKAGE)
       const code = await ctx.installer.install(deps, forced, installNames.length
         ? () => ensurePluginConfigs(ctx, installNames)
-        : undefined)
+        : undefined, options)
       if (!code) {
         await ensurePluginConfigs(ctx, installNames)
       }
@@ -1272,8 +1275,13 @@ export function apply(ctx: Context, config: Config = {}) {
       return code
     }, { authority: 4 })
 
-    ctx.console.addListener('market/install-bundle', async (request, forced) => {
-      return installBundle(ctx, dataStore, request, forced)
+    ctx.console.addListener('market/install-bundle', async (request, forced, options) => {
+      options ||= {}
+      return installBundle(ctx, dataStore, request, forced, options)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/install-fallback-candidate', async (failedEndpoint) => {
+      return ctx.installer.getInstallFallbackCandidate(failedEndpoint)
     }, { authority: 4 })
 
     ctx.console.addListener('market/remove-bundle-configs', async (request) => {

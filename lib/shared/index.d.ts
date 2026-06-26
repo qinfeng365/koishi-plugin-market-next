@@ -81,6 +81,7 @@ export declare namespace MarketProvider {
         cached?: boolean;
         cachedAt?: number;
         validatedAt?: number;
+        serverNow?: number;
         refreshing?: boolean;
         loading?: boolean;
         debug?: MarketPerformance;

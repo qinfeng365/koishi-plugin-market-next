@@ -1,6 +1,14 @@
 import { Context, Dict, HTTP, Schema, Service } from 'koishi';
 import { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry';
 import type { RegistryStatus } from '../shared';
+export interface InstallOptions {
+    installEndpoint?: string;
+}
+export interface InstallFallbackCandidate {
+    endpoint: string;
+    label: string;
+    reason: string;
+}
 export interface Dependency {
     /**
      * requested semver range
@@ -86,6 +94,7 @@ declare class Installer extends Service {
     private recordRegistryRouteFailure;
     private getFallbackDelay;
     private getRegistryRouteScores;
+    getInstallFallbackCandidate(failedEndpoint?: string): InstallFallbackCandidate | undefined;
     private fetchRegistryByRoute;
     private isStale;
     private trackController;
@@ -113,7 +122,7 @@ declare class Installer extends Service {
     private _install;
     private _getLocalDeps;
     private _installLocked;
-    install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>): Promise<number>;
+    install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options?: InstallOptions): Promise<number>;
     isSelfUpdate(deps: Dict<string>): boolean;
 }
 declare namespace Installer {

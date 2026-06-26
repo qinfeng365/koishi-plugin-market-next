@@ -2,7 +2,7 @@ import { Context, Dict, Schema } from 'koishi';
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry';
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps';
 import { MarketDataStore, MarketDataStorePayload } from './data';
-import Installer from './installer';
+import Installer, { InstallFallbackCandidate, InstallOptions } from './installer';
 import MarketProvider from './market';
 import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult, PluginBundleRecord } from '../shared/bundle';
 export * from '../shared';
@@ -22,8 +22,9 @@ declare module '@koishijs/console' {
         }
     }
     interface Events {
-        'market/install'(deps: Dict<string>, forced?: boolean): Promise<number>;
-        'market/install-bundle'(request: BundleInstallRequest, forced?: boolean): Promise<BundleInstallResult>;
+        'market/install'(deps: Dict<string>, forced?: boolean, options?: InstallOptions): Promise<number>;
+        'market/install-bundle'(request: BundleInstallRequest, forced?: boolean, options?: InstallOptions): Promise<BundleInstallResult>;
+        'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>;
         'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>;
         'market/update-config'(patch: Partial<Config>): Promise<boolean>;
         'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>;

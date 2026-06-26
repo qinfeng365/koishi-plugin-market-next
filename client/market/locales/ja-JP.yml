@@ -42,6 +42,7 @@ category:
   game: 独自遊戯
   gametool: ゲームツール
 time:
+  unknown: 時刻不明
   just-now: しばらく前
   minutes-ago: '{0} 分前'
   hours-ago: '{0} 時間前'

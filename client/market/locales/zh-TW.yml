@@ -42,6 +42,7 @@ category:
   game: 娛樂玩法
   gametool: 遊戲輔助
 time:
+  unknown: 時間未知
   just-now: 剛剛
   minutes-ago: '{0} 分鐘前'
   hours-ago: '{0} 小時前'

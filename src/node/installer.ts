@@ -73,6 +73,16 @@ interface PackageManifestSnapshot {
   dependencies: Dict<string>
 }
 
+export interface InstallOptions {
+  installEndpoint?: string
+}
+
+export interface InstallFallbackCandidate {
+  endpoint: string
+  label: string
+  reason: string
+}
+
 export interface Dependency {
   /**
    * requested semver range
@@ -538,6 +548,35 @@ class Installer extends Service {
     }))
   }
 
+  getInstallFallbackCandidate(failedEndpoint?: string): InstallFallbackCandidate | undefined {
+    if (this.config.autoRoute === false) return
+    const normalize = (endpoint?: string) => endpoint?.replace(/\/+$/, '')
+    const failed = normalize(failedEndpoint || this.endpoint)
+    const candidates = this.getRegistryEndpointCandidates()
+      .filter(endpoint => normalize(endpoint) !== failed)
+      .filter(endpoint => normalize(endpoint) !== normalize(this.config.endpoint))
+      .map((endpoint, index) => ({
+        endpoint,
+        index,
+        score: this.getRegistryRouteScore(endpoint),
+        stats: this.registryRouteStats[endpoint],
+      }))
+      .sort((a, b) => {
+        const delta = b.score - a.score
+        if (delta) return delta
+        const successDelta = (b.stats?.lastSuccess ?? 0) - (a.stats?.lastSuccess ?? 0)
+        if (successDelta) return successDelta
+        return a.index - b.index
+      })
+    const candidate = candidates[0]
+    if (!candidate) return
+    return {
+      endpoint: candidate.endpoint,
+      label: formatEndpointHost(candidate.endpoint),
+      reason: candidate.stats?.lastSuccess ? '最近可用的备用 npm 源' : '备用 npm 源',
+    }
+  }
+
   private async fetchRegistryByRoute(name: string, endpoints: string[], serial: number, onAttempt?: (endpoint: string, attempts: number) => void): Promise<RegistryRouteResult> {
     let attempts = 0, lastEndpoint = endpoints[0]
     const result = await this.raceEndpoints(name, endpoints, serial, (endpoint) => {
@@ -990,10 +1029,12 @@ class Installer extends Service {
     logger.warn(`package dependencies rolled back: reason=${reason}, changes=${formatDeps(deps)}, total=${Object.keys(this.manifest.dependencies ?? {}).length}`)
   }
 
-  private _install() {
+  private _install(options: InstallOptions = {}) {
+    options ||= {}
     const args: string[] = []
-    if (this.config.endpoint) {
-      args.push('--registry', this.endpoint)
+    const endpoint = options.installEndpoint || (this.config.endpoint ? this.endpoint : '')
+    if (endpoint) {
+      args.push('--registry', endpoint)
     }
     return this.exec(args)
   }
@@ -1010,13 +1051,20 @@ class Installer extends Service {
     })
   }
 
-  private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>) {
+  private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
+    options ||= {}
     const start = Date.now()
-    logger.info(`dependency install requested: deps=${formatDeps(deps)}, forced=${!!forced}`)
+    logger.info(`dependency install requested: deps=${formatDeps(deps)}, forced=${!!forced}, installEndpoint=${options.installEndpoint || '(default)'}`)
     this.ctx.get('console')?.broadcast('market/install-log', {
       type: 'stdout',
       line: `dependency install requested: ${formatDeps(deps) || '(none)'}`,
     })
+    if (options.installEndpoint) {
+      this.ctx.get('console')?.broadcast('market/install-log', {
+        type: 'stdout',
+        line: `using temporary npm registry: ${options.installEndpoint}`,
+      })
+    }
     const snapshot = await this.snapshotPackageManifest()
     const localDeps = this._getLocalDeps(deps)
     logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
@@ -1039,7 +1087,7 @@ class Installer extends Service {
         type: 'stdout',
         line: 'running package manager install…',
       })
-      const code = await this._install()
+      const code = await this._install(options)
       if (code) {
         await this.restorePackageManifest(snapshot, deps, `package manager exited with code ${code}`)
         await this.refreshData()
@@ -1084,7 +1132,8 @@ class Installer extends Service {
     return 0
   }
 
-  async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>) {
+  async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
+    options ||= {}
     const previous = this.installTask
     let release: () => void
     this.installTask = new Promise<void>((resolve) => { release = resolve })
@@ -1092,7 +1141,7 @@ class Installer extends Service {
     await previous
     this.installActive = true
     try {
-      return await this._installLocked(deps, forced, beforeReload)
+      return await this._installLocked(deps, forced, beforeReload, options)
     } finally {
       this.installActive = false
       release!()
@@ -1175,6 +1224,14 @@ function formatRouteScores(routes: Array<{ endpoint: string, score: number, succ
   return routes
     .map(route => `${route.endpoint} score=${route.score.toFixed(1)} ok=${route.successes ?? 0} fail=${route.failures ?? 0} avg=${route.averageElapsed ?? '-'} delay=${route.fallbackDelay ?? '-'} last=${route.lastFailureReason ?? '-'}`)
     .join(' | ')
+}
+
+function formatEndpointHost(endpoint: string) {
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return endpoint
+  }
 }
 
 export default Installer

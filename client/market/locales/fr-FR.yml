@@ -42,6 +42,7 @@ category:
   game: Divertissement
   gametool: Outils des jeux
 time:
+  unknown: Date inconnue
   just-now: A l'instant
   minutes-ago: 'Il y a {0} minute(s)'
   hours-ago: 'Il y a {0} heure(s)'

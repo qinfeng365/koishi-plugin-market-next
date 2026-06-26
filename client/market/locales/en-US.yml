@@ -44,6 +44,7 @@ category:
   game: Entertainment
   gametool: Game Tools
 time:
+  unknown: Unknown time
   just-now: Just now
   minutes-ago: '{0} minute(s) ago'
   hours-ago: '{0} hour(s) ago'

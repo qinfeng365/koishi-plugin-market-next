@@ -78,6 +78,7 @@
 import { computed, inject, ref, watch } from 'vue'
 import { SearchObject } from '@koishijs/registry'
 import { useI18nText } from '@koishijs/components'
+import { store } from '@koishijs/client'
 import { badges, cacheAvatarFailure, fetchAndCacheAvatar, fetchCachedAvatar, getCachedAvatarFromCandidates, getUserAvatarCandidates, getUserKey, getUsers, isAvatarFailureCached, isBundleSearchObject, resolveCategory, validate } from '../utils'
 import { kConfig } from '../utils'
 import { useI18n } from 'vue-i18n'
@@ -247,16 +248,36 @@ const { t, setLocaleMessage } = useI18n({
   },
 })
 
-function timeAgo(time: string) {
-  const now = new Date()
-  const input = new Date(time)
-  const diff = now.getTime() - input.getTime()
-  if (diff < 86400000) return t('time.just-now')
-  if (diff < 604800000) return t('time.days-ago', [Math.floor(diff / 86400000)])
-  return input.toLocaleDateString()
+const MINUTE = 60_000
+const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
+const ABSOLUTE_DATE_THRESHOLD = 7 * DAY
+
+function getReferenceNow() {
+  const serverNow = Number(store.market?.serverNow)
+  return Number.isFinite(serverNow) && serverNow > 0 ? serverNow : Date.now()
 }
 
-function updatedAgo(time: string) {
+function formatAbsoluteDate(timestamp: number) {
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
+function timeAgo(time?: string) {
+  const timestamp = Date.parse(time || '')
+  if (!Number.isFinite(timestamp)) return t('time.unknown')
+  const diff = Math.max(0, getReferenceNow() - timestamp)
+  if (diff < MINUTE) return t('time.just-now')
+  if (diff < HOUR) return t('time.minutes-ago', [Math.max(1, Math.floor(diff / MINUTE))])
+  if (diff < DAY) return t('time.hours-ago', [Math.floor(diff / HOUR)])
+  if (diff < ABSOLUTE_DATE_THRESHOLD) return t('time.days-ago', [Math.floor(diff / DAY)])
+  return formatAbsoluteDate(timestamp)
+}
+
+function updatedAgo(time?: string) {
   return t('time.updated-ago', [timeAgo(time)])
 }
 

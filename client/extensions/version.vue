@@ -117,8 +117,14 @@ const showDependencyUninstall = computed(() => {
 
 async function addDependency() {
   if (!local.value?.package.version) return
-  const code = await send('market/install', { [name.value]: local.value.package.version })
-  if (!code) await ensureInstalledConfig(ctx, name.value, true)
+  await install({ [name.value]: local.value.package.version }, async () => {
+    await ensureInstalledConfig(ctx, name.value, true)
+  }, undefined, {
+    loadingText: '正在添加依赖……',
+    successText: '依赖已添加。',
+    errorText: '依赖添加失败！',
+    timeoutText: '依赖添加超时！',
+  })
 }
 
 function ensureOverride() {

@@ -342,7 +342,14 @@ import {
   validateBundleManifest,
   getBundleGroupIdent,
 } from '../../src/shared/bundle'
-import { activeBundle, getBundleMemberConfigState, installProgressState } from './utils'
+import {
+  activeBundle,
+  getBundleMemberConfigState,
+  installProgressState,
+  prepareInstallFallbackRetry,
+  resetInstallFallbackState,
+  type InstallOptions,
+} from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import { satisfies } from 'semver'
@@ -604,63 +611,75 @@ async function confirmInstall() {
   installProgressState.status = 'running'
   installProgressState.visible = true
   installProgressState.selfUpdate = false
+  resetInstallFallbackState()
   installProgressState.logs.push({
     type: 'stdout',
     line: '已提交插件包安装请求，正在等待后端处理依赖与配置分组……',
   })
 
-  let disconnectedBeforeResponse = false
-  let resolveDisconnected: (value: undefined) => void
-  const disconnected = new Promise<undefined>((resolve) => {
-    resolveDisconnected = resolve
-  })
-  const dispose = watch(socket, (value, previous) => {
-    if (value || !previous) return
-    disconnectedBeforeResponse = true
-    resolveDisconnected(undefined)
-    dispose()
-  })
-  const waitTimer = setTimeout(() => {
-    if (installProgressState.status !== 'running') return
-    installProgressState.logs.push({
-      type: 'stdout',
-      line: '仍在等待包管理器输出；插件包会同时处理多个成员，弱网环境下可能需要更久。',
+  const request = {
+    package: activeBundle.value!.package.name,
+    version: bundleVersion.value,
+    bundle: bundle.value!,
+    members: members.map(member => ({
+      ...member,
+      createConfig: member.createConfig || !!member.move,
+    })),
+  }
+
+  const runInstall = async (options?: InstallOptions) => {
+    installing.value = true
+    let disconnectedBeforeResponse = false
+    let resolveDisconnected: (value: undefined) => void
+    const disconnected = new Promise<undefined>((resolve) => {
+      resolveDisconnected = resolve
     })
-  }, 8000)
+    const dispose = watch(socket, (value, previous) => {
+      if (value || !previous) return
+      disconnectedBeforeResponse = true
+      resolveDisconnected(undefined)
+      dispose()
+    })
+    const waitTimer = setTimeout(() => {
+      if (installProgressState.status !== 'running') return
+      installProgressState.logs.push({
+        type: 'stdout',
+        line: '仍在等待包管理器输出；插件包会同时处理多个成员，弱网环境下可能需要更久。',
+      })
+    }, 8000)
+    try {
+      const task = send('market/install-bundle', request, undefined, options ?? {}) as Promise<BundleInstallResult> | undefined
+      const result = await Promise.race([task ?? Promise.resolve(undefined), disconnected])
+      if (disconnectedBeforeResponse) {
+        installProgressState.status = 'error'
+        reportInstallError('Console 连接已断开，插件包安装结果无法确认。请刷新依赖页确认实际状态。')
+        return undefined
+      }
+      if (result?.code) {
+        installProgressState.status = 'error'
+        reportInstallError(`包管理器退出码：${result.code}`)
+        await prepareInstallFallbackRetry(runInstall, options?.installEndpoint)
+        return result.code
+      }
+      installProgressState.status = 'success'
+      const moved = result?.moved?.length ? `，移动配置 ${result.moved.length} 项` : ''
+      const skipped = result?.skipped?.length ? `，跳过配置 ${result.skipped.length} 项` : ''
+      message.success(`插件包安装完成${moved}${skipped}。`)
+      activeBundle.value = undefined
+      return 0
+    } finally {
+      clearTimeout(waitTimer)
+      dispose()
+      installing.value = false
+    }
+  }
+
   try {
-    const task = send('market/install-bundle', {
-      package: activeBundle.value.package.name,
-      version: bundleVersion.value,
-      bundle: bundle.value,
-      members: members.map(member => ({
-        ...member,
-        createConfig: member.createConfig || !!member.move,
-      })),
-    }) as Promise<BundleInstallResult> | undefined
-    const result = await Promise.race([task ?? Promise.resolve(undefined), disconnected])
-    if (disconnectedBeforeResponse) {
-      installProgressState.status = 'error'
-      reportInstallError('Console 连接已断开，插件包安装结果无法确认。请刷新依赖页确认实际状态。')
-      return
-    }
-    if (result?.code) {
-      installProgressState.status = 'error'
-      reportInstallError(`包管理器退出码：${result.code}`)
-      return
-    }
-    installProgressState.status = 'success'
-    const moved = result?.moved?.length ? `，移动配置 ${result.moved.length} 项` : ''
-    const skipped = result?.skipped?.length ? `，跳过配置 ${result.skipped.length} 项` : ''
-    message.success(`插件包安装完成${moved}${skipped}。`)
-    activeBundle.value = undefined
+    await runInstall()
   } catch (err) {
     console.error(err)
     installProgressState.status = 'error'
     reportInstallError(formatInstallError(err))
-  } finally {
-    clearTimeout(waitTimer)
-    dispose()
-    installing.value = false
   }
 }
 

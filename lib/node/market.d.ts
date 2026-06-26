@@ -65,10 +65,12 @@ declare class MarketProvider extends BaseMarketProvider {
         cached: boolean;
         cachedAt: number;
         validatedAt: number;
+        serverNow: number;
         refreshing: boolean;
         loading: boolean;
         debug: MarketPerformance;
     } | {
+        serverNow: number;
         debug: MarketPerformance;
         registry?: string;
         data: Dict<SearchObject>;

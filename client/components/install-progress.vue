@@ -47,6 +47,20 @@
 
     <template #footer>
       <div class="dialog-footer">
+        <div v-if="installProgressState.fallbackCandidate" class="fallback-prompt">
+          当前源安装失败，是否使用备用源
+          <strong>{{ installProgressState.fallbackCandidate.label }}</strong>
+          重试一次？不会修改你的配置。
+        </div>
+        <el-button
+          v-if="installProgressState.fallbackCandidate && installProgressState.retryFallback"
+          type="primary"
+          :loading="installProgressState.fallbackRunning"
+          :disabled="installProgressState.fallbackRunning"
+          @click="retryFallback"
+        >
+          使用备用源重试
+        </el-button>
         <el-button
           :type="installProgressState.status === 'error' ? 'danger' : 'primary'"
           :disabled="installProgressState.status === 'running'"
@@ -105,27 +119,64 @@ function handleBeforeClose(done: () => void) {
 function close() {
   installProgressState.visible = false
 }
+
+function retryFallback() {
+  void installProgressState.retryFallback?.()
+}
 </script>
 
 <style lang="scss">
 .install-progress-dialog {
-  --term-bg: var(--k-side-bg, #f8fafc);
-  --term-text: var(--fg1, #1e293b);
-  --term-border: var(--k-color-border, #e2e8f0);
-  --success-color: var(--k-color-success, #10b981);
-  --error-color: var(--k-color-danger, #ef4444);
-  --primary-color: var(--k-color-primary, #3b82f6);
+  --progress-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #18181b)));
+  --progress-surface-muted: color-mix(in srgb, var(--progress-surface) 84%, var(--k-side-bg, var(--el-fill-color-light, #f8fafc)) 16%);
+  --progress-text: var(--fg1, var(--el-text-color-primary, #1e293b));
+  --progress-text-muted: var(--fg2, var(--el-text-color-regular, #64748b));
+  --progress-border-base: var(--k-color-border, var(--el-border-color, #d4d8e2));
+  --progress-border: color-mix(in srgb, var(--progress-border-base) 78%, var(--progress-text) 22%);
+  --progress-border-soft: color-mix(in srgb, var(--progress-border-base) 76%, transparent);
+  --success-color: var(--k-color-success, var(--el-color-success, #10b981));
+  --error-color: var(--k-color-danger, var(--el-color-danger, #ef4444));
+  --primary-color: var(--k-color-primary, var(--el-color-primary, #3b82f6));
+  --status-color: var(--primary-color);
+  --status-bg: color-mix(in srgb, var(--status-color) 10%, var(--progress-surface));
+  --status-border: color-mix(in srgb, var(--status-color) 34%, var(--progress-border));
 
   border-radius: 12px;
+  border: 1px solid var(--progress-border);
+  color: var(--progress-text);
+  background: var(--progress-surface);
+  box-shadow: none;
   overflow: hidden;
 
   .el-dialog__header {
     padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--progress-border-soft);
+    background: color-mix(in srgb, var(--progress-surface-muted) 72%, var(--progress-surface));
+  }
+
+  .el-dialog__title {
+    color: var(--progress-text);
+  }
+
+  .el-dialog__headerbtn {
+    .el-dialog__close {
+      color: var(--progress-text-muted);
+    }
+
+    &:hover .el-dialog__close {
+      color: var(--primary-color);
+    }
   }
 
   .el-dialog__body {
     padding-top: 0.5rem;
     padding-bottom: 1rem;
+    background: var(--progress-surface);
+  }
+
+  .el-dialog__footer {
+    border-top: 1px solid var(--progress-border-soft);
+    background: color-mix(in srgb, var(--progress-surface) 86%, var(--progress-surface-muted) 14%);
   }
 
   .progress-body {
@@ -134,27 +185,48 @@ function close() {
     gap: 0.75rem;
   }
 
+  .dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .fallback-prompt {
+    flex: 1 1 18rem;
+    min-width: 0;
+    color: var(--progress-text-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    text-align: left;
+
+    strong {
+      color: var(--primary-color);
+      font-weight: 600;
+    }
+  }
+
   .status-banner {
+    --status-color: var(--primary-color);
     padding: 0.6rem 0.8rem;
     border-radius: 8px;
+    border: 1px solid var(--status-border);
+    background: var(--status-bg);
+    color: var(--status-color);
     font-size: 0.85rem;
     font-weight: 500;
-    transition: all 0.3s ease;
+    box-shadow: none;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 
     &.running {
-      background: color-mix(in srgb, var(--primary-color) 10%, var(--k-side-bg, #f8fafc));
-      color: var(--primary-color);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+      --status-color: var(--primary-color);
     }
     &.success {
-      background: color-mix(in srgb, var(--success-color) 10%, var(--k-side-bg, #f8fafc));
-      color: var(--success-color);
-      border: 1px solid color-mix(in srgb, var(--success-color) 25%, transparent);
+      --status-color: var(--success-color);
     }
     &.error {
-      background: color-mix(in srgb, var(--error-color) 10%, var(--k-side-bg, #f8fafc));
-      color: var(--error-color);
-      border: 1px solid color-mix(in srgb, var(--error-color) 25%, transparent);
+      --status-color: var(--error-color);
     }
   }
 
@@ -182,7 +254,7 @@ function close() {
     height: 16px;
     border-radius: 50%;
     background: var(--error-color);
-    color: #fff;
+    color: var(--el-color-white, #fff);
     display: grid;
     place-items: center;
     font-size: 0.75rem;
@@ -190,8 +262,8 @@ function close() {
   }
 
   .terminal-container {
-    background: var(--term-bg);
-    border: 1px solid var(--term-border);
+    background: var(--progress-surface-muted);
+    border: 1px solid var(--progress-border);
     border-radius: 8px;
     height: 360px;
     display: flex;
@@ -204,14 +276,14 @@ function close() {
     display: flex;
     align-items: center;
     padding: 0.5rem 0.75rem;
-    background: color-mix(in srgb, var(--term-text) 6%, var(--term-bg));
-    border-bottom: 1px solid color-mix(in srgb, var(--term-text) 8%, var(--term-border));
+    background: color-mix(in srgb, var(--progress-text) 5%, var(--progress-surface-muted));
+    border-bottom: 1px solid color-mix(in srgb, var(--progress-border) 84%, transparent);
     flex: 0 0 auto;
   }
 
   .term-title {
     font-size: 0.72rem;
-    color: color-mix(in srgb, var(--term-text) 55%, transparent);
+    color: color-mix(in srgb, var(--progress-text) 64%, transparent);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -229,7 +301,7 @@ function close() {
     gap: 0.25rem;
     font-size: 0.8rem;
     line-height: 1.4;
-    color: var(--term-text);
+    color: var(--progress-text);
   }
 
   .log-line {
@@ -241,7 +313,7 @@ function close() {
     }
 
     .line-prefix {
-      color: color-mix(in srgb, var(--term-text) 40%, transparent);
+      color: color-mix(in srgb, var(--progress-text) 42%, transparent);
       margin-right: 0.4rem;
       user-select: none;
     }
@@ -251,7 +323,7 @@ function close() {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: color-mix(in srgb, var(--term-text) 45%, transparent);
+    color: color-mix(in srgb, var(--progress-text) 52%, transparent);
     padding: 1rem 0;
   }
 
@@ -267,13 +339,40 @@ function close() {
   // Styles specific to Polished Mode
   &.market-mode-polished {
     border-radius: 16px;
-    box-shadow: 0 24px 48px rgb(0 0 0 / 22%), 0 8px 16px rgb(0 0 0 / 12%);
+    border-color: color-mix(in srgb, var(--progress-border) 82%, var(--primary-color) 18%);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 5%, transparent), transparent 44%),
+      var(--progress-surface);
+    box-shadow:
+      0 24px 54px color-mix(in srgb, var(--progress-text) 22%, transparent),
+      0 8px 18px color-mix(in srgb, var(--primary-color) 8%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--primary-color) 10%, transparent) inset;
     backdrop-filter: blur(12px);
 
+    .el-dialog__header {
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 68%),
+        color-mix(in srgb, var(--progress-surface-muted) 72%, var(--progress-surface));
+    }
+
+    .el-dialog__body {
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 2%, transparent), transparent),
+        var(--progress-surface);
+    }
+
+    .terminal-header {
+      background:
+        linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 7%, transparent), transparent 64%),
+        color-mix(in srgb, var(--progress-text) 5%, var(--progress-surface-muted));
+    }
+
     .terminal-container {
-      border-color: color-mix(in srgb, var(--k-color-primary, var(--primary-color)) 25%, var(--term-border));
-      box-shadow: inset 0 0 20px color-mix(in srgb, var(--term-text) 10%, transparent), 0 0 15px color-mix(in srgb, var(--k-color-primary, var(--primary-color)) 6%, transparent);
-      transition: all 0.3s ease;
+      border-color: color-mix(in srgb, var(--primary-color) 22%, var(--progress-border));
+      box-shadow:
+        inset 0 1px 0 color-mix(in srgb, var(--progress-text) 7%, transparent),
+        0 10px 26px color-mix(in srgb, var(--primary-color) 7%, transparent);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
     .status-banner {
