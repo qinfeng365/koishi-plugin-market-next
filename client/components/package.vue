@@ -1503,4 +1503,100 @@ async function configure() {
   }
 }
 
+@media (max-width: 768px) {
+  .dep-list-row {
+    grid-template-columns: 1.8rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon name actions"
+      "icon current actions"
+      "icon latest actions";
+    row-gap: 0.18rem;
+    column-gap: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--k-color-border) 64%, transparent);
+    border-radius: 8px;
+    padding: 0.55rem 0.62rem;
+
+    .dep-status-mark {
+      grid-area: icon;
+      align-self: start;
+      margin-top: 0.08rem;
+    }
+
+    .col-name {
+      grid-area: name;
+    }
+
+    .col-version {
+      grid-area: current;
+      padding: 0;
+
+      &::before {
+        content: '当前 ';
+        color: var(--fg3);
+        font-weight: 500;
+      }
+    }
+
+    .col-latest {
+      grid-area: latest;
+      padding: 0;
+
+      &::before {
+        content: '目标 ';
+        color: var(--fg3);
+        font-weight: 500;
+      }
+    }
+
+    .col-actions {
+      grid-area: actions;
+      align-self: center;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      max-width: 8.5rem;
+
+      .el-button {
+        margin-left: 0;
+      }
+    }
+
+    .dep-list-select {
+      width: 8.5rem;
+      flex-basis: 8.5rem;
+    }
+  }
+}
+
+@media (max-width: 420px) {
+  .dep-list-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "name"
+      "current"
+      "latest"
+      "actions";
+
+    .dep-status-mark {
+      display: none;
+    }
+
+    .col-actions {
+      max-width: none;
+      margin-top: 0.32rem;
+      flex-direction: row;
+      flex-wrap: wrap;
+
+      .el-button {
+        flex: 1 1 auto;
+      }
+    }
+
+    .dep-list-select {
+      width: 100%;
+      flex: 1 1 100%;
+    }
+  }
+}
+
 </style>

@@ -1099,16 +1099,47 @@ ctx.action('dependencies.upgrade', {
     grid-template-columns: 1fr;
   }
 
-  .deps-search-tools {
-    justify-self: stretch;
+  .deps-toolbar-row {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .deps-filter-select {
+    flex: 1 1 9rem;
+    width: auto;
+    min-width: 0;
+  }
+
+  .deps-prerelease-toggle,
+  .deps-layout-toggle {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .deps-search {
+    flex: 1 1 100%;
+    order: 4;
   }
 
   .deps-summary {
-    grid-column: auto;
+    flex: 1 1 100%;
+    order: 5;
   }
 
   .deps-grid {
     grid-template-columns: 1fr;
+  }
+
+  .deps-layout-list .deps-grid {
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    gap: 0.45rem;
+  }
+
+  .deps-list-header {
+    display: none;
   }
 
   .deps-apply-bar {

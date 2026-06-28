@@ -254,4 +254,23 @@ if (import.meta.hot) {
   }
 }
 
+@media (max-width: 420px) {
+  .search-box {
+    border-radius: 12px;
+  }
+
+  .search-container {
+    padding: 0.62rem 0.75rem;
+    padding-right: 0;
+
+    input {
+      min-width: 5.5rem;
+    }
+  }
+
+  .search-action {
+    width: 2.55rem;
+  }
+}
+
 </style>

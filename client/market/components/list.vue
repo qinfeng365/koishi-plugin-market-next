@@ -34,7 +34,7 @@
 
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { SearchObject } from '@koishijs/registry'
-import { getSorted, getFiltered, hasFilter, kConfig } from '../utils'
+import { getSortedFiltered, getVisible, hasFilter, kConfig } from '../utils'
 import MarketPackage from './package.vue'
 
 const props = defineProps<{
@@ -176,10 +176,10 @@ function schedulePackageUpdate() {
   cancelAnimationFrame(filterFrame)
   filterFrame = requestAnimationFrame(() => {
     const start = props.debug ? performance.now() : 0
-    const sorted = getSorted(props.data, props.modelValue)
+    const visible = getVisible(props.data, props.modelValue)
     const sortedAt = props.debug ? performance.now() : 0
-    all.value = sorted
-    packages.value = getFiltered(sorted, props.modelValue, config)
+    all.value = visible
+    packages.value = getSortedFiltered(props.data, props.modelValue, config)
     if (props.debug) {
       emitDebug({
         timings: {
@@ -322,6 +322,12 @@ function onQuery(word: string) {
   &.list-layout {
     grid-template-columns: 1fr;
     justify-items: stretch;
+  }
+}
+
+@media (max-width: 420px) {
+  .package-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

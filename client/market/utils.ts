@@ -14,19 +14,22 @@ export const useMarketI18n = () => useI18n({
 })
 
 export function getUsers(data: SearchObject) {
+  const cached = usersCache.get(data)
+  if (cached) return cached
   const result: Record<string, User> = {}
   for (const user of data.package.contributors ?? []) {
     const key = getUserKey(user)
     if (!key) continue
     result[key] ||= user
   }
-  if (!data.package.maintainers.some(user => result[getUserKey(user)])) {
-    return data.package.maintainers.map(user => ({
+  const users = !data.package.maintainers.some(user => result[getUserKey(user)])
+    ? data.package.maintainers.map(user => ({
       ...user,
       name: user.name || user.username,
     }))
-  }
-  return Object.values(result)
+    : Object.values(result)
+  usersCache.set(data, users)
+  return users
 }
 
 export function getUserKey(user: User) {
@@ -374,20 +377,51 @@ function normalizePackageName(name: string) {
   return normalizeSearchText(name).replace(/(koishi-|^@koishijs\/)plugin-/, '')
 }
 
-function getSearchTexts(data: SearchObject) {
+interface MarketSearchIndex {
+  users: User[]
+  normalizedName: string
+  searchTexts: string[]
+  category: string
+  bundle: boolean
+  createdAt: string
+  updatedAt: string
+  createdTimestamp: number
+  updatedTimestamp: number
+  rating?: number
+}
+
+const usersCache = new WeakMap<SearchObject, User[]>()
+const searchIndexCache = new WeakMap<SearchObject, MarketSearchIndex>()
+
+function getSearchIndex(data: SearchObject): MarketSearchIndex {
+  const cached = searchIndexCache.get(data)
+  if (cached) return cached
   const description = data.manifest?.description
   const descriptions = typeof description === 'string'
     ? [description]
     : Object.values(description ?? {})
-  return [
+  const rating = Number((data as SearchObject & { rating?: number }).rating)
+  const index = {
+    users: getUsers(data),
+    normalizedName: normalizePackageName(data.package.name),
+    searchTexts: [
     ...(data.package.keywords ?? []),
     ...descriptions,
-  ].map(normalizeSearchText)
+    ].map(normalizeSearchText),
+    category: resolveCategory(data.category),
+    bundle: isBundleSearchObject(data),
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+    createdTimestamp: Date.parse(data.createdAt),
+    updatedTimestamp: Date.parse(data.updatedAt),
+    rating: Number.isFinite(rating) ? rating : undefined,
+  }
+  searchIndexCache.set(data, index)
+  return index
 }
 
-function getSimilarity(data: SearchObject, word: string) {
-  word = normalizePackageName(word)
-  const shortname = normalizePackageName(data.package.name)
+function getSimilarityByIndex(index: MarketSearchIndex, word: string) {
+  const shortname = index.normalizedName
   if (shortname === word) return 1
   const tokens = shortname.split(/[-/_]/)
   // if (tokens[0] === word) return 0.5
@@ -395,39 +429,49 @@ function getSimilarity(data: SearchObject, word: string) {
   // if (tokens[0].startsWith(word)) return 0.3
   if (tokens.some(t => t.startsWith(word))) return 0.3
   if (tokens.some(t => t.includes(word))) return 0.2
-  return getSearchTexts(data).some(keyword => keyword.includes(word)) ? 0.05 : 0
+  return index.searchTexts.some(keyword => keyword.includes(word)) ? 0.05 : 0
 }
 
-function getUpdatedScore(data: SearchObject) {
-  const timestamp = Date.parse(data.updatedAt)
+function getSimilarity(data: SearchObject, word: string) {
+  return getSimilarityByIndex(getSearchIndex(data), normalizePackageName(word))
+}
+
+function getUpdatedScore(index: MarketSearchIndex, now = Date.now()) {
+  const timestamp = index.updatedTimestamp
   if (!Number.isFinite(timestamp)) return 0
-  const days = Math.max(0, (Date.now() - timestamp) / 86400000)
+  const days = Math.max(0, (now - timestamp) / 86400000)
   return Math.max(0, 1 - Math.log2(days + 1) / 16)
 }
 
-function getMarketRankScore(data: SearchObject) {
-  const rating = Number((data as SearchObject & { rating?: number }).rating)
-  return Number.isFinite(rating) ? rating : getUpdatedScore(data)
+function getMarketRankScore(index: MarketSearchIndex, now = Date.now()) {
+  return index.rating ?? getUpdatedScore(index, now)
 }
 
-function getSearchScore(data: SearchObject, words: string[]) {
-  words = words.filter(w => w && !w.includes(':'))
-  const rank = getMarketRankScore(data)
+function getSearchScoreByIndex(index: MarketSearchIndex, words: string[], now = Date.now()) {
+  const rank = getMarketRankScore(index, now)
   if (!words.length) return rank
   let weight = 0
   for (const word of words) {
-    const similarity = getSimilarity(data, word)
+    const similarity = getSimilarityByIndex(index, word)
     if (!similarity) return 0
     weight += similarity
   }
   return rank * weight
 }
 
+function getSearchWords(words: string[]) {
+  return normalizeFilterWords(words)
+    .filter(w => w && !w.includes(':'))
+    .map(normalizePackageName)
+}
+
 export const comparators: Dict<Comparator> = {
   default: {
     icon: 'solid:all',
     compare: (a, b, words) => {
-      const delta = getSearchScore(b, words) - getSearchScore(a, words)
+      const searchWords = getSearchWords(words)
+      const now = Date.now()
+      const delta = getSearchScoreByIndex(getSearchIndex(b), searchWords, now) - getSearchScoreByIndex(getSearchIndex(a), searchWords, now)
       return delta || b.updatedAt.localeCompare(a.updatedAt)
     },
   },
@@ -470,6 +514,7 @@ export interface MarketConfig {
 
 interface ValidateConfig extends MarketConfig {
   users?: User[]
+  index?: MarketSearchIndex
 }
 
 export const kConfig = Symbol('market.config') as InjectionKey<MarketConfig>
@@ -481,30 +526,63 @@ export function getVisible(market: SearchObject[], words: string[]) {
   })
 }
 
-export function getSorted(market: SearchObject[], words: string[]) {
-  return getVisible(market, words).sort((a, b) => {
-    for (let word of words) {
-      if (!word.startsWith('sort:')) continue
-      let order = 1
-      if (word.endsWith('-asc')) {
-        order = -1
-        word = word.slice(0, -4)
-      } else if (word.endsWith('-desc')) {
-        word = word.slice(0, -5)
-      }
-      const comparator = comparators[word.slice(5)]
-      if (comparator) return comparator.compare(a, b, words) * order
+function getSortConfig(words: string[]) {
+  for (let word of words) {
+    if (!word.startsWith('sort:')) continue
+    let order = 1
+    if (word.endsWith('-asc')) {
+      order = -1
+      word = word.slice(0, -4)
+    } else if (word.endsWith('-desc')) {
+      word = word.slice(0, -5)
     }
-    return comparators.default.compare(a, b, words)
-  })
+    const key = word.slice(5)
+    if (comparators[key]) return { key, order }
+  }
+  return { key: 'default', order: 1 }
+}
+
+function sortMarket(market: SearchObject[], words: string[]) {
+  const { key, order } = getSortConfig(words)
+  if (key !== 'default') {
+    const comparator = comparators[key]
+    return market.slice().sort((a, b) => comparator.compare(a, b, words) * order)
+  }
+  const searchWords = getSearchWords(words)
+  const now = Date.now()
+  return market
+    .map(data => ({
+      data,
+      index: getSearchIndex(data),
+    }))
+    .map(item => ({
+      ...item,
+      score: getSearchScoreByIndex(item.index, searchWords, now),
+    }))
+    .sort((a, b) => {
+      const delta = b.score - a.score
+      return (delta || b.index.updatedAt.localeCompare(a.index.updatedAt)) * order
+    })
+    .map(item => item.data)
+}
+
+export function getSorted(market: SearchObject[], words: string[]) {
+  return sortMarket(getVisible(market, words), words)
+}
+
+export function getSortedFiltered(market: SearchObject[], words: string[], config?: MarketConfig) {
+  const visible = getVisible(market, words)
+  const filtered = getFiltered(visible, words, config)
+  return sortMarket(filtered, words)
 }
 
 export function getFiltered(market: SearchObject[], words: string[], config?: MarketConfig) {
   const filters = normalizeFilterWords(words)
+  if (!filters.length) return market
   return market.filter((data) => {
-    const users = getUsers(data)
+    const index = getSearchIndex(data)
     return filters.every((word) => {
-      return validate(data, word, { ...config, users })
+      return validate(data, word, { ...config, index, users: index.users })
     })
   })
 }
@@ -513,9 +591,9 @@ export function getSilentFiltered(market: SearchObject[], words: string[], confi
   const filters = normalizeFilterWords(words)
   if (!filters.length) return market
   return market.filter((data) => {
-    const users = getUsers(data)
+    const index = getSearchIndex(data)
     return !filters.some((word) => {
-      return validate(data, word, { ...config, users })
+      return validate(data, word, { ...config, index, users: index.users })
     })
   })
 }
@@ -549,26 +627,27 @@ export function validateWord(word: string) {
 }
 
 export function validate(data: SearchObject, word: string, config: ValidateConfig = {}) {
+  const index = config.index ?? getSearchIndex(data)
   if (word.startsWith('updated:within:')) {
-    return withinDays(data.updatedAt, word.slice(15))
+    return withinDays(index.updatedTimestamp, word.slice(15))
   } else if (word.startsWith('created:within:')) {
-    return withinDays(data.createdAt, word.slice(15))
+    return withinDays(index.createdTimestamp, word.slice(15))
   } else if (word.startsWith('updated:<=')) {
-    return compareDate(data.updatedAt, '<=', word.slice(10))
+    return compareDate(index.updatedAt, index.updatedTimestamp, '<=', word.slice(10))
   } else if (word.startsWith('updated:>=')) {
-    return compareDate(data.updatedAt, '>=', word.slice(10))
+    return compareDate(index.updatedAt, index.updatedTimestamp, '>=', word.slice(10))
   } else if (word.startsWith('updated:<')) {
-    return compareDate(data.updatedAt, '<', word.slice(9))
+    return compareDate(index.updatedAt, index.updatedTimestamp, '<', word.slice(9))
   } else if (word.startsWith('updated:>')) {
-    return compareDate(data.updatedAt, '>', word.slice(9))
+    return compareDate(index.updatedAt, index.updatedTimestamp, '>', word.slice(9))
   } else if (word.startsWith('created:<=')) {
-    return compareDate(data.createdAt, '<=', word.slice(10))
+    return compareDate(index.createdAt, index.createdTimestamp, '<=', word.slice(10))
   } else if (word.startsWith('created:>=')) {
-    return compareDate(data.createdAt, '>=', word.slice(10))
+    return compareDate(index.createdAt, index.createdTimestamp, '>=', word.slice(10))
   } else if (word.startsWith('created:<')) {
-    return compareDate(data.createdAt, '<', word.slice(9))
+    return compareDate(index.createdAt, index.createdTimestamp, '<', word.slice(9))
   } else if (word.startsWith('created:>')) {
-    return compareDate(data.createdAt, '>', word.slice(9))
+    return compareDate(index.createdAt, index.createdTimestamp, '>', word.slice(9))
   }
 
   if (data.manifest) {
@@ -581,7 +660,7 @@ export function validate(data: SearchObject, word: string, config: ValidateConfi
       const name = word.slice(6)
       return service.required.includes(name) || service.optional.includes(name)
     } else if (word.startsWith('category:')) {
-      return resolveCategory(data.category) === word.slice(9)
+      return index.category === word.slice(9)
     } else if (word.startsWith('email:')) {
       const users = config.users ?? getUsers(data)
       return users.some(({ email }) => email === word.slice(6))
@@ -591,7 +670,7 @@ export function validate(data: SearchObject, word: string, config: ValidateConfi
       if (word === 'is:portable') return data.portable
       if (word === 'is:preview') return !!data.manifest.preview
       if (word === 'is:installed') return !!config.installed?.(data)
-      if (word === 'is:bundle') return isBundleSearchObject(data)
+      if (word === 'is:bundle') return index.bundle
       return false
     } else if (word.startsWith('not:')) {
       if (word === 'not:verified') return !data.verified
@@ -599,7 +678,7 @@ export function validate(data: SearchObject, word: string, config: ValidateConfi
       if (word === 'not:portable') return !data.portable
       if (word === 'not:preview') return !data.manifest.preview
       if (word === 'not:installed') return !config.installed?.(data)
-      if (word === 'not:bundle') return !isBundleSearchObject(data)
+      if (word === 'not:bundle') return !index.bundle
       return true
     } else if (word.includes(':')) {
       return true
@@ -607,18 +686,18 @@ export function validate(data: SearchObject, word: string, config: ValidateConfi
   } else {
     if (word.startsWith('is:')) {
       if (word === 'is:installed') return !!config.installed?.(data)
-      if (word === 'is:bundle') return isBundleSearchObject(data)
+      if (word === 'is:bundle') return index.bundle
       return false
     } else if (word.startsWith('not:')) {
       if (word === 'not:installed') return !config.installed?.(data)
-      if (word === 'not:bundle') return !isBundleSearchObject(data)
+      if (word === 'not:bundle') return !index.bundle
       return true
     } else if (word.includes(':')) {
       return true
     }
   }
 
-  return getSimilarity(data, word) > 0
+  return getSimilarityByIndex(index, normalizePackageName(word)) > 0
 }
 
 function parseQueryDate(value: string, endOfDay = false) {
@@ -629,8 +708,8 @@ function parseQueryDate(value: string, endOfDay = false) {
   return Date.parse(value)
 }
 
-function compareDate(value: string, operator: '<' | '<=' | '>' | '>=', query: string) {
-  const left = Date.parse(value)
+function compareDate(value: string, timestamp: number, operator: '<' | '<=' | '>' | '>=', query: string) {
+  const left = timestamp
   const right = parseQueryDate(query, operator === '<=' || operator === '>')
   if (Number.isFinite(left) && Number.isFinite(right)) {
     if (operator === '<') return left < right
@@ -644,9 +723,8 @@ function compareDate(value: string, operator: '<' | '<=' | '>' | '>=', query: st
   return value >= query
 }
 
-function withinDays(value: string, query: string) {
+function withinDays(timestamp: number, query: string) {
   if (!/^\d{1,4}$/.test(query)) return true
-  const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return false
   const days = Number(query)
   return timestamp >= Date.now() - days * 86400000

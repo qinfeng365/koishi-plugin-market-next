@@ -75,7 +75,7 @@
 
 <script lang="ts" setup>
 
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onUnmounted, ref, watch } from 'vue'
 import { SearchObject } from '@koishijs/registry'
 import { useI18nText } from '@koishijs/components'
 import { store } from '@koishijs/client'
@@ -96,6 +96,7 @@ const config = inject(kConfig, {})
 const avatars = ref<Record<string, string>>({})
 const avatarCursor = ref<Record<string, number>>({})
 const avatarTasks = new Map<string, Promise<void>>()
+let avatarHydrationTask = 0
 
 const tt = useI18nText()
 
@@ -208,6 +209,7 @@ function handleAvatarRenderLoad(view: AvatarView) {
 }
 
 function hydrateCachedAvatars() {
+  avatarHydrationTask = 0
   for (const view of avatarViews.value) {
     if (!view.candidates.length || view.cached) continue
     const first = view.candidates[0]
@@ -226,6 +228,28 @@ function hydrateCachedAvatars() {
       })
     avatarTasks.set(taskKey, task)
   }
+}
+
+function scheduleAvatarHydration() {
+  cancelAvatarHydration()
+  const idle = (window as typeof window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  }).requestIdleCallback
+  if (idle) {
+    avatarHydrationTask = idle(hydrateCachedAvatars, { timeout: 700 })
+  } else {
+    avatarHydrationTask = window.setTimeout(hydrateCachedAvatars, 120)
+  }
+}
+
+function cancelAvatarHydration() {
+  if (!avatarHydrationTask) return
+  const idle = (window as typeof window & {
+    cancelIdleCallback?: (handle: number) => void
+  }).cancelIdleCallback
+  if (idle) idle(avatarHydrationTask)
+  else clearTimeout(avatarHydrationTask)
+  avatarHydrationTask = 0
 }
 
 function formatValue(value: number) {
@@ -288,14 +312,20 @@ if (import.meta.hot) {
 }
 
 watch(() => [props.data.package.name, props.gravatar], () => {
+  cancelAvatarHydration()
   avatarCursor.value = {}
   avatarTasks.clear()
   avatars.value = {}
 })
 
 watch(() => avatarViews.value.map(view => `${view.key}:${view.signature}:${view.src ? '1' : '0'}`), () => {
-  hydrateCachedAvatars()
+  scheduleAvatarHydration()
 }, { immediate: true })
+
+onUnmounted(() => {
+  cancelAvatarHydration()
+  avatarTasks.clear()
+})
 
 </script>
 
@@ -660,6 +690,69 @@ watch(() => avatarViews.value.map(view => `${view.key}:${view.signature}:${view.
     margin-bottom: 0;
     font-size: 12px;
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .market-package.list-mode {
+    align-items: stretch;
+    min-height: 0;
+    padding: 0.72rem 0.82rem;
+
+    .header {
+      flex: 0 1 auto;
+      width: 100%;
+      gap: 0.6rem;
+    }
+
+    .desc {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      margin-top: 0.38rem;
+      white-space: normal;
+    }
+
+    .footer {
+      flex-wrap: wrap;
+      gap: 0.3rem 0.55rem;
+      white-space: normal;
+      margin-top: 0.4rem;
+    }
+  }
+}
+
+@media (max-width: 420px) {
+  .market-package {
+    height: auto;
+    min-height: 11rem;
+    padding: 0.82rem 0.9rem;
+
+    .header {
+      .left {
+        width: 3rem;
+        height: 3rem;
+      }
+
+      h2 {
+        font-size: 1rem;
+      }
+
+      .text-right {
+        min-width: 0;
+      }
+    }
+
+    .footer {
+      flex-wrap: wrap;
+      height: auto;
+      margin-bottom: 0;
+      gap: 0.28rem 0.5rem;
+
+      .spacer,
+      .long-spacer {
+        display: none;
+      }
+    }
   }
 }
 

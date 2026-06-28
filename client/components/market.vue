@@ -167,7 +167,9 @@ const silentData = computed(() => getSilentFiltered(data.value, silentFilters.va
   installed: global.static ? undefined : installed,
 }))
 
-const visibleData = computed(() => getVisible(silentData.value, words.value))
+const visibilityWords = computed(() => words.value.filter(word => word === 'show:hidden' || word === 'show:deprecated'))
+
+const visibleData = computed(() => getVisible(silentData.value, visibilityWords.value))
 
 const clientDebug = ref<{
   timings?: Record<string, number>
@@ -250,13 +252,19 @@ watch(router.currentRoute, (value) => {
   if (words.value[words.value.length - 1]) words.value.push('')
 }, { immediate: true, deep: true })
 
+let routeSyncTimer: ReturnType<typeof setTimeout>
+
 watch(prompt, (value) => {
-  const { keyword: _, ...rest } = router.currentRoute.value.query
-  if (value) {
-    router.replace({ query: { keyword: value, ...rest } })
-  } else {
-    router.replace({ query: rest })
-  }
+  clearTimeout(routeSyncTimer)
+  routeSyncTimer = setTimeout(() => {
+    const { keyword: _, ...rest } = router.currentRoute.value.query
+    if (value === (router.currentRoute.value.query.keyword || '')) return
+    if (value) {
+      router.replace({ query: { keyword: value, ...rest } })
+    } else {
+      router.replace({ query: rest })
+    }
+  }, 180)
 }, { deep: true })
 
 watch(marketLoading, (loading) => {
@@ -279,6 +287,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearTimeout(loadingTimer)
+  clearTimeout(routeSyncTimer)
   window.removeEventListener('keydown', onSearchShortcut)
 })
 
@@ -980,6 +989,30 @@ function formatNumber(value?: number) {
       &:focus-within {
         transform: none;
       }
+    }
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .page-market.market-mode-polished {
+    .layout-left {
+      z-index: 0;
+      background: var(--k-side-bg) !important;
+      backdrop-filter: none !important;
+      box-shadow: 8px 0 24px rgb(0 0 0 / 18%);
+    }
+
+    .main-container {
+      z-index: 1;
+      background: var(--k-page-bg, var(--k-bg-darker));
+    }
+
+    &:not(.is-left-aside-open) .layout-left {
+      pointer-events: none;
+    }
+
+    &.is-left-aside-open .layout-left {
+      z-index: 2;
     }
   }
 }
