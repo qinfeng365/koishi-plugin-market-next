@@ -40,7 +40,7 @@
       <el-button v-if="pending" size="small" @click="clearOverride">撤销</el-button>
       <el-button v-if="showRemoveDependency" class="dep-remove-button" size="small" @click="removeDependency">{{ removeButtonText }}</el-button>
       <el-button v-if="canExpandCard && !pending" size="small" @click.stop="toggleEdit">
-        {{ bundlePackage ? '管理' : editing ? '收起' : '版本' }}
+        {{ editToggleText }}
       </el-button>
     </div>
   </div>
@@ -81,7 +81,7 @@
           忽略更新
         </el-button>
         <el-button v-if="showEditToggle" size="small" @click.stop="toggleEdit">
-          {{ bundlePackage ? '管理' : editing ? '收起' : '修改' }}
+          {{ editToggleText }}
         </el-button>
       </div>
     </div>
@@ -519,14 +519,22 @@ const showVersionControl = computed(() => {
   return editing.value || pending.value || updatable.value || statusClass.value === 'error' || statusClass.value === 'manual'
 })
 
+const editToggleText = computed(() => {
+  if (bundlePackage.value) return '管理'
+  if (editing.value) return '收起'
+  return data.value ? (props.listMode ? '版本' : '修改') : '操作'
+})
+
 const showEditToggle = computed(() => {
   if (bundlePackage.value && (dep.value || local.value)) return !pending.value
-  return !!data.value && !pending.value && !updatable.value && statusClass.value !== 'error' && statusClass.value !== 'manual'
+  return canExpandCard.value && !updatable.value
 })
 
 const canExpandCard = computed(() => {
   if (bundlePackage.value && (dep.value || local.value)) return !pending.value
-  return !!data.value && !pending.value && statusClass.value !== 'error' && statusClass.value !== 'manual'
+  if (pending.value || statusClass.value === 'error' || statusClass.value === 'manual') return false
+  if (data.value) return true
+  return !!dep.value && !dep.value.workspace && !dep.value.invalid
 })
 
 const showQuickUpdate = computed(() => {
