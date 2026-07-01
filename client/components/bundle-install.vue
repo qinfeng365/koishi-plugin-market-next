@@ -709,17 +709,30 @@ function formatInstallError(error: unknown) {
 
 .bundle-install-panel {
   --bundle-color: #8b5cf6;
+  --bundle-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #ffffff)));
+  --bundle-surface-muted: var(--k-side-bg, var(--el-fill-color-lighter, var(--bundle-surface)));
+  --bundle-text: var(--fg1, var(--el-text-color-primary, currentColor));
+  --bundle-text-muted: var(--fg2, var(--el-text-color-regular, currentColor));
+  --bundle-border-base: var(--k-color-border, var(--el-border-color, #dcdfe6));
+  --bundle-border: color-mix(in srgb, var(--bundle-border-base) 82%, var(--bundle-text) 10%);
   --bundle-color-soft: color-mix(in srgb, var(--bundle-color) 12%, transparent);
-  --bundle-color-border: color-mix(in srgb, var(--bundle-color) 32%, var(--k-color-border));
+  --bundle-color-border: color-mix(in srgb, var(--bundle-color) 32%, var(--bundle-border));
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 24px);
   max-height: calc(100dvh - 24px);
   overflow: hidden;
+  color: var(--bundle-text);
+  border: 1px solid var(--bundle-border);
+  border-radius: 10px;
+  background: var(--bundle-surface);
+  box-shadow: none;
 
   .el-dialog__header {
     flex: 0 0 auto;
     padding-bottom: 0.5rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--bundle-border) 68%, transparent);
+    background: color-mix(in srgb, var(--bundle-surface-muted) 54%, var(--bundle-surface));
   }
 
   .el-dialog__body {
@@ -727,6 +740,7 @@ function formatInstallError(error: unknown) {
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
+    background: var(--bundle-surface);
   }
 
   .el-dialog__body,
@@ -762,10 +776,10 @@ function formatInstallError(error: unknown) {
 
   .el-dialog__footer {
     flex: 0 0 auto;
-    border-top: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--bundle-border) 72%, transparent);
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--bundle-color) 4%, transparent), transparent),
-      var(--k-card-bg);
+      color-mix(in srgb, var(--bundle-surface) 86%, var(--bundle-surface-muted) 14%);
   }
 
   // Hero
@@ -786,7 +800,7 @@ function formatInstallError(error: unknown) {
       color-mix(in srgb, var(--bundle-color) 26%, transparent),
       color-mix(in srgb, var(--bundle-color) 12%, transparent));
     color: var(--bundle-color);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 14%), 0 4px 14px color-mix(in srgb, var(--bundle-color) 18%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-surface) 82%, white 18%), 0 4px 14px color-mix(in srgb, var(--bundle-color) 16%, transparent);
     .k-icon { width: 1.4rem; height: 1.4rem; }
   }
 
@@ -850,9 +864,9 @@ function formatInstallError(error: unknown) {
   .bundle-stat {
     position: relative;
     padding: 0.45rem 0.62rem;
-    border: 1px solid var(--k-color-border);
+    border: 1px solid var(--bundle-border);
     border-radius: 8px;
-    background: color-mix(in srgb, var(--bundle-color) 4%, var(--k-card-bg));
+    background: color-mix(in srgb, var(--bundle-color) 4%, var(--bundle-surface));
     overflow: hidden;
   }
 
@@ -932,10 +946,10 @@ function formatInstallError(error: unknown) {
   }
 
   .bundle-member {
-    border: 1px solid var(--k-color-border);
+    border: 1px solid var(--bundle-border);
     border-radius: 8px;
     padding: 0.52rem 0.62rem;
-    background: var(--k-card-bg);
+    background: var(--bundle-surface);
     transition: border-color 0.18s, background 0.18s, box-shadow 0.18s, transform 0.18s;
 
     &.optional {
@@ -948,12 +962,12 @@ function formatInstallError(error: unknown) {
 
     &.selected {
       border-color: var(--bundle-color-border);
-      background: linear-gradient(90deg, var(--bundle-color-soft), transparent 50%), var(--k-card-bg);
+      background: linear-gradient(90deg, var(--bundle-color-soft), transparent 50%), var(--bundle-surface);
       box-shadow: inset 3px 0 0 var(--bundle-color);
     }
 
     &.required {
-      background: linear-gradient(90deg, color-mix(in srgb, var(--k-color-success) 4%, transparent), transparent 50%), var(--k-card-bg);
+      background: linear-gradient(90deg, color-mix(in srgb, var(--k-color-success) 4%, transparent), transparent 50%), var(--bundle-surface);
       box-shadow: inset 3px 0 0 var(--k-color-success);
     }
   }
@@ -975,9 +989,9 @@ function formatInstallError(error: unknown) {
     border-radius: 8px;
     border: 1px solid transparent;
     background: linear-gradient(135deg,
-      color-mix(in srgb, var(--c, var(--fg3)) 18%, var(--k-card-bg)),
-      color-mix(in srgb, var(--c, var(--fg3)) 8%, var(--k-card-bg)));
-    border-color: color-mix(in srgb, var(--c, var(--fg3)) 28%, var(--k-color-border));
+      color-mix(in srgb, var(--c, var(--fg3)) 18%, var(--bundle-surface)),
+      color-mix(in srgb, var(--c, var(--fg3)) 8%, var(--bundle-surface)));
+    border-color: color-mix(in srgb, var(--c, var(--fg3)) 28%, var(--bundle-border));
     color: var(--c, var(--fg2));
 
     .market-icon { width: 1.05rem; height: 1.05rem; }
@@ -1063,7 +1077,7 @@ function formatInstallError(error: unknown) {
     border-radius: 999px;
     color: var(--k-color-success);
     background: color-mix(in srgb, var(--k-color-success) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--k-color-success) 28%, var(--k-color-border));
+    border: 1px solid color-mix(in srgb, var(--k-color-success) 28%, var(--bundle-border));
     .k-icon { width: 0.7rem; height: 0.7rem; }
   }
 
@@ -1090,7 +1104,7 @@ function formatInstallError(error: unknown) {
     gap: 0.4rem 0.85rem;
     margin: 0.42rem 0 0 2.55rem;
     padding-top: 0.38rem;
-    border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 60%, transparent);
+    border-top: 1px dashed color-mix(in srgb, var(--bundle-border) 60%, transparent);
     cursor: default;
     font-size: 0.82rem;
   }
@@ -1117,8 +1131,8 @@ function formatInstallError(error: unknown) {
     gap: 0.5rem;
     margin: 0.6rem 0 0.8rem;
     padding: 0.5rem 0.65rem;
-    background: color-mix(in srgb, var(--bundle-color) 4%, var(--k-side-bg));
-    border: 1px solid color-mix(in srgb, var(--bundle-color) 12%, var(--k-color-border));
+    background: color-mix(in srgb, var(--bundle-color) 4%, var(--bundle-surface-muted));
+    border: 1px solid color-mix(in srgb, var(--bundle-color) 12%, var(--bundle-border));
     border-radius: 8px;
     font-size: 0.76rem;
 
@@ -1138,8 +1152,8 @@ function formatInstallError(error: unknown) {
     margin: 0.5rem 0 0.25rem 2.55rem;
     padding: 0.55rem 0.65rem;
     border-radius: 8px;
-    border: 1px solid color-mix(in srgb, var(--k-color-warning) 24%, var(--k-color-border));
-    background: color-mix(in srgb, var(--k-color-warning) 4%, var(--k-card-bg));
+    border: 1px solid color-mix(in srgb, var(--k-color-warning) 24%, var(--bundle-border));
+    background: color-mix(in srgb, var(--k-color-warning) 4%, var(--bundle-surface));
 
     .editor-title {
       font-size: 0.76rem;
@@ -1180,8 +1194,8 @@ function formatInstallError(error: unknown) {
       box-sizing: border-box;
       padding: 0.55rem 0.7rem;
       border-radius: 8px;
-      background: color-mix(in srgb, var(--bundle-color) 5%, var(--k-color-code-bg, rgb(0 0 0 / 8%)));
-      border: 1px solid color-mix(in srgb, var(--bundle-color) 14%, var(--k-color-border));
+      background: color-mix(in srgb, var(--bundle-color) 5%, var(--k-color-code-bg, var(--bundle-surface-muted)));
+      border: 1px solid color-mix(in srgb, var(--bundle-color) 14%, var(--bundle-border));
       font-family: var(--font-mono, monospace);
       font-size: 0.74rem;
       color: var(--fg1);
@@ -1206,7 +1220,7 @@ function formatInstallError(error: unknown) {
     margin-top: 0.75rem;
     padding: 0.6rem 0.72rem;
     border-radius: 8px;
-    background: linear-gradient(135deg, var(--bundle-color-soft), transparent 60%), color-mix(in srgb, var(--k-side-bg) 70%, transparent);
+    background: linear-gradient(135deg, var(--bundle-color-soft), transparent 60%), color-mix(in srgb, var(--bundle-surface-muted) 70%, var(--bundle-surface));
     border: 1px solid var(--bundle-color-border);
   }
 
@@ -1226,8 +1240,8 @@ function formatInstallError(error: unknown) {
   }
 
   .bundle-diff-cell {
-    background: var(--k-card-bg);
-    border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
+    background: var(--bundle-surface);
+    border: 1px solid color-mix(in srgb, var(--bundle-border) 70%, transparent);
     border-radius: 8px;
     padding: 0.45rem 0.55rem;
   }
@@ -1307,16 +1321,20 @@ function formatInstallError(error: unknown) {
 
   &.market-mode-polished {
     border-radius: 16px;
-    box-shadow: 0 24px 56px rgb(0 0 0 / 24%), 0 8px 20px rgb(0 0 0 / 14%);
+    border-color: color-mix(in srgb, var(--bundle-color) 14%, var(--bundle-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 5%, transparent), transparent 42%),
+      var(--bundle-surface);
+    box-shadow: 0 18px 42px color-mix(in srgb, var(--bundle-text) 12%, transparent);
 
     .bundle-member {
       border-radius: 12px;
-      background: color-mix(in srgb, var(--k-card-bg) 85%, transparent);
+      background: color-mix(in srgb, var(--bundle-surface) 90%, var(--bundle-surface-muted) 10%);
       backdrop-filter: blur(10px);
 
       &.optional:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-color) 10%, rgb(0 0 0 / 8%));
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-color) 10%, transparent);
       }
 
       &.selected {
@@ -1329,9 +1347,9 @@ function formatInstallError(error: unknown) {
     }
 
     .bundle-diff {
-      background: linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 12%, transparent), transparent 60%), color-mix(in srgb, var(--k-side-bg) 80%, transparent);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 12%, transparent), transparent 60%), color-mix(in srgb, var(--bundle-surface-muted) 72%, var(--bundle-surface));
       backdrop-filter: blur(12px);
-      box-shadow: 0 10px 24px rgb(0 0 0 / 8%);
+      box-shadow: 0 10px 24px color-mix(in srgb, var(--bundle-text) 6%, transparent);
     }
   }
 

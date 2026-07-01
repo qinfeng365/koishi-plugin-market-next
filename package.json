@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Next-generation Koishi plugin market and dependency management center",
-  "version": "3.6.1-alpha.2",
+  "version": "3.6.1-alpha.3",
   "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
   "repository": {
     "type": "git",

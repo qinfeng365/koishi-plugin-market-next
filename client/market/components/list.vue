@@ -186,7 +186,7 @@ function schedulePackageUpdate() {
           frontendSort: sortedAt - start,
           frontendFilter: performance.now() - sortedAt,
         },
-        total: sorted.length,
+        total: visible.length,
         matched: packages.value.length,
       })
     }

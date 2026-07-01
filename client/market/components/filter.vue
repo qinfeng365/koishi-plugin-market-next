@@ -166,7 +166,7 @@ const config = inject(kConfig, {})
 
 const words = ref<string[]>([''])
 const advancedOpen = ref(false)
-const supportedSorts = ['default', 'download', 'created', 'updated'] as const
+const supportedSorts = ['default', 'recommend', 'download', 'created', 'updated'] as const
 const dateDrafts = ref<Record<DateFilterKey, string>>({
   createdAfter: '',
   createdBefore: '',
@@ -258,6 +258,13 @@ function addWord(word: string) {
 }
 
 function toggleSort(word: string, event: MouseEvent) {
+  if (word === 'sort:recommend') {
+    const index = words.value.findIndex(x => x.startsWith('sort:'))
+    if (index === -1) addWord(word)
+    else words.value[index] = word
+    emitWords(words.value)
+    return
+  }
   const index = words.value.findIndex(x => x.startsWith('sort:'))
   if (index === -1) {
     if (word === 'sort:default') {

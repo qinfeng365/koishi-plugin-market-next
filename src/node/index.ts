@@ -1,4 +1,4 @@
-import { Context, Dict, pick, Schema, Time } from 'koishi'
+import { Context, Dict, HTTP, pick, Schema, Time } from 'koishi'
 import Scanner, { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
 import { gt, maxSatisfying } from 'semver'
 import { resolve } from 'path'
@@ -80,6 +80,11 @@ export const usage = `
 - [Lipraty](https://k.ilharp.cc/3530)（大陆）：https://koi.nyan.zone/registry/index.json
 - [itzdrli](https://k.ilharp.cc/9975)（全球）：https://kp.itzdrli.cc
 - itzdrli 备用：https://koishi.itzdrli.cc
+- Koishi Registry GitHub Pages：https://koishijs.github.io/registry/index.json
+- Koishi Registry GitHub Raw：https://raw.githubusercontent.com/koishijs/registry/release/index.json
+- Koishi Registry jsDelivr：https://cdn.jsdelivr.net/gh/koishijs/registry@release/index.json
+- Koishi Registry GitHub 代理：https://ghproxy.net/https://raw.githubusercontent.com/koishijs/registry/release/index.json
+- Koishi Registry GitHub 代理 2：https://ghfast.top/https://raw.githubusercontent.com/koishijs/registry/release/index.json
 
 要浏览更多社区镜像，请访问 [Koishi 论坛上的镜像一览](https://k.ilharp.cc/4000)。`
 
@@ -172,6 +177,8 @@ const AVATAR_ALLOWED_HOSTS = new Set(['www.npmjs.com', 'npmjs.com', 's.gravatar.
 const AVATAR_DEFAULT_HINTS = new Set(['default', 'mp', 'identicon', 'monsterid', 'wavatar', 'retro', 'robohash', 'blank'])
 const AVATAR_FETCH_TIMEOUT = 3000
 const AVATAR_HEAD_TIMEOUT = 1200
+const AVATAR_MAX_REDIRECTS = 3
+const AVATAR_ACCEPT = 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml;q=0.8,*/*;q=0.1'
 let avatarDiskCleanupTask: Promise<void> | undefined
 
 interface AvatarDiskCacheEntry extends AvatarFetchResult {
@@ -343,50 +350,40 @@ async function fetchAvatar(ctx: Context, rawKey: string, rawUrl?: string): Promi
   if (!['http:', 'https:'].includes(url.protocol)) return
   if (await isBlockedAvatarTarget(url)) return
 
-  const sourceUrl = url.toString()
   try {
-    if (!isAllowedAvatarHost(normalizeAvatarHostname(url.hostname))) try {
-      const head = await ctx.http('HEAD', sourceUrl, {
-        timeout: AVATAR_HEAD_TIMEOUT,
-        validateStatus: status => status >= 200 && status < 600,
-        headers: {
-          accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml;q=0.8,*/*;q=0.1',
-        },
-      })
-      if (head.status < 400) {
-        const headLength = Number(head.headers.get('content-length'))
-        if (Number.isFinite(headLength) && headLength > AVATAR_MAX_SIZE) return
-      }
-    } catch (error) {
-      ctx.logger('market').debug(`avatar HEAD skipped: url=${sourceUrl}, error=${error instanceof Error ? error.message : error}`)
+    const checked = await checkAvatarHead(ctx, url)
+    if (checked.blocked) return
+    const fetched = await fetchAvatarResponse(ctx, checked.url ?? url)
+    if (!fetched) return
+    const { response, sourceUrl } = fetched
+    if (response.status >= 500) {
+      await cancelAvatarBody(response.data)
+      return
     }
-
-    const response = await ctx.http(sourceUrl, {
-      timeout: AVATAR_FETCH_TIMEOUT,
-      responseType: 'arraybuffer',
-      validateStatus: status => status >= 200 && status < 600,
-      headers: {
-        accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml;q=0.8,*/*;q=0.1',
-      },
-    })
-    if (response.status >= 500) return
-    if (response.status >= 400) return
+    if (response.status >= 400) {
+      await cancelAvatarBody(response.data)
+      return
+    }
     const type = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() || ''
     if (!type.startsWith('image/')) {
+      await cancelAvatarBody(response.data)
       return
     }
     const length = Number(response.headers.get('content-length'))
     if (Number.isFinite(length) && length > AVATAR_MAX_SIZE) {
+      await cancelAvatarBody(response.data)
       return
     }
-    if (!response.data.byteLength || response.data.byteLength > AVATAR_MAX_SIZE) {
+    if (isAvatarDefaultResponse(response.headers)) {
+      await cancelAvatarBody(response.data)
       return
     }
-    if (isAvatarDefaultResponse(response.headers)) return
+    const body = await readLimitedAvatarBody(response.data)
+    if (!body?.byteLength) return
 
     const result: AvatarFetchResult = {
       type,
-      data: Buffer.from(response.data).toString('base64'),
+      data: body.toString('base64'),
     }
     avatarCache.set(cacheKey, { ...result, expiresAt: Date.now() + AVATAR_CACHE_TTL })
     void writeAvatarDiskCache(ctx, cacheKey, sourceUrl, result)
@@ -395,6 +392,98 @@ async function fetchAvatar(ctx: Context, rawKey: string, rawUrl?: string): Promi
   } catch (error) {
     throw error
   }
+}
+
+async function checkAvatarHead(ctx: Context, url: URL): Promise<{ url?: URL, blocked?: boolean }> {
+  let current = url
+  for (let index = 0; index <= AVATAR_MAX_REDIRECTS; index++) {
+    if (await isBlockedAvatarTarget(current)) return { blocked: true }
+    try {
+      const head = await ctx.http('HEAD', current.toString(), {
+        timeout: AVATAR_HEAD_TIMEOUT,
+        redirect: 'manual',
+        validateStatus: status => status >= 200 && status < 600,
+        headers: { accept: AVATAR_ACCEPT },
+      })
+      if (isAvatarRedirect(head.status)) {
+        const next = await resolveAvatarRedirect(current, head.headers.get('location'))
+        if (!next) return { blocked: true }
+        current = next
+        continue
+      }
+      const headLength = Number(head.headers.get('content-length'))
+      if (Number.isFinite(headLength) && headLength > AVATAR_MAX_SIZE) return { blocked: true }
+      return { url: current }
+    } catch (error) {
+      ctx.logger('market').debug(`avatar HEAD skipped: url=${current}, error=${error instanceof Error ? error.message : error}`)
+      return { url: current }
+    }
+  }
+  return { blocked: true }
+}
+
+type AvatarBodyStream = HTTP.ResponseTypes['stream']
+
+async function fetchAvatarResponse(ctx: Context, url: URL): Promise<{ response: HTTP.Response<AvatarBodyStream>, sourceUrl: string } | undefined> {
+  let current = url
+  for (let index = 0; index <= AVATAR_MAX_REDIRECTS; index++) {
+    if (await isBlockedAvatarTarget(current)) return
+    const response = await ctx.http(current.toString(), {
+      timeout: AVATAR_FETCH_TIMEOUT,
+      responseType: 'stream',
+      redirect: 'manual',
+      validateStatus: status => status >= 200 && status < 600,
+      headers: { accept: AVATAR_ACCEPT },
+    })
+    if (!isAvatarRedirect(response.status)) return { response, sourceUrl: current.toString() }
+    await cancelAvatarBody(response.data)
+    const next = await resolveAvatarRedirect(current, response.headers.get('location'))
+    if (!next) return
+    current = next
+  }
+}
+
+function isAvatarRedirect(status: number) {
+  return status >= 300 && status < 400
+}
+
+async function resolveAvatarRedirect(base: URL, location: string | null) {
+  if (!location) return
+  let next: URL
+  try {
+    next = new URL(location, base)
+  } catch {
+    return
+  }
+  if (!['http:', 'https:'].includes(next.protocol)) return
+  if (await isBlockedAvatarTarget(next)) return
+  return next
+}
+
+async function readLimitedAvatarBody(stream: AvatarBodyStream) {
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      size += value.byteLength
+      if (size > AVATAR_MAX_SIZE) {
+        await reader.cancel().catch(() => {})
+        return
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return Buffer.concat(chunks.map(chunk => Buffer.from(chunk)), size)
+}
+
+async function cancelAvatarBody(stream?: AvatarBodyStream) {
+  await stream?.cancel?.().catch(() => {})
 }
 
 function isAvatarCacheLikelyDefault(url: string, key: string) {

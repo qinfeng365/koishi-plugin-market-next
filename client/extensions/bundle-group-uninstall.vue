@@ -72,6 +72,11 @@ async function loadRemoteBundleRecord() {
 <style lang="scss" scoped>
 
 .bundle-group-uninstall-dialog {
+  --bundle-group-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #ffffff)));
+  --bundle-group-surface-muted: var(--k-side-bg, var(--el-fill-color-lighter, var(--bundle-group-surface)));
+  --bundle-group-border: var(--k-color-border, var(--el-border-color, #dcdfe6));
+  --bundle-group-primary: var(--k-color-primary, var(--el-color-primary, #8b5cf6));
+
   .bundle-group-uninstall-body {
     display: grid;
     gap: 0.75rem;
@@ -86,7 +91,7 @@ async function loadRemoteBundleRecord() {
   .bundle-package-name {
     padding: 0.45rem 0.6rem;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--k-color-primary) 7%, transparent);
+    background: color-mix(in srgb, var(--bundle-group-primary) 7%, var(--bundle-group-surface));
     color: var(--fg1);
     font-family: var(--font-mono);
     word-break: break-all;
@@ -96,9 +101,9 @@ async function loadRemoteBundleRecord() {
     display: block;
     margin: 0.35rem 0;
     padding: 0.5rem 0.6rem;
-    border: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--bundle-group-border) 72%, transparent);
     border-radius: 8px;
-    background: color-mix(in srgb, var(--k-side-bg) 72%, transparent);
+    background: color-mix(in srgb, var(--bundle-group-surface-muted) 72%, var(--bundle-group-surface));
   }
 
   .member-title {
@@ -114,7 +119,7 @@ async function loadRemoteBundleRecord() {
   .bundle-uninstall-note {
     border-radius: 8px;
     padding: 0.55rem 0.65rem;
-    background: color-mix(in srgb, var(--k-color-primary) 7%, transparent);
+    background: color-mix(in srgb, var(--bundle-group-primary) 7%, var(--bundle-group-surface));
   }
 }
 

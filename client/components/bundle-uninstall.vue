@@ -299,14 +299,35 @@ async function uninstallBundle() {
 
 <style lang="scss" scoped>
 
-.bundle-uninstall-dialog {
+:global(.bundle-uninstall-dialog) {
+  --bundle-uninstall-primary: var(--k-color-primary, var(--el-color-primary, #8b5cf6));
+  --bundle-uninstall-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #ffffff)));
+  --bundle-uninstall-surface-muted: var(--k-side-bg, var(--el-fill-color-lighter, var(--bundle-uninstall-surface)));
+  --bundle-uninstall-text: var(--fg1, var(--el-text-color-primary, currentColor));
+  --bundle-uninstall-text-muted: var(--fg2, var(--el-text-color-regular, currentColor));
+  --bundle-uninstall-border-base: var(--k-color-border, var(--el-border-color, #dcdfe6));
+  --bundle-uninstall-border: color-mix(in srgb, var(--bundle-uninstall-border-base) 82%, var(--bundle-uninstall-text) 10%);
+  color: var(--bundle-uninstall-text);
+  border: 1px solid var(--bundle-uninstall-border);
+  border-radius: 10px;
+  background: var(--bundle-uninstall-surface);
+  box-shadow: none;
+
+  :deep(.el-dialog__header) {
+    border-bottom: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 68%, transparent);
+    background: color-mix(in srgb, var(--bundle-uninstall-surface-muted) 54%, var(--bundle-uninstall-surface));
+  }
+
   :deep(.el-dialog__body) {
     max-height: min(68vh, 620px);
     overflow: auto;
+    background: var(--bundle-uninstall-surface);
   }
 
   :deep(.el-dialog__footer) {
     padding-top: 0.25rem;
+    border-top: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 72%, transparent);
+    background: color-mix(in srgb, var(--bundle-uninstall-surface) 86%, var(--bundle-uninstall-surface-muted) 14%);
   }
 
   :deep(.el-radio-group) {
@@ -342,7 +363,7 @@ async function uninstallBundle() {
   .bundle-package-name {
     padding: 0.45rem 0.6rem;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--k-color-primary) 7%, transparent);
+    background: color-mix(in srgb, var(--bundle-uninstall-primary) 7%, var(--bundle-uninstall-surface));
     color: var(--fg1);
     font-family: var(--font-mono);
     word-break: break-all;
@@ -361,9 +382,9 @@ async function uninstallBundle() {
     gap: 0.45rem;
     min-width: 0;
     padding: 0.58rem 0.65rem;
-    border: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 72%, transparent);
     border-radius: 8px;
-    background: color-mix(in srgb, var(--k-side-bg) 72%, transparent);
+    background: color-mix(in srgb, var(--bundle-uninstall-surface-muted) 72%, var(--bundle-uninstall-surface));
   }
 
   .member-main,
@@ -413,7 +434,7 @@ async function uninstallBundle() {
   .bundle-uninstall-note {
     border-radius: 8px;
     padding: 0.55rem 0.65rem;
-    background: color-mix(in srgb, var(--k-color-primary) 7%, transparent);
+    background: color-mix(in srgb, var(--bundle-uninstall-primary) 7%, var(--bundle-uninstall-surface));
   }
 
   .bundle-loading {
@@ -425,8 +446,8 @@ async function uninstallBundle() {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.65rem;
-    background: color-mix(in srgb, var(--k-color-primary) 4%, var(--k-side-bg));
-    border: 1px solid color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+    background: color-mix(in srgb, var(--bundle-uninstall-primary) 4%, var(--bundle-uninstall-surface-muted));
+    border: 1px solid color-mix(in srgb, var(--bundle-uninstall-primary) 12%, var(--bundle-uninstall-border));
     border-radius: 8px;
     font-size: 0.76rem;
 
@@ -444,30 +465,34 @@ async function uninstallBundle() {
     .bundle-section-action {
       border: none;
       background: none;
-      color: var(--k-color-primary);
+      color: var(--bundle-uninstall-primary);
       cursor: pointer;
       font-size: 0.74rem;
       padding: 2px 6px;
       border-radius: 6px;
       transition: background 0.15s;
-      &:hover { background: color-mix(in srgb, var(--k-color-primary) 8%, transparent); }
+      &:hover { background: color-mix(in srgb, var(--bundle-uninstall-primary) 8%, transparent); }
     }
   }
 
   &.market-mode-polished {
     border-radius: 16px;
-    box-shadow: 0 24px 56px rgb(0 0 0 / 24%), 0 8px 20px rgb(0 0 0 / 14%);
+    border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 14%, var(--bundle-uninstall-border));
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--bundle-uninstall-primary) 5%, transparent), transparent 42%),
+      var(--bundle-uninstall-surface);
+    box-shadow: 0 18px 42px color-mix(in srgb, var(--bundle-uninstall-text) 12%, transparent);
 
     .bundle-member-option {
       border-radius: 12px;
-      background: color-mix(in srgb, var(--k-card-bg) 85%, transparent);
+      background: color-mix(in srgb, var(--bundle-uninstall-surface) 90%, var(--bundle-uninstall-surface-muted) 10%);
       backdrop-filter: blur(10px);
-      box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+      box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-uninstall-surface) 86%, white 14%);
       transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 
       &:hover {
-        border-color: color-mix(in srgb, var(--k-color-primary) 28%, var(--k-color-border));
-        box-shadow: 0 8px 20px rgb(0 0 0 / 10%);
+        border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 28%, var(--bundle-uninstall-border));
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-uninstall-primary) 10%, transparent);
         transform: translateY(-2px);
       }
     }

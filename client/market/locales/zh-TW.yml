@@ -12,6 +12,7 @@ badge:
   portable: 快速體驗
 sort:
   default: 綜合
+  recommend: 推薦
   download: 依下載量
   created: 依創建時間
   updated: 依更新時間

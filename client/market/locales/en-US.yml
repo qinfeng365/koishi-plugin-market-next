@@ -13,6 +13,7 @@ badge:
   bundle: Plugin Bundle
 sort:
   default: Overall
+  recommend: Recommended
   download: Downloads
   created: Created
   updated: Updated

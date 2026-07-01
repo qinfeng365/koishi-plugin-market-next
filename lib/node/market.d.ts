@@ -40,6 +40,8 @@ declare class MarketProvider extends BaseMarketProvider {
     private hasCurrentMarketData;
     private startSoftRefresh;
     private fetchIndex;
+    private fetchIndexFromEndpoints;
+    private getRescueEndpoints;
     private getEndpointCandidates;
     private getEndpoints;
     private getPreferredEndpoint;

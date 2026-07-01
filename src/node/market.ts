@@ -13,6 +13,11 @@ const FALLBACK_ENDPOINTS = [
   'https://kp.itzdrli.cc',
   'https://koishi.itzdrli.cc',
   'https://registry.koishi.chat/index.json',
+  'https://koishijs.github.io/registry/index.json',
+  'https://raw.githubusercontent.com/koishijs/registry/release/index.json',
+  'https://cdn.jsdelivr.net/gh/koishijs/registry@release/index.json',
+  'https://ghproxy.net/https://raw.githubusercontent.com/koishijs/registry/release/index.json',
+  'https://ghfast.top/https://raw.githubusercontent.com/koishijs/registry/release/index.json',
 ]
 const ROUTE_STAGGER = 80
 const FIRST_PAYLOAD_TIMEOUT = Time.second * 1.5
@@ -64,7 +69,7 @@ type CacheMeta = Omit<CacheFile, 'result'>
 interface EndpointResult {
   endpoint: string
   preferredEndpoint?: string
-  fallbackReason?: 'primary-failed' | 'primary-slow'
+  fallbackReason?: 'primary-failed' | 'primary-slow' | 'rescue'
   result: SearchResult
   elapsed: number
   candidates: number
@@ -348,9 +353,24 @@ class MarketProvider extends BaseMarketProvider {
 
   private async fetchIndex(serial: number): Promise<EndpointResult> {
     const endpoints = this.getEndpoints()
-    this.log('debug', `market endpoint candidates: ${endpoints.join(', ')}`)
+    const rescueEndpoints = this.getRescueEndpoints(endpoints)
+    try {
+      return await this.fetchIndexFromEndpoints(serial, endpoints)
+    } catch (error) {
+      if (!rescueEndpoints.length || this.isStale(serial) || this.isInternalAbort(error)) throw error
+      this.log('warn', `market active endpoints failed; retry cooled endpoints as rescue: active=${endpoints.join(', ')}, rescue=${rescueEndpoints.join(', ')}, error=${formatError(error)}`)
+      const result = await this.fetchIndexFromEndpoints(serial, rescueEndpoints, { rescue: true })
+      result.preferredEndpoint = this.config.endpoint
+      result.fallbackReason = 'rescue'
+      return result
+    }
+  }
+
+  private async fetchIndexFromEndpoints(serial: number, endpoints: string[], options: { rescue?: boolean } = {}): Promise<EndpointResult> {
+    const routeMode = options.rescue ? 'rescue' : 'active'
+    this.log('debug', `market endpoint candidates (${routeMode}): ${endpoints.join(', ')}`)
     this.log('debug', `market route scores before fetch: ${formatRouteScores(this.getRouteScores(endpoints))}`)
-    this.log('info', `market endpoint candidates: primary=${endpoints[0]}, fallbacks=${Math.max(0, endpoints.length - 1)}, autoRoute=${this.config.autoRoute !== false}`)
+    this.log('info', `market endpoint candidates: mode=${routeMode}, primary=${endpoints[0]}, fallbacks=${Math.max(0, endpoints.length - 1)}, autoRoute=${this.config.autoRoute !== false}`)
 
     if (endpoints.length === 1 || this.config.autoRoute === false) {
       const controller = this.trackController(new AbortController())
@@ -359,10 +379,11 @@ class MarketProvider extends BaseMarketProvider {
         const { endpoint } = result
         this.endpoint = endpoint
         result.preferredEndpoint = endpoints[0]
+        if (options.rescue) result.fallbackReason = 'rescue'
         this.recordRouteSuccess(result)
         return result
       } catch (error) {
-        if (!this.isStale(serial) && !this.isInternalAbort(error)) this.recordRouteFailure(endpoints[0])
+        if (!this.isStale(serial) && !this.isInternalAbort(error)) this.recordRouteFailure(endpoints[0], { rescue: options.rescue })
         throw error
       } finally {
         this.untrackControllers([controller])
@@ -397,7 +418,11 @@ class MarketProvider extends BaseMarketProvider {
         })
         this.endpoint = data.endpoint
         data.preferredEndpoint = endpoints[0]
-        if (data.endpoint !== this.config.endpoint) {
+        if (options.rescue) {
+          data.fallbackReason = 'rescue'
+          this.log('debug', `rescue market endpoint selected: endpoint=${data.endpoint}, elapsed=${data.elapsed}ms, configured=${this.config.endpoint}`)
+          this.log('info', `market rescue endpoint selected: endpoint=${data.endpoint}, elapsed=${data.elapsed}ms, configured=${this.config.endpoint}`)
+        } else if (data.endpoint !== this.config.endpoint) {
           data.fallbackReason = fallbackReason
           this.log('debug', `fallback endpoint selected: endpoint=${data.endpoint}, reason=${fallbackReason ?? 'unknown'}, elapsed=${data.elapsed}ms`)
           this.log('info', `market fallback endpoint selected: endpoint=${data.endpoint}, reason=${fallbackReason ?? 'unknown'}, elapsed=${data.elapsed}ms, primary=${endpoints[0]}`)
@@ -417,7 +442,7 @@ class MarketProvider extends BaseMarketProvider {
           reject(error)
           return
         }
-        this.recordRouteFailure(endpoint)
+        this.recordRouteFailure(endpoint, { rescue: options.rescue })
         lastError = error
         failed++
         if (index === 0) startFallback('primary-failed')
@@ -449,6 +474,12 @@ class MarketProvider extends BaseMarketProvider {
 
       startEndpoint(endpoints[0], 0)
     })
+  }
+
+  private getRescueEndpoints(activeEndpoints: string[]) {
+    if (this.config.autoRoute === false) return []
+    const active = new Set(activeEndpoints)
+    return this.getEndpointCandidates().filter(endpoint => !active.has(endpoint))
   }
 
   private getEndpointCandidates() {
@@ -541,13 +572,18 @@ class MarketProvider extends BaseMarketProvider {
     this.scheduleRouteStatsWrite()
   }
 
-  private recordRouteFailure(endpoint: string) {
+  private recordRouteFailure(endpoint: string, options: { rescue?: boolean } = {}) {
     const stats = this.routeStats[endpoint] ||= { score: 0, successes: 0, failures: 0 }
     stats.failures++
-    stats.consecutiveFailures = (stats.consecutiveFailures ?? 0) + 1
-    stats.cooldownUntil = Date.now() + getRouteCooldown(stats.consecutiveFailures)
-    stats.score = clamp(stats.score - 1.2, -10, 3)
-    this.log('debug', `route failure updated: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, consecutive=${stats.consecutiveFailures}, cooldownUntil=${formatTime(stats.cooldownUntil)}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
+    if (options.rescue) {
+      stats.score = clamp(stats.score - 0.25, -10, 3)
+      this.log('debug', `route rescue failure noted without extending cooldown: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, consecutive=${stats.consecutiveFailures ?? 0}, cooldownUntil=${formatTime(stats.cooldownUntil)}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
+    } else {
+      stats.consecutiveFailures = (stats.consecutiveFailures ?? 0) + 1
+      stats.cooldownUntil = Date.now() + getRouteCooldown(stats.consecutiveFailures)
+      stats.score = clamp(stats.score - 1.2, -10, 3)
+      this.log('debug', `route failure updated: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, consecutive=${stats.consecutiveFailures}, cooldownUntil=${formatTime(stats.cooldownUntil)}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
+    }
     this.scheduleRouteStatsWrite()
   }
 
@@ -651,27 +687,28 @@ class MarketProvider extends BaseMarketProvider {
       const cached = this.cacheEntries[endpoint]
 
       if (response.status === 304) {
-        if (!cached) {
+        const cache = cached && await this.loadCacheEntryResult(cached)
+        if (!cache) {
           throw new Error(`market index from ${endpoint} returned 304 without cache`)
         }
         const elapsed = Date.now() - start
         const validatedAt = Date.now()
-        this.log('debug', `market index not modified from ${endpoint} in ${elapsed}ms, reuse cache hash=${shortHash(cached.hash) || 'unknown'}`)
-        this.log('info', `market index http-304: endpoint=${endpoint}, elapsed=${elapsed}ms, request=${requestElapsed}ms, cachedAt=${formatTime(cached.fetchedAt)}, hash=${shortHash(cached.hash) || 'unknown'}`)
+        this.log('debug', `market index not modified from ${endpoint} in ${elapsed}ms, reuse cache hash=${shortHash(cache.hash) || 'unknown'}`)
+        this.log('info', `market index http-304: endpoint=${endpoint}, elapsed=${elapsed}ms, request=${requestElapsed}ms, cachedAt=${formatTime(cache.fetchedAt)}, hash=${shortHash(cache.hash) || 'unknown'}`)
         return {
           endpoint,
-          result: cached.result,
+          result: cache.result,
           elapsed,
           candidates: total,
           source: 'http-304',
           timings: { request: requestElapsed, total: elapsed },
-          size: cached.size,
-          wireSize: headerWireSize ?? cached.wireSize,
-          contentEncoding: contentEncoding ?? cached.contentEncoding,
-          hash: cached.hash,
-          etag: etag || cached.etag,
-          lastModified: lastModified || cached.lastModified,
-          cachedAt: cached.fetchedAt,
+          size: cache.size,
+          wireSize: headerWireSize ?? cache.wireSize,
+          contentEncoding: contentEncoding ?? cache.contentEncoding,
+          hash: cache.hash,
+          etag: etag || cache.etag,
+          lastModified: lastModified || cache.lastModified,
+          cachedAt: cache.fetchedAt,
           validatedAt,
         }
       }
@@ -685,14 +722,15 @@ class MarketProvider extends BaseMarketProvider {
       const hashElapsed = Date.now() - hashStart
       this.log('debug', `market response hash computed: endpoint=${endpoint}, hash=${shortHash(hash) || 'unknown'}, elapsed=${hashElapsed}ms, unchanged=${!!cached && cached.hash === hash}`)
 
-      if (cached && cached.hash === hash) {
+      const hashCache = cached && cached.hash === hash ? await this.loadCacheEntryResult(cached) : undefined
+      if (hashCache) {
         const elapsed = Date.now() - start
         const validatedAt = Date.now()
         this.log('debug', `market index hash unchanged from ${endpoint} in ${elapsed}ms, size=${size}, hash=${shortHash(hash)}`)
         this.log('info', `market index hash-cache: endpoint=${endpoint}, elapsed=${elapsed}ms, request=${requestElapsed}ms, hash=${shortHash(hash)}, size=${formatBytes(size)}, wireSize=${formatBytes(wireSize)}, encoding=${contentEncoding ?? 'identity'}`)
         return {
           endpoint,
-          result: cached.result,
+          result: hashCache.result,
           elapsed,
           candidates: total,
           source: 'hash-cache',
@@ -703,9 +741,12 @@ class MarketProvider extends BaseMarketProvider {
           hash,
           etag,
           lastModified,
-          cachedAt: cached.fetchedAt,
+          cachedAt: hashCache.fetchedAt,
           validatedAt,
         }
+      }
+      if (cached && cached.hash === hash) {
+        this.log('debug', `market cache hash matched but cached result is unavailable, parse network body instead: endpoint=${endpoint}, hash=${shortHash(hash)}`)
       }
 
       const parseStart = Date.now()

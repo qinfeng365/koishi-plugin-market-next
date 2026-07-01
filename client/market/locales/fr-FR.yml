@@ -12,6 +12,7 @@ badge:
   portable: 快速体验
 sort:
   default: Générales
+  recommend: Recommandés
   download: Par téléchargées
   created: Par date de création
   updated: Par date de mise à jour

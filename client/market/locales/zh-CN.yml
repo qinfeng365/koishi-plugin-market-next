@@ -15,6 +15,7 @@ badge:
 
 sort:
   default: 综合
+  recommend: 推荐
   download: 按下载量
   created: 按创建时间
   updated: 按更新时间

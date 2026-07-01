@@ -407,6 +407,7 @@ function formatFallbackReason(value?: string) {
   switch (value) {
     case 'primary-failed': return '主源失败'
     case 'primary-slow': return '主源慢'
+    case 'rescue': return '冷却源救援'
     default: return '-'
   }
 }
