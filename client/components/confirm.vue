@@ -25,6 +25,7 @@
         </tr>
       </tbody>
     </table>
+    <residue-check v-if="removedNames.length" :names="removedNames"></residue-check>
     <template #footer>
       <div class="left">
         <el-checkbox :disabled="!hasRemove" v-model="removeConfig">
@@ -45,6 +46,7 @@ import { computed, ref } from 'vue'
 import { message, send, store, useContext, useConfig } from '@koishijs/client'
 import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from './utils'
 import { getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
+import ResidueCheck from './residue-check.vue'
 
 const ctx = useContext()
 const config = useConfig()
@@ -52,6 +54,9 @@ const overrides = computed(() => getPendingOverrides())
 const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 
 const removeConfig = ref(getRemoveConfig(config.value))
+const removedNames = computed(() => Object.entries(overrides.value)
+  .filter(([, value]) => !value)
+  .map(([name]) => name))
 
 function clear() {
   showConfirm.value = false
@@ -62,7 +67,7 @@ function clear() {
 }
 
 const hasRemove = computed(() => {
-  return Object.values(overrides.value).some(version => !version)
+  return !!removedNames.value.length
 })
 
 function confirm() {

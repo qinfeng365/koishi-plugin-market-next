@@ -4,6 +4,7 @@ import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './
 import { MarketDataStore, MarketDataStorePayload } from './data';
 import Installer, { InstallFallbackCandidate, InstallOptions } from './installer';
 import MarketProvider from './market';
+import { type ResidueAnalysis, type ResidueRemoveResult } from './residue';
 import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult, PluginBundleRecord } from '../shared/bundle';
 export * from '../shared';
 export { Installer };
@@ -33,6 +34,8 @@ declare module '@koishijs/console' {
         'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>;
         'market/ensure-config'(name: string): Promise<boolean>;
         'market/avatar'(key: string, url?: string): Promise<AvatarFetchResult | undefined>;
+        'market/analyze-residue'(names: string[]): Promise<ResidueAnalysis[]>;
+        'market/remove-residue-paths'(paths: string[]): Promise<ResidueRemoveResult>;
     }
 }
 export declare const name = "market";

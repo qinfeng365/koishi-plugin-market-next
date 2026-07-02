@@ -12,6 +12,7 @@ import { MarketDataStore, MarketDataStorePayload } from './data'
 import Installer, { InstallFallbackCandidate, InstallOptions, loadManifest } from './installer'
 import MarketProvider from './market'
 import { applyChatLunaTool } from './chatluna'
+import { analyzePluginResidue, removeResiduePaths, type ResidueAnalysis, type ResidueRemoveResult } from './residue'
 import {
   BUNDLE_KEYWORD,
   BundleConfigRemoveRequest,
@@ -63,6 +64,8 @@ declare module '@koishijs/console' {
     'market/registry'(names: string[]): Promise<Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>>
     'market/ensure-config'(name: string): Promise<boolean>
     'market/avatar'(key: string, url?: string): Promise<AvatarFetchResult | undefined>
+    'market/analyze-residue'(names: string[]): Promise<ResidueAnalysis[]>
+    'market/remove-residue-paths'(paths: string[]): Promise<ResidueRemoveResult>
   }
 }
 
@@ -1417,6 +1420,14 @@ export function apply(ctx: Context, config: Config = {}) {
       } catch (error) {
         ctx.logger('market').debug(`avatar fetch failed: ${error instanceof Error ? error.message : error}`)
       }
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/analyze-residue', async (names) => {
+      return analyzePluginResidue(ctx, names)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/remove-residue-paths', async (paths) => {
+      return removeResiduePaths(ctx, paths)
     }, { authority: 4 })
 
     ctx.on('ready', () => {
