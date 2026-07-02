@@ -3,7 +3,7 @@
     <div class="residue-head">
       <div>
         <h3>卸载后残留检查</h3>
-        <p>基于包名和已安装源码做保守分析，只提示可能残留的数据。</p>
+        <p>基于包名和已安装源码做保守分析，只提示可能残留的文件目录。</p>
       </div>
       <el-button size="small" :loading="loading" :disabled="!targetNames.length" @click="scan">
         {{ analyses.length ? '重新检查' : '检查残留' }}
@@ -40,27 +40,6 @@
               </small>
             </span>
           </label>
-        </div>
-
-        <div v-if="item.databaseTables.length" class="residue-block">
-          <h4>数据库表线索</h4>
-          <div class="residue-tags">
-            <code v-for="table in item.databaseTables" :key="table">{{ table }}</code>
-          </div>
-        </div>
-
-        <div v-if="item.cacheKeys.length" class="residue-block">
-          <h4>缓存 key 线索</h4>
-          <div class="residue-tags">
-            <code v-for="key in item.cacheKeys" :key="key">{{ key }}</code>
-          </div>
-        </div>
-
-        <div v-if="item.cleanupCommands.length" class="residue-block">
-          <h4>疑似清理命令</h4>
-          <div class="residue-tags">
-            <code v-for="command in item.cleanupCommands" :key="command">{{ command }}</code>
-          </div>
         </div>
 
         <div v-if="item.sourcePaths.length" class="residue-block">
@@ -104,9 +83,6 @@ interface ResidueAnalysis {
   packageRoot?: string
   installed: boolean
   directories: ResidueDirectory[]
-  databaseTables: string[]
-  cacheKeys: string[]
-  cleanupCommands: string[]
   sourcePaths: string[]
   warnings: string[]
 }
@@ -169,9 +145,6 @@ async function cleanup() {
 
 function hasFindings(item: ResidueAnalysis) {
   return item.directories.length
-    || item.databaseTables.length
-    || item.cacheKeys.length
-    || item.cleanupCommands.length
     || item.sourcePaths.length
 }
 

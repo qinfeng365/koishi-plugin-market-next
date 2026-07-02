@@ -14,9 +14,6 @@ export interface ResidueAnalysis {
     packageRoot?: string;
     installed: boolean;
     directories: ResidueDirectory[];
-    databaseTables: string[];
-    cacheKeys: string[];
-    cleanupCommands: string[];
     sourcePaths: string[];
     warnings: string[];
 }

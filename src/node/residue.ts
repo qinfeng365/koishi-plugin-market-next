@@ -25,9 +25,6 @@ export interface ResidueAnalysis {
   packageRoot?: string
   installed: boolean
   directories: ResidueDirectory[]
-  databaseTables: string[]
-  cacheKeys: string[]
-  cleanupCommands: string[]
   sourcePaths: string[]
   warnings: string[]
 }
@@ -38,9 +35,6 @@ export interface ResidueRemoveResult {
 }
 
 interface SourceScanResult {
-  databaseTables: string[]
-  cacheKeys: string[]
-  cleanupCommands: string[]
   sourcePaths: string[]
   warnings: string[]
 }
@@ -71,9 +65,6 @@ export async function removeResiduePaths(ctx: Context, paths: string[]): Promise
 async function analyzeOnePluginResidue(ctx: Context, name: string): Promise<ResidueAnalysis> {
   const packageRoot = resolvePackageRoot(name)
   const source = packageRoot ? await scanPackageSource(packageRoot) : {
-    databaseTables: [],
-    cacheKeys: [],
-    cleanupCommands: [],
     sourcePaths: [],
     warnings: ['未找到已安装包源码，只能按包名扫描常见 data/cache 目录。'],
   }
@@ -83,20 +74,11 @@ async function analyzeOnePluginResidue(ctx: Context, name: string): Promise<Resi
   ])).slice(0, MAX_RESULT_ITEMS)
   const directories = await getExistingResidueDirectories(ctx, pathHints, source.sourcePaths)
   const warnings = [...source.warnings]
-  if (source.databaseTables.length) {
-    warnings.push('检测到数据库表线索。market-next 只展示表名，不会自动删除数据库数据。')
-  }
-  if (source.cleanupCommands.length) {
-    warnings.push('检测到疑似清理命令。建议优先阅读插件文档，在卸载前由插件自身执行清理。')
-  }
   return {
     name,
     packageRoot,
     installed: !!packageRoot,
     directories,
-    databaseTables: source.databaseTables,
-    cacheKeys: source.cacheKeys,
-    cleanupCommands: source.cleanupCommands,
     sourcePaths: source.sourcePaths,
     warnings,
   }
@@ -140,9 +122,6 @@ function sanitizePathKey(value: string) {
 async function scanPackageSource(packageRoot: string): Promise<SourceScanResult> {
   const files = await collectSourceFiles(packageRoot)
   const result: SourceScanResult = {
-    databaseTables: [],
-    cacheKeys: [],
-    cleanupCommands: [],
     sourcePaths: [],
     warnings: [],
   }
@@ -157,24 +136,8 @@ async function scanPackageSource(packageRoot: string): Promise<SourceScanResult>
     }
     totalSize += stat.size
     const content = await fsp.readFile(file, 'utf8').catch(() => '')
-    collectMatches(result.databaseTables, content, [
-      /ctx\.model\.extend\(\s*(['"`])([^'"`]+)\1/g,
-      /ctx\.database\.(?:remove|drop|get|set|upsert)\(\s*(['"`])([^'"`]+)\1/g,
-      /dropTableIfExists\([^,]+,\s*(['"`])([^'"`]+)\1/g,
-    ])
-    collectMatches(result.cacheKeys, content, [
-      /\.cache\.(?:clear|delete|get|set)\(\s*(['"`])([^'"`]+)\1/g,
-    ])
-    collectMatches(result.cleanupCommands, content, [
-      /(?:ctx\.command|chain\.middleware)\(\s*(['"`])([^'"`]+)\1/g,
-      /context\.command\s*(?:={2,3}|!==?)\s*(['"`])([^'"`]+)\1/g,
-      /command\s*(?:={2,3}|!==?)\s*(['"`])([^'"`]+)\1/g,
-    ], value => isCleanupCommand(value))
     collectPathHints(result.sourcePaths, content)
   }
-  result.databaseTables = uniqueSorted(result.databaseTables).slice(0, MAX_RESULT_ITEMS)
-  result.cacheKeys = uniqueSorted(result.cacheKeys).slice(0, MAX_RESULT_ITEMS)
-  result.cleanupCommands = uniqueSorted(result.cleanupCommands).slice(0, MAX_RESULT_ITEMS)
   result.sourcePaths = uniqueSorted(result.sourcePaths).slice(0, MAX_RESULT_ITEMS)
   return result
 }
@@ -204,16 +167,6 @@ function getExtension(name: string) {
   return index >= 0 ? name.slice(index).toLowerCase() : ''
 }
 
-function collectMatches(target: string[], content: string, patterns: RegExp[], filter?: (value: string) => boolean) {
-  for (const pattern of patterns) {
-    for (const match of content.matchAll(pattern)) {
-      const value = match[2]?.trim()
-      if (!value || filter && !filter(value)) continue
-      target.push(value)
-    }
-  }
-}
-
 function collectPathHints(target: string[], content: string) {
   const patterns = [
     /(?:fs|fsp|promises)\.(?:rm|unlink|mkdir|writeFile|appendFile|readFile|readdir)\(\s*(['"`])([^'"`]+)\1/g,
@@ -237,10 +190,6 @@ function normalizeRelativeHint(value: string) {
   if (!/^(data|cache)\//.test(normalized)) return ''
   if (normalized.includes('${') || normalized.includes('..')) return ''
   return normalized.split('/').slice(0, 4).join('/')
-}
-
-function isCleanupCommand(value: string) {
-  return /(?:wipe|purge|clean|clear|reset|migrate|legacy|delete|remove)/i.test(value)
 }
 
 async function getExistingResidueDirectories(ctx: Context, hints: string[], sourceHints: string[]) {
