@@ -426,8 +426,10 @@ function getSimilarityByIndex(index: MarketSearchIndex, word: string) {
   const tokens = shortname.split(/[-/_]/)
   // if (tokens[0] === word) return 0.5
   if (tokens.includes(word)) return 0.5
+  if (shortname.startsWith(word)) return 0.4
   // if (tokens[0].startsWith(word)) return 0.3
   if (tokens.some(t => t.startsWith(word))) return 0.3
+  if (shortname.includes(word)) return 0.25
   if (tokens.some(t => t.includes(word))) return 0.2
   return index.searchTexts.some(keyword => keyword.includes(word)) ? 0.05 : 0
 }
