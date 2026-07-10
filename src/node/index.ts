@@ -92,6 +92,7 @@ export const usage = `
 
 // - 淘宝（大陆）：https://registry.npmmirror.com
 // - 腾讯（大陆）：https://mirrors.cloud.tencent.com/npm
+// - 华为云（大陆）：https://mirrors.huaweicloud.com/repository/npm
 // - npm（全球）：https://registry.npmjs.org
 // - cnpm：https://r.cnpmjs.org
 
