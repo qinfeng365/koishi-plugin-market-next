@@ -25,6 +25,8 @@ const REGISTRY_STATS_TTL = Time.day * 30
 const NOT_FOUND_CACHE_TTL = Time.minute * 5
 const FULL_RELOAD_DELAY = Time.second
 const SELF_PACKAGE = 'koishi-plugin-market-next'
+const INSTALL_LOG_RETENTION = Time.day * 3
+const INSTALL_LOG_DIR = 'market-next-install-logs'
 
 interface PersistedRegistryStats {
   score: number
@@ -168,6 +170,9 @@ class Installer extends Service {
   private pendingControllers = new Set<AbortController>()
   private installTask = Promise.resolve()
   private installActive = false
+  private installLogFile?: string
+  private installLogWriteTask = Promise.resolve()
+  private installLogCleanupTask?: Promise<void>
   private serial = 0
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
@@ -198,6 +203,7 @@ class Installer extends Service {
 
   async start() {
     await this.loadRouteStats()
+    await this.cleanupInstallLogs()
     await this.resetEndpoint()
     logger.debug(`registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
     logger.info(`npm registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
@@ -911,6 +917,94 @@ class Installer extends Service {
     logger.info(`dependency refresh requested by console: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, waitMetadata=${waitMetadata}, elapsed=${Date.now() - start}ms`)
   }
 
+  private getInstallLogDir() {
+    return resolve(this.cwd, 'data', INSTALL_LOG_DIR)
+  }
+
+  private async cleanupInstallLogs() {
+    if (this.installLogCleanupTask) return this.installLogCleanupTask
+    this.installLogCleanupTask = (async () => {
+      const dir = this.getInstallLogDir()
+      try {
+        const entries = await fsp.readdir(dir, { withFileTypes: true })
+        const now = Date.now()
+        await Promise.all(entries
+          .filter(entry => entry.isFile() && entry.name.endsWith('.log'))
+          .map(async (entry) => {
+            const path = resolve(dir, entry.name)
+            try {
+              const stat = await fsp.stat(path)
+              if (now - stat.mtimeMs <= INSTALL_LOG_RETENTION) return
+              await fsp.rm(path, { force: true })
+            } catch (error) {
+              logger.debug(`failed to cleanup install log ${path}: ${error instanceof Error ? error.message : error}`)
+            }
+          }))
+      } catch (error: any) {
+        if (error?.code !== 'ENOENT') {
+          logger.debug(`failed to cleanup install logs: ${error instanceof Error ? error.message : error}`)
+        }
+      }
+    })().finally(() => {
+      this.installLogCleanupTask = undefined
+    })
+    return this.installLogCleanupTask
+  }
+
+  private async startInstallLog(deps: Dict<string>, forced?: boolean, options: InstallOptions = {}) {
+    await this.cleanupInstallLogs()
+    const dir = this.getInstallLogDir()
+    await fsp.mkdir(dir, { recursive: true })
+    const now = Date.now()
+    const suffix = sanitizeLogSegment(formatDeps(deps) || 'noop')
+    const file = resolve(dir, `${formatLogTimestamp(now)}-${suffix}.log`)
+    await fsp.writeFile(file, [
+      `market-next dependency operation log`,
+      `startedAt: ${new Date(now).toISOString()}`,
+      `cwd: ${this.cwd}`,
+      `deps: ${formatDeps(deps) || '(none)'}`,
+      `forced: ${!!forced}`,
+      `installEndpoint: ${options.installEndpoint || '(default)'}`,
+      '',
+    ].join('\n'))
+    this.installLogFile = file
+    this.installLogWriteTask = Promise.resolve()
+    logger.info(`dependency install log started: ${file}`)
+  }
+
+  private emitInstallLog(type: 'stdout' | 'stderr', line: string) {
+    this.ctx.get('console')?.broadcast('market/install-log', { type, line })
+    this.writeInstallLog(type, line)
+  }
+
+  private writeInstallLog(type: string, line: string) {
+    const file = this.installLogFile
+    if (!file) return
+    const text = `[${new Date().toISOString()}] [${type}] ${line}\n`
+    this.installLogWriteTask = this.installLogWriteTask
+      .then(() => fsp.appendFile(file, text))
+      .catch((error) => {
+        logger.debug(`failed to write install log ${file}: ${error instanceof Error ? error.message : error}`)
+      })
+  }
+
+  private async finishInstallLog(result?: { code?: number | null, failed?: boolean, reason?: string }) {
+    if (!this.installLogFile) return
+    if (result?.failed) {
+      // Failure detail is already emitted by the catch path; only close the session.
+    } else if (result?.code == null) {
+      this.writeInstallLog('stderr', 'dependency operation ended without a package manager exit code')
+    } else if (result.code) {
+      this.writeInstallLog('stderr', `dependency operation finished with code ${result.code}`)
+    } else {
+      this.writeInstallLog('stdout', 'dependency operation finished with code 0')
+    }
+    await this.installLogWriteTask
+    logger.info(`dependency install log saved: ${this.installLogFile}`)
+    this.installLogFile = undefined
+    this.installLogWriteTask = Promise.resolve()
+  }
+
   async exec(args: string[]) {
     const name = this.agent?.name ?? 'npm'
     const useJson = name === 'yarn' && this.agent.version >= '2'
@@ -920,59 +1014,83 @@ class Installer extends Service {
     return new Promise<number>((resolve) => {
       if (useJson) args.push('--json')
       const child = spawn(name, args, { cwd: this.cwd })
-      this.ctx.get('console')?.broadcast('market/install-log', {
-        type: 'stdout',
-        line: `package manager started: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}`,
-      })
-      child.on('exit', (code) => {
-        logger.info(`package manager exited: code=${code}, elapsed=${Date.now() - start}ms`)
-        this.ctx.get('console')?.broadcast('market/install-log', {
-          type: code ? 'stderr' : 'stdout',
-          line: code ? `package manager exited with code ${code}` : 'package manager finished successfully',
-        })
+      this.emitInstallLog('stdout', `package manager started: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}`)
+
+      let stderr = ''
+      let stdout = ''
+      let settled = false
+
+      const emitStdoutLine = (line: string) => {
+        if (!line) return
+        if (!useJson || line[0] !== '{') {
+          logger.info(line)
+          this.emitInstallLog('stdout', line)
+          return
+        }
+        try {
+          const { type, data } = JSON.parse(line) as YarnLog
+          logger[levelMap[type] ?? 'info'](data)
+          this.emitInstallLog('stdout', data)
+        } catch (error) {
+          logger.warn(line)
+          logger.warn(error)
+          this.emitInstallLog('stderr', line)
+        }
+      }
+
+      const flushBuffers = () => {
+        if (stderr) {
+          logger.warn(stderr)
+          this.emitInstallLog('stderr', stderr)
+          stderr = ''
+        }
+        if (stdout) {
+          emitStdoutLine(stdout)
+          stdout = ''
+        }
+      }
+
+      const settle = (code: number) => {
+        if (settled) return
+        settled = true
+        flushBuffers()
         resolve(code)
+      }
+
+      child.on('exit', (code, signal) => {
+        logger.info(`package manager exited: code=${code}, signal=${signal ?? '-'}, elapsed=${Date.now() - start}ms`)
+        if (code == null) {
+          const message = signal
+            ? `package manager terminated by signal ${signal}`
+            : 'package manager exited without an exit code'
+          this.emitInstallLog('stderr', message)
+          settle(-1)
+          return
+        }
+        this.emitInstallLog(code ? 'stderr' : 'stdout', code ? `package manager exited with code ${code}` : 'package manager finished successfully')
+        settle(code)
       })
       child.on('error', (error) => {
         logger.warn(`package manager failed to start: ${error instanceof Error ? error.message : String(error)}`)
-        this.ctx.get('console')?.broadcast('market/install-log', {
-          type: 'stderr',
-          line: `package manager failed to start: ${error instanceof Error ? error.message : String(error)}`,
-        })
-        resolve(-1)
+        this.emitInstallLog('stderr', `package manager failed to start: ${error instanceof Error ? error.message : String(error)}`)
+        settle(-1)
       })
 
-      let stderr = ''
       child.stderr.on('data', (data) => {
         data = stderr + data.toString()
         const lines = data.split('\n')
         stderr = lines.pop()!
         for (const line of lines) {
           logger.warn(line)
-          this.ctx.get('console')?.broadcast('market/install-log', { type: 'stderr', line })
+          this.emitInstallLog('stderr', line)
         }
       })
 
-      let stdout = ''
       child.stdout.on('data', (data) => {
         data = stdout + data.toString()
         const lines = data.split('\n')
         stdout = lines.pop()!
-        for (const line of lines) {
-          if (!useJson || line[0] !== '{') {
-            logger.info(line)
-            this.ctx.get('console')?.broadcast('market/install-log', { type: 'stdout', line })
-            continue
-          }
-          try {
-            const { type, data } = JSON.parse(line) as YarnLog
-            logger[levelMap[type] ?? 'info'](data)
-            this.ctx.get('console')?.broadcast('market/install-log', { type: 'stdout', line: data })
-          } catch (error) {
-            logger.warn(line)
-            logger.warn(error)
-            this.ctx.get('console')?.broadcast('market/install-log', { type: 'stderr', line })
-          }
-        }
+        for (const line of lines) emitStdoutLine(line)
       })
     })
   }
@@ -1054,82 +1172,93 @@ class Installer extends Service {
   private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
     options ||= {}
     const start = Date.now()
+    let resultCode: number | undefined
+    let logResult: { code?: number | null, failed?: boolean, reason?: string } | undefined
+    await this.startInstallLog(deps, forced, options).catch((error) => {
+      this.installLogFile = undefined
+      this.installLogWriteTask = Promise.resolve()
+      logger.warn(`failed to start dependency install log: ${error instanceof Error ? error.message : error}`)
+    })
     logger.info(`dependency install requested: deps=${formatDeps(deps)}, forced=${!!forced}, installEndpoint=${options.installEndpoint || '(default)'}`)
-    this.ctx.get('console')?.broadcast('market/install-log', {
-      type: 'stdout',
-      line: `dependency install requested: ${formatDeps(deps) || '(none)'}`,
-    })
-    if (options.installEndpoint) {
-      this.ctx.get('console')?.broadcast('market/install-log', {
-        type: 'stdout',
-        line: `using temporary npm registry: ${options.installEndpoint}`,
-      })
-    }
-    const snapshot = await this.snapshotPackageManifest()
-    const localDeps = this._getLocalDeps(deps)
-    logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
-    await this.override(deps)
-    this.ctx.get('console')?.broadcast('market/install-log', {
-      type: 'stdout',
-      line: 'package.json dependencies updated, preparing package manager workflow…',
-    })
-
-    for (const name in deps) {
-      const { resolved, workspace } = localDeps[name] || {}
-      if (workspace || deps[name] && resolved && satisfies(resolved, deps[name], { includePrerelease: true })) continue
-      forced = true
-      logger.debug(`dependency install requires package manager: name=${name}, requested=${deps[name] || '(remove)'}, resolved=${resolved ?? '-'}, workspace=${!!workspace}`)
-      break
-    }
-
-    if (forced) {
-      this.ctx.get('console')?.broadcast('market/install-log', {
-        type: 'stdout',
-        line: 'running package manager install…',
-      })
-      const code = await this._install(options)
-      if (code) {
-        await this.restorePackageManifest(snapshot, deps, `package manager exited with code ${code}`)
-        await this.refreshData()
-        return code
+    try {
+      this.emitInstallLog('stdout', `dependency install requested: ${formatDeps(deps) || '(none)'}`)
+      if (options.installEndpoint) {
+        this.emitInstallLog('stdout', `using temporary npm registry: ${options.installEndpoint}`)
       }
-    }
+      const snapshot = await this.snapshotPackageManifest()
+      const localDeps = this._getLocalDeps(deps)
+      logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
+      await this.override(deps)
+      this.emitInstallLog('stdout', 'package.json dependencies updated, preparing package manager workflow…')
 
-    await this.refresh()
-    const newDeps = await this.getDeps()
-    let shouldReload = false
-    for (const name in localDeps) {
-      const { resolved, workspace } = localDeps[name]
-      if (workspace || !newDeps[name]) continue
-      if (newDeps[name].resolved === resolved) continue
-      try {
-        if (!(require.resolve(name) in require.cache)) continue
-      } catch (error) {
-        // FIXME https://github.com/koishijs/webui/issues/273
-        // I have no idea why this happens and how to fix it.
-        logger.error(error)
+      for (const name in deps) {
+        const { resolved, workspace } = localDeps[name] || {}
+        if (workspace || deps[name] && resolved && satisfies(resolved, deps[name], { includePrerelease: true })) continue
+        forced = true
+        logger.debug(`dependency install requires package manager: name=${name}, requested=${deps[name] || '(remove)'}, resolved=${resolved ?? '-'}, workspace=${!!workspace}`)
+        break
       }
-      shouldReload = true
-      logger.debug(`dependency changed may require full reload: ${name}, previous=${resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
-    }
-    if (beforeReload) {
-      logger.debug('run pre-reload dependency hook')
-      await beforeReload()
-    }
-    await this.refreshData()
-    logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!forced}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
-    if (shouldReload) {
-      this.ctx.get('console')?.broadcast('market/install-log', {
-        type: 'stdout',
-        line: `full reload scheduled in ${FULL_RELOAD_DELAY}ms`,
-      })
-      logger.info(`dependency install triggers full reload after ${FULL_RELOAD_DELAY}ms`)
-      setTimeout(() => {
-        if (this.ctx.scope.isActive) this.ctx.loader.fullReload()
-      }, FULL_RELOAD_DELAY)
-    }
 
-    return 0
+      if (forced) {
+        this.emitInstallLog('stdout', 'running package manager install…')
+        const code = await this._install(options)
+        if (code) {
+          resultCode = code
+          logResult = { code }
+          await this.restorePackageManifest(snapshot, deps, `package manager exited with code ${code}`)
+          await this.refreshData()
+          return code
+        }
+      }
+
+      await this.refresh()
+      const newDeps = await this.getDeps()
+      let shouldReload = false
+      for (const name in localDeps) {
+        const { resolved, workspace } = localDeps[name]
+        if (workspace || !newDeps[name]) continue
+        if (newDeps[name].resolved === resolved) continue
+        try {
+          if (!(require.resolve(name) in require.cache)) continue
+        } catch (error) {
+          // FIXME https://github.com/koishijs/webui/issues/273
+          // I have no idea why this happens and how to fix it.
+          logger.error(error)
+        }
+        shouldReload = true
+        logger.debug(`dependency changed may require full reload: ${name}, previous=${resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
+      }
+      if (beforeReload) {
+        logger.debug('run pre-reload dependency hook')
+        await beforeReload()
+      }
+      await this.refreshData()
+      logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!forced}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
+      if (shouldReload) {
+        this.emitInstallLog('stdout', `full reload scheduled in ${FULL_RELOAD_DELAY}ms`)
+        logger.info(`dependency install triggers full reload after ${FULL_RELOAD_DELAY}ms`)
+        setTimeout(() => {
+          if (this.ctx.scope.isActive) this.ctx.loader.fullReload()
+        }, FULL_RELOAD_DELAY)
+      }
+
+      resultCode = 0
+      logResult = { code: 0 }
+      return 0
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      logResult = {
+        code: resultCode,
+        failed: true,
+        reason,
+      }
+      this.emitInstallLog('stderr', `dependency operation failed: ${reason}`)
+      throw error
+    } finally {
+      await this.finishInstallLog(logResult).catch((error) => {
+        logger.warn(`failed to finish dependency install log: ${error instanceof Error ? error.message : error}`)
+      })
+    }
   }
 
   async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
@@ -1184,6 +1313,17 @@ function formatDeps(deps: Dict<string>) {
   const entries = Object.entries(deps)
   if (!entries.length) return '(none)'
   return entries.map(([name, version]) => `${name}@${version || '(remove)'}`).join(', ')
+}
+
+function formatLogTimestamp(value: number) {
+  return new Date(value).toISOString().replace(/[:.]/g, '-')
+}
+
+function sanitizeLogSegment(value: string) {
+  return value
+    .replace(/[^a-z0-9@._+-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'operation'
 }
 
 function formatLocalDeps(deps: Dict<Dependency>) {
