@@ -66,7 +66,11 @@ export function getRegistryStatus(name: string) {
 
 export function getRegistryStatusText(name: string) {
   const status = getRegistryStatus(name)
-  if (!status || status.loading) return '正在获取版本数据……'
+  if (!status || status.loading) {
+    const endpoint = status?.endpoint ? `（${formatEndpoint(status.endpoint)}）` : ''
+    const attempts = status?.attempts ? `，已尝试 ${status.attempts} 次` : ''
+    return `正在从 npm registry 获取版本数据${endpoint}${attempts}……`
+  }
   const endpoint = status.endpoint ? `（${formatEndpoint(status.endpoint)}）` : ''
   switch (status.reason) {
     case 'timeout':

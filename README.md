@@ -127,6 +127,7 @@ market-next 区分两类源：
 
 - `https://registry.npmmirror.com`
 - `https://mirrors.cloud.tencent.com/npm`
+- `https://mirrors.huaweicloud.com/repository/npm`
 - `https://registry.npmjs.org`
 - `https://r.cnpmjs.org`
 
