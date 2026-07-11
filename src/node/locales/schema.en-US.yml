@@ -5,6 +5,7 @@ registry:
   autoRoute: Automatically try fallback npm registries when version metadata cannot be fetched from the current registry.
   retry: Retry count after version metadata fails on each npm registry.
   concurrency: Maximum concurrency when loading dependency version metadata.
+  installLogRetentionHours: How many hours dependency operation logs are retained. Defaults to 72 hours.
 search:
   $description: 搜索设置
   endpoint: 用于搜索插件市场的网址。默认使用 t4wefan 镜像。

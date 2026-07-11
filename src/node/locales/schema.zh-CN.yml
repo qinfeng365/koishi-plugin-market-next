@@ -5,6 +5,7 @@ registry:
   autoRoute: 当前下载源获取版本失败时自动尝试备用 npm 源。
   retry: 每个 npm 源获取版本失败后的重试次数。
   concurrency: 批量获取依赖版本时的最大并发数。
+  installLogRetentionHours: 依赖安装、更新与卸载操作日志保留多少小时，默认 72 小时。
 
 search:
   $description: 搜索设置

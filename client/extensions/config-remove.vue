@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" :title="title" destroy-on-close>
+  <el-dialog v-model="visible" class="market-config-remove-dialog" :title="title" destroy-on-close>
     <template v-if="target">
       {{ content }}
     </template>

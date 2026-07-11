@@ -9,6 +9,32 @@ export interface InstallFallbackCandidate {
     label: string;
     reason: string;
 }
+export type InstallHistoryStatus = 'running' | 'success' | 'error' | 'unknown';
+export interface InstallHistoryChange {
+    name: string;
+    beforeRequest: string | null;
+    beforeResolved: string | null;
+    afterRequest: string | null;
+    afterResolved: string | null;
+}
+export interface InstallHistoryEntry {
+    id: string;
+    startedAt: number;
+    finishedAt?: number;
+    duration?: number;
+    status: InstallHistoryStatus;
+    deps: string;
+    forced: boolean;
+    installEndpoint?: string;
+    size: number;
+    changes: InstallHistoryChange[];
+    rollbackAvailable: boolean;
+    rollbackReason?: 'running' | 'not-successful' | 'legacy' | 'unsupported' | 'state-changed';
+}
+export interface InstallLogDetail extends InstallHistoryEntry {
+    content: string;
+    truncated: boolean;
+}
 export interface Dependency {
     /**
      * requested semver range
@@ -66,6 +92,11 @@ declare class Installer extends Service {
     private pendingControllers;
     private installTask;
     private installActive;
+    private installLogFile?;
+    private installLogMetadataFile?;
+    private installLogMetadata?;
+    private installLogWriteTask;
+    private installLogCleanupTask?;
     private serial;
     constructor(ctx: Context, config?: Installer.Config);
     get cwd(): string;
@@ -115,14 +146,36 @@ declare class Installer extends Service {
     getDeps(options?: Installer.GetDepsOptions): Dict<Dependency> | Promise<Dict<Dependency>>;
     refreshData(): Promise<void>;
     refresh(refresh?: boolean, waitMetadata?: boolean): Promise<void>;
+    private getInstallLogDir;
+    private getInstallLogRetention;
+    private cleanupInstallLogs;
+    private writeInstallLogMetadata;
+    private startInstallLog;
+    private emitInstallLog;
+    private writeInstallLog;
+    private finishInstallLog;
+    private getInstallLogPath;
+    private readInstallLogMetadata;
+    private readInstallLog;
+    private parseLegacyInstallLog;
+    private getRollbackChanges;
+    private getInstalledHistoryVersion;
+    private assessInstallRollback;
+    private createInstallHistoryEntry;
+    private getInstallHistoryEntry;
+    getInstallHistory(limit?: number): Promise<InstallHistoryEntry[]>;
+    getInstallLogDetail(id: string): Promise<InstallLogDetail>;
     exec(args: string[]): Promise<number>;
     override(deps: Dict<string>): Promise<void>;
     private snapshotPackageManifest;
     private restorePackageManifest;
     private _install;
     private _getLocalDeps;
+    private validateInstallHistoryState;
     private _installLocked;
+    private queueInstall;
     install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options?: InstallOptions): Promise<number>;
+    rollbackInstallHistory(id: string, beforeReload?: () => unknown | Promise<unknown>, options?: InstallOptions): Promise<number>;
     isSelfUpdate(deps: Dict<string>): boolean;
 }
 declare namespace Installer {
@@ -136,6 +189,9 @@ declare namespace Installer {
         autoRoute?: boolean;
         retry?: number;
         concurrency?: number;
+        installLogRetentionHours?: number;
+        /** @deprecated use installLogRetentionHours */
+        installLogRetention?: number;
     }
     const Config: Schema<Config>;
 }

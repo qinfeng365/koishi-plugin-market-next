@@ -9,7 +9,13 @@ import { promises as fsp } from 'fs'
 import { createHash } from 'crypto'
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
 import { MarketDataStore, MarketDataStorePayload } from './data'
-import Installer, { InstallFallbackCandidate, InstallOptions, loadManifest } from './installer'
+import Installer, {
+  InstallFallbackCandidate,
+  InstallHistoryEntry,
+  InstallLogDetail,
+  InstallOptions,
+  loadManifest,
+} from './installer'
 import MarketProvider from './market'
 import { applyChatLunaTool } from './chatluna'
 import {
@@ -32,6 +38,7 @@ import {
 export * from '../shared'
 
 export { Installer }
+export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail } from './installer'
 
 const SELF_PACKAGE = 'koishi-plugin-market-next'
 
@@ -55,6 +62,9 @@ declare module '@koishijs/console' {
     'market/install'(deps: Dict<string>, forced?: boolean, options?: InstallOptions): Promise<number>
     'market/install-bundle'(request: BundleInstallRequest, forced?: boolean, options?: InstallOptions): Promise<BundleInstallResult>
     'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>
+    'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>
+    'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>
+    'market/install-history-rollback'(id: string, options?: InstallOptions): Promise<number>
     'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>
     'market/update-config'(patch: Partial<Config>): Promise<boolean>
     'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>
@@ -712,8 +722,14 @@ const configPatchKeys: Array<keyof Config> = [
   'updateIgnoreDuration',
   'updateIgnoreVersions',
   'updateIgnorePrerelease',
-  'collapsedGroups',
 ]
+
+const configReloadKeys = new Set<keyof Config>([
+  'idleProbe',
+  'idleProbeDelay',
+  'idleProbeBootDelay',
+  'idleProbeInterval',
+])
 
 function findMarketNextConfigNode(plugins: any, currentConfig: Config): { parent: any, key: string, value: any } | undefined {
   let fallback: { parent: any, key: string, value: any } | undefined
@@ -758,22 +774,30 @@ function ensureMarketNextConfigDefaults(ctx: Context, currentConfig: Config) {
 async function updateMarketNextConfig(ctx: Context, currentConfig: Config, patch: Partial<Config>) {
   const target = findMarketNextConfigNode(ctx.loader.config?.plugins, currentConfig)
   if (!target) return false
-  let changed = false
+  const changedKeys: Array<keyof Config> = []
+  let accepted = false
   for (const key of configPatchKeys) {
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
-    target.value[key] = key === 'marketSilentRules'
+    accepted = true
+    const value = key === 'marketSilentRules'
       ? normalizeMarketSilentRules(patch[key])
       : patch[key] as never
-    changed = true
+    if (target.value[key] === value) continue
+    target.value[key] = value
+    changedKeys.push(key)
   }
-  if (!changed) return false
+  if (!accepted) return false
+  if (!changedKeys.length) return true
   await ctx.loader.writeConfig(true)
-  const parent = findPluginParentContext(ctx.loader.entry, target.parent)
-  if (parent && !target.key.startsWith('~')) {
-    await ctx.loader.reload(parent, target.key, target.value)
+  const requiresReload = changedKeys.some(key => configReloadKeys.has(key))
+  if (requiresReload) {
+    const parent = findPluginParentContext(ctx.loader.entry, target.parent)
+    if (parent && !target.key.startsWith('~')) {
+      await ctx.loader.reload(parent, target.key, target.value)
+    }
   }
   await ctx.get('console')?.refresh('config')
-  await ctx.get('console')?.refresh('entry')
+  if (requiresReload) await ctx.get('console')?.refresh('entry')
   return true
 }
 
@@ -1372,6 +1396,32 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.console.addListener('market/install-fallback-candidate', async (failedEndpoint) => {
       return ctx.installer.getInstallFallbackCandidate(failedEndpoint)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/install-history', async (limit) => {
+      return ctx.installer.getInstallHistory(limit)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/install-history-detail', async (id) => {
+      return ctx.installer.getInstallLogDetail(id)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/install-history-rollback', async (id, options) => {
+      const record = await ctx.installer.getInstallLogDetail(id)
+      const installNames = (record?.changes ?? [])
+        .map(change => change.name)
+        .filter(name => name !== SELF_PACKAGE)
+      const code = await ctx.installer.rollbackInstallHistory(id, installNames.length
+        ? () => ensurePluginConfigs(ctx, installNames)
+        : undefined, options)
+      if (!code) await ensurePluginConfigs(ctx, installNames)
+      await Promise.all([
+        ctx.get('console')?.refresh('dependencies'),
+        ctx.get('console')?.refresh('registry'),
+        ctx.get('console')?.refresh('packages'),
+        ctx.get('console')?.refresh('config'),
+      ])
+      return code
     }, { authority: 4 })
 
     ctx.console.addListener('market/remove-bundle-configs', async (request) => {

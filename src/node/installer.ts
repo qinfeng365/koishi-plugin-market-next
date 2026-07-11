@@ -1,6 +1,6 @@
 import { Context, defineProperty, Dict, HTTP, Logger, pick, Schema, Service, Time, valueMap } from 'koishi'
 import Scanner, { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry'
-import { resolve } from 'path'
+import { basename, resolve } from 'path'
 import { promises as fsp, readFileSync } from 'fs'
 import { compare, satisfies, valid } from 'semver'
 import {} from '@koishijs/console'
@@ -26,8 +26,11 @@ const REGISTRY_STATS_TTL = Time.day * 30
 const NOT_FOUND_CACHE_TTL = Time.minute * 5
 const FULL_RELOAD_DELAY = Time.second
 const SELF_PACKAGE = 'koishi-plugin-market-next'
-const INSTALL_LOG_RETENTION = Time.day * 3
+const DEFAULT_INSTALL_LOG_RETENTION = Time.day * 3
 const INSTALL_LOG_DIR = 'market-next-install-logs'
+const INSTALL_LOG_DETAIL_LIMIT = 512 * 1024
+const INSTALL_LOG_HEAD_LIMIT = 8 * 1024
+const INSTALL_LOG_TAIL_LIMIT = 32 * 1024
 
 interface PersistedRegistryStats {
   score: number
@@ -84,6 +87,48 @@ export interface InstallFallbackCandidate {
   endpoint: string
   label: string
   reason: string
+}
+
+export type InstallHistoryStatus = 'running' | 'success' | 'error' | 'unknown'
+
+export interface InstallHistoryChange {
+  name: string
+  beforeRequest: string | null
+  beforeResolved: string | null
+  afterRequest: string | null
+  afterResolved: string | null
+}
+
+export interface InstallHistoryEntry {
+  id: string
+  startedAt: number
+  finishedAt?: number
+  duration?: number
+  status: InstallHistoryStatus
+  deps: string
+  forced: boolean
+  installEndpoint?: string
+  size: number
+  changes: InstallHistoryChange[]
+  rollbackAvailable: boolean
+  rollbackReason?: 'running' | 'not-successful' | 'legacy' | 'unsupported' | 'state-changed'
+}
+
+export interface InstallLogDetail extends InstallHistoryEntry {
+  content: string
+  truncated: boolean
+}
+
+interface InstallHistoryMetadata {
+  version: 1
+  id: string
+  startedAt: number
+  finishedAt?: number
+  status: InstallHistoryStatus
+  deps: string
+  forced: boolean
+  installEndpoint?: string
+  changes: InstallHistoryChange[]
 }
 
 export interface Dependency {
@@ -172,6 +217,8 @@ class Installer extends Service {
   private installTask = Promise.resolve()
   private installActive = false
   private installLogFile?: string
+  private installLogMetadataFile?: string
+  private installLogMetadata?: InstallHistoryMetadata
   private installLogWriteTask = Promise.resolve()
   private installLogCleanupTask?: Promise<void>
   private serial = 0
@@ -922,6 +969,15 @@ class Installer extends Service {
     return resolve(this.cwd, 'data', INSTALL_LOG_DIR)
   }
 
+  private getInstallLogRetention() {
+    const hours = Number(this.config.installLogRetentionHours)
+    if (Number.isFinite(hours) && hours > 0) return Math.max(1, hours) * Time.hour
+    const legacyRetention = Number(this.config.installLogRetention)
+    return Number.isFinite(legacyRetention) && legacyRetention > 0
+      ? Math.max(Time.hour, legacyRetention)
+      : DEFAULT_INSTALL_LOG_RETENTION
+  }
+
   private async cleanupInstallLogs() {
     if (this.installLogCleanupTask) return this.installLogCleanupTask
     this.installLogCleanupTask = (async () => {
@@ -930,12 +986,13 @@ class Installer extends Service {
         const entries = await fsp.readdir(dir, { withFileTypes: true })
         const now = Date.now()
         await Promise.all(entries
-          .filter(entry => entry.isFile() && entry.name.endsWith('.log'))
+          .filter(entry => entry.isFile() && (entry.name.endsWith('.log') || entry.name.endsWith('.log.json')))
           .map(async (entry) => {
             const path = resolve(dir, entry.name)
+            if (path === this.installLogFile || path === this.installLogMetadataFile) return
             try {
               const stat = await fsp.stat(path)
-              if (now - stat.mtimeMs <= INSTALL_LOG_RETENTION) return
+              if (now - stat.mtimeMs <= this.getInstallLogRetention()) return
               await fsp.rm(path, { force: true })
             } catch (error) {
               logger.debug(`failed to cleanup install log ${path}: ${error instanceof Error ? error.message : error}`)
@@ -952,13 +1009,19 @@ class Installer extends Service {
     return this.installLogCleanupTask
   }
 
-  private async startInstallLog(deps: Dict<string>, forced?: boolean, options: InstallOptions = {}) {
+  private async writeInstallLogMetadata() {
+    if (!this.installLogMetadataFile || !this.installLogMetadata) return
+    await fsp.writeFile(this.installLogMetadataFile, JSON.stringify(this.installLogMetadata, null, 2) + '\n')
+  }
+
+  private async startInstallLog(deps: Dict<string>, forced?: boolean, options: InstallOptions = {}, changes: InstallHistoryChange[] = []) {
     await this.cleanupInstallLogs()
     const dir = this.getInstallLogDir()
     await fsp.mkdir(dir, { recursive: true })
     const now = Date.now()
     const suffix = sanitizeLogSegment(formatDeps(deps) || 'noop')
     const file = resolve(dir, `${formatLogTimestamp(now)}-${suffix}.log`)
+    const id = basename(file)
     await fsp.writeFile(file, [
       `market-next dependency operation log`,
       `startedAt: ${new Date(now).toISOString()}`,
@@ -969,13 +1032,28 @@ class Installer extends Service {
       '',
     ].join('\n'))
     this.installLogFile = file
+    this.installLogMetadataFile = file + '.json'
+    this.installLogMetadata = {
+      version: 1,
+      id,
+      startedAt: now,
+      status: 'running',
+      deps: formatDeps(deps) || '(none)',
+      forced: !!forced,
+      installEndpoint: options.installEndpoint || undefined,
+      changes,
+    }
     this.installLogWriteTask = Promise.resolve()
+    await this.writeInstallLogMetadata().catch((error) => {
+      logger.debug(`failed to write install log metadata ${this.installLogMetadataFile}: ${error instanceof Error ? error.message : error}`)
+    })
     logger.info(`dependency install log started: ${file}`)
   }
 
   private emitInstallLog(type: 'stdout' | 'stderr', line: string) {
-    this.ctx.get('console')?.broadcast('market/install-log', { type, line })
-    this.writeInstallLog(type, line)
+    const cleanLine = sanitizeInstallLogText(line)
+    this.ctx.get('console')?.broadcast('market/install-log', { type, line: cleanLine })
+    this.writeInstallLog(type, cleanLine)
   }
 
   private writeInstallLog(type: string, line: string) {
@@ -1001,9 +1079,219 @@ class Installer extends Service {
       this.writeInstallLog('stdout', 'dependency operation finished with code 0')
     }
     await this.installLogWriteTask
+    if (this.installLogMetadata) {
+      const success = !result?.failed && result?.code === 0
+      this.installLogMetadata.status = success ? 'success' : 'error'
+      this.installLogMetadata.finishedAt = Date.now()
+      if (success) {
+        this.installLogMetadata.changes = this.installLogMetadata.changes.map(change => ({
+          ...change,
+          afterResolved: this.depCache[change.name]?.resolved ?? null,
+        }))
+      }
+      await this.writeInstallLogMetadata().catch((error) => {
+        logger.debug(`failed to finish install log metadata ${this.installLogMetadataFile}: ${error instanceof Error ? error.message : error}`)
+      })
+    }
     logger.info(`dependency install log saved: ${this.installLogFile}`)
     this.installLogFile = undefined
+    this.installLogMetadataFile = undefined
+    this.installLogMetadata = undefined
     this.installLogWriteTask = Promise.resolve()
+  }
+
+  private getInstallLogPath(id: string) {
+    if (!id || basename(id) !== id || !id.endsWith('.log')) return
+    return resolve(this.getInstallLogDir(), id)
+  }
+
+  private async readInstallLogMetadata(id: string) {
+    const file = this.getInstallLogPath(id)
+    if (!file) return
+    try {
+      const metadata: InstallHistoryMetadata = JSON.parse(await fsp.readFile(file + '.json', 'utf8'))
+      if (metadata?.version !== 1 || metadata.id !== id || !Array.isArray(metadata.changes)) return
+      return metadata
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
+        logger.debug(`failed to read install log metadata ${id}: ${error instanceof Error ? error.message : error}`)
+      }
+    }
+  }
+
+  private async readInstallLog(file: string, limit: number, headLimit: number, tailLimit: number) {
+    const stat = await fsp.stat(file)
+    if (stat.size <= limit) {
+      return {
+        content: await fsp.readFile(file, 'utf8'),
+        truncated: false,
+        size: stat.size,
+      }
+    }
+    const handle = await fsp.open(file, 'r')
+    try {
+      const headSize = Math.min(headLimit, stat.size)
+      const tailSize = Math.min(tailLimit, Math.max(0, stat.size - headSize))
+      const head = Buffer.alloc(headSize)
+      const tail = Buffer.alloc(tailSize)
+      if (headSize) await handle.read(head, 0, headSize, 0)
+      if (tailSize) await handle.read(tail, 0, tailSize, stat.size - tailSize)
+      return {
+        content: `${head.toString('utf8')}\n\n... ${stat.size - headSize - tailSize} bytes omitted ...\n\n${tail.toString('utf8')}`,
+        truncated: true,
+        size: stat.size,
+      }
+    } finally {
+      await handle.close()
+    }
+  }
+
+  private parseLegacyInstallLog(id: string, content: string, size: number): InstallHistoryEntry {
+    const startedText = content.match(/^startedAt:\s*(.+)$/m)?.[1]?.trim()
+    const startedAt = Date.parse(startedText || '') || 0
+    const deps = content.match(/^deps:\s*(.*)$/m)?.[1]?.trim() || '(unknown)'
+    const forced = content.match(/^forced:\s*(true|false)$/m)?.[1] === 'true'
+    const endpointText = content.match(/^installEndpoint:\s*(.*)$/m)?.[1]?.trim()
+    const active = basename(this.installLogFile || '') === id
+    const status = active
+      ? 'running'
+      : /dependency operation finished with code 0\s*$/m.test(content)
+        ? 'success'
+        : /dependency operation (?:failed|finished with code|ended without)|package manager (?:terminated|failed to start)/m.test(content)
+          ? 'error'
+          : 'unknown'
+    const timestamps = [...content.matchAll(/^\[([^\]]+)\]/gm)]
+    const finishedAt = status === 'running' ? undefined : Date.parse(timestamps.at(-1)?.[1] || '') || undefined
+    return {
+      id,
+      startedAt,
+      finishedAt,
+      duration: startedAt && finishedAt ? Math.max(0, finishedAt - startedAt) : undefined,
+      status,
+      deps,
+      forced,
+      installEndpoint: endpointText && endpointText !== '(default)' ? endpointText : undefined,
+      size,
+      changes: [],
+      rollbackAvailable: false,
+      rollbackReason: status === 'running' ? 'running' : status !== 'success' ? 'not-successful' : 'legacy',
+    }
+  }
+
+  private getRollbackChanges(metadata: InstallHistoryMetadata) {
+    if (metadata.changes.some(change => !change.beforeRequest || !change.afterRequest)) return []
+    return metadata.changes.filter(change => change.beforeResolved
+      && change.afterResolved
+      && change.beforeResolved !== change.afterResolved)
+  }
+
+  private getInstalledHistoryVersion(name: string, cache: Map<string, string | null>) {
+    if (cache.has(name)) return cache.get(name)!
+    let version: string | null = null
+    try {
+      version = loadManifest(name).version
+    } catch {}
+    cache.set(name, version)
+    return version
+  }
+
+  private assessInstallRollback(metadata: InstallHistoryMetadata, currentDependencies?: Dict<string>, resolvedCache = new Map<string, string | null>()) {
+    const active = basename(this.installLogFile || '') === metadata.id
+    if (active) return 'running' as const
+    if (metadata.status !== 'success') return 'not-successful' as const
+    if (!metadata.changes.length) return 'legacy' as const
+    const changes = this.getRollbackChanges(metadata)
+    if (!changes.length) return 'unsupported' as const
+    if (!currentDependencies) return 'state-changed' as const
+    for (const change of changes) {
+      const currentRequest = Object.prototype.hasOwnProperty.call(currentDependencies, change.name)
+        ? currentDependencies[change.name]
+        : null
+      if (currentRequest !== change.afterRequest) return 'state-changed' as const
+      if (this.getInstalledHistoryVersion(change.name, resolvedCache) !== change.afterResolved) return 'state-changed' as const
+    }
+  }
+
+  private createInstallHistoryEntry(metadata: InstallHistoryMetadata, size: number, currentDependencies?: Dict<string>, resolvedCache?: Map<string, string | null>): InstallHistoryEntry {
+    const rollbackReason = this.assessInstallRollback(metadata, currentDependencies, resolvedCache)
+    const status = metadata.status === 'running' && basename(this.installLogFile || '') !== metadata.id
+      ? 'unknown'
+      : metadata.status
+    return {
+      id: metadata.id,
+      startedAt: metadata.startedAt,
+      finishedAt: metadata.finishedAt,
+      duration: metadata.finishedAt ? Math.max(0, metadata.finishedAt - metadata.startedAt) : undefined,
+      status,
+      deps: metadata.deps,
+      forced: metadata.forced,
+      installEndpoint: metadata.installEndpoint,
+      size,
+      changes: metadata.changes,
+      rollbackAvailable: !rollbackReason,
+      rollbackReason,
+    }
+  }
+
+  private async getInstallHistoryEntry(id: string, currentDependencies?: Dict<string>, resolvedCache?: Map<string, string | null>) {
+    const file = this.getInstallLogPath(id)
+    if (!file) return
+    if (file === this.installLogFile) await this.installLogWriteTask
+    let stat
+    try {
+      stat = await fsp.stat(file)
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT') throw error
+      return
+    }
+    const metadata = await this.readInstallLogMetadata(id)
+    if (metadata) return this.createInstallHistoryEntry(metadata, stat.size, currentDependencies, resolvedCache)
+    const preview = await this.readInstallLog(file, INSTALL_LOG_HEAD_LIMIT + INSTALL_LOG_TAIL_LIMIT, INSTALL_LOG_HEAD_LIMIT, INSTALL_LOG_TAIL_LIMIT)
+    return this.parseLegacyInstallLog(id, preview.content, stat.size)
+  }
+
+  async getInstallHistory(limit = 20) {
+    await this.cleanupInstallLogs()
+    const count = clamp(Math.floor(Number(limit) || 20), 1, 50)
+    const dir = this.getInstallLogDir()
+    let files: Array<{ id: string, mtime: number }> = []
+    try {
+      const entries = await fsp.readdir(dir, { withFileTypes: true })
+      files = (await Promise.all(entries
+        .filter(entry => entry.isFile() && entry.name.endsWith('.log'))
+        .map(async entry => ({
+          id: entry.name,
+          mtime: (await fsp.stat(resolve(dir, entry.name))).mtimeMs,
+        }))))
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, count)
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') return []
+      throw error
+    }
+    const currentDependencies = await this.snapshotPackageManifest()
+      .then(snapshot => snapshot.dependencies)
+      .catch(() => undefined)
+    const resolvedCache = new Map<string, string | null>()
+    const records = await Promise.all(files.map(file => this.getInstallHistoryEntry(file.id, currentDependencies, resolvedCache)))
+    return records.filter(Boolean) as InstallHistoryEntry[]
+  }
+
+  async getInstallLogDetail(id: string) {
+    const file = this.getInstallLogPath(id)
+    if (!file) return
+    if (file === this.installLogFile) await this.installLogWriteTask
+    const currentDependencies = await this.snapshotPackageManifest()
+      .then(snapshot => snapshot.dependencies)
+      .catch(() => undefined)
+    const entry = await this.getInstallHistoryEntry(id, currentDependencies)
+    if (!entry) return
+    const result = await this.readInstallLog(file, INSTALL_LOG_DETAIL_LIMIT, 128 * 1024, 384 * 1024)
+    return {
+      ...entry,
+      content: sanitizeInstallLogText(result.content),
+      truncated: result.truncated,
+    } as InstallLogDetail
   }
 
   async exec(args: string[]) {
@@ -1170,13 +1458,35 @@ class Installer extends Service {
     })
   }
 
-  private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
+  private validateInstallHistoryState(snapshot: PackageManifestSnapshot, localDeps: Dict<Dependency>, expectedChanges: InstallHistoryChange[]) {
+    for (const change of expectedChanges) {
+      const currentRequest = Object.prototype.hasOwnProperty.call(snapshot.dependencies, change.name)
+        ? snapshot.dependencies[change.name]
+        : null
+      const currentResolved = localDeps[change.name]?.resolved ?? null
+      if (currentRequest === change.afterRequest && currentResolved === change.afterResolved) continue
+      throw new Error(`依赖 ${change.name} 已在该操作后发生变化，已取消回退。`)
+    }
+  }
+
+  private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}, expectedChanges: InstallHistoryChange[] = []) {
     options ||= {}
     const start = Date.now()
     let resultCode: number | undefined
     let logResult: { code?: number | null, failed?: boolean, reason?: string } | undefined
-    await this.startInstallLog(deps, forced, options).catch((error) => {
+    let snapshot: PackageManifestSnapshot | undefined
+    let snapshotError: unknown
+    try {
+      snapshot = await this.snapshotPackageManifest()
+    } catch (error) {
+      snapshotError = error
+    }
+    const localDeps = this._getLocalDeps(deps)
+    const changes = snapshot ? createInstallHistoryChanges(snapshot.dependencies, deps, localDeps) : []
+    await this.startInstallLog(deps, forced, options, changes).catch((error) => {
       this.installLogFile = undefined
+      this.installLogMetadataFile = undefined
+      this.installLogMetadata = undefined
       this.installLogWriteTask = Promise.resolve()
       logger.warn(`failed to start dependency install log: ${error instanceof Error ? error.message : error}`)
     })
@@ -1186,8 +1496,9 @@ class Installer extends Service {
       if (options.installEndpoint) {
         this.emitInstallLog('stdout', `using temporary npm registry: ${options.installEndpoint}`)
       }
-      const snapshot = await this.snapshotPackageManifest()
-      const localDeps = this._getLocalDeps(deps)
+      if (snapshotError) throw snapshotError
+      if (!snapshot) throw new Error('failed to snapshot package.json before dependency operation')
+      if (expectedChanges.length) this.validateInstallHistoryState(snapshot, localDeps, expectedChanges)
       logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
       await this.override(deps)
       this.emitInstallLog('stdout', 'package.json dependencies updated, preparing package manager workflow…')
@@ -1262,7 +1573,7 @@ class Installer extends Service {
     }
   }
 
-  async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
+  private async queueInstall(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}, expectedChanges: InstallHistoryChange[] = []) {
     options ||= {}
     const previous = this.installTask
     let release: () => void
@@ -1271,11 +1582,26 @@ class Installer extends Service {
     await previous
     this.installActive = true
     try {
-      return await this._installLocked(deps, forced, beforeReload, options)
+      return await this._installLocked(deps, forced, beforeReload, options, expectedChanges)
     } finally {
       this.installActive = false
       release!()
     }
+  }
+
+  async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
+    return this.queueInstall(deps, forced, beforeReload, options)
+  }
+
+  async rollbackInstallHistory(id: string, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
+    const metadata = await this.readInstallLogMetadata(id)
+    if (!metadata) throw new Error('该操作没有可用的回退记录。')
+    const currentDependencies = await this.snapshotPackageManifest().then(snapshot => snapshot.dependencies)
+    const rollbackReason = this.assessInstallRollback(metadata, currentDependencies)
+    if (rollbackReason) throw new Error(formatRollbackError(rollbackReason))
+    const changes = this.getRollbackChanges(metadata)
+    const deps = Object.fromEntries(changes.map(change => [change.name, change.beforeResolved!]))
+    return this.queueInstall(deps, true, beforeReload, options, changes)
   }
 
   isSelfUpdate(deps: Dict<string>) {
@@ -1295,6 +1621,9 @@ namespace Installer {
     autoRoute?: boolean
     retry?: number
     concurrency?: number
+    installLogRetentionHours?: number
+    /** @deprecated use installLogRetentionHours */
+    installLogRetention?: number
   }
 
   export const Config: Schema<Config> = Schema.object({
@@ -1303,6 +1632,7 @@ namespace Installer {
     autoRoute: Schema.boolean().default(true),
     retry: Schema.number().min(0).max(5).step(1).default(1),
     concurrency: Schema.number().min(1).max(16).step(1).default(4),
+    installLogRetentionHours: Schema.number().min(1).max(24 * 365).step(1).default(72),
   }) // TODO .hidden()
 }
 
@@ -1316,6 +1646,27 @@ function formatDeps(deps: Dict<string>) {
   return entries.map(([name, version]) => `${name}@${version || '(remove)'}`).join(', ')
 }
 
+function createInstallHistoryChanges(before: Dict<string>, after: Dict<string>, localDeps: Dict<Dependency>): InstallHistoryChange[] {
+  return Object.keys(after).map(name => ({
+    name,
+    beforeRequest: Object.prototype.hasOwnProperty.call(before, name) ? before[name] : null,
+    beforeResolved: localDeps[name]?.resolved ?? null,
+    afterRequest: after[name] || null,
+    afterResolved: null,
+  }))
+}
+
+function formatRollbackError(reason: InstallHistoryEntry['rollbackReason']) {
+  switch (reason) {
+    case 'running': return '该依赖操作仍在执行，暂时不能回退。'
+    case 'not-successful': return '只有成功完成的依赖更新才能回退。'
+    case 'legacy': return '旧版日志没有保存回退所需的版本信息。'
+    case 'unsupported': return '新增安装、卸载或未改变版本的操作不支持一键回退。'
+    case 'state-changed': return '依赖状态已在该操作后发生变化，为避免覆盖后续修改，已取消回退。'
+    default: return '该操作当前不能回退。'
+  }
+}
+
 function formatLogTimestamp(value: number) {
   return new Date(value).toISOString().replace(/[:.]/g, '-')
 }
@@ -1325,6 +1676,13 @@ function sanitizeLogSegment(value: string) {
     .replace(/[^a-z0-9@._+-]+/gi, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'operation'
+}
+
+function sanitizeInstallLogText(value: string) {
+  return value
+    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, '')
+    .replace(/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g, '')
+    .replace(/\r(?!\n)/g, '')
 }
 
 function formatLocalDeps(deps: Dict<Dependency>) {

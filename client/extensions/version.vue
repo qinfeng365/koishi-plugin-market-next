@@ -42,7 +42,7 @@
     <p>尚未将当前插件列入依赖，<span class="k-link" @click="addDependency">点击添加</span>。</p>
   </k-comment>
 
-  <el-dialog v-model="showUninstallDialog" title="确认卸载插件" destroy-on-close>
+  <el-dialog v-model="showUninstallDialog" class="market-extension-uninstall-dialog" title="确认卸载插件" destroy-on-close>
     检测到当前插件存在配置。是否同时删除配置？
     <template #footer>
       <el-button @click="showUninstallDialog = false">取消</el-button>

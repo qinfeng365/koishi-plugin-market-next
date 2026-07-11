@@ -2,151 +2,59 @@
   .page-market,
   .page-deps,
   .install-panel,
+  .market-remove-dialog,
+  .install-progress-dialog,
+  .install-history-dialog,
   .bundle-install-panel,
   .bundle-uninstall-dialog,
   .confirm-panel,
   .manual-panel,
-  .dep-ignore-dialog
-),
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-) * {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--k-color-primary, #7c3aed) 38%, var(--fg3, #7f8490)) transparent;
-}
+  .dep-ignore-dialog,
+  .market-config-remove-dialog,
+  .market-extension-uninstall-dialog
+) {
+  &,
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--k-color-primary, #7c3aed) 38%, var(--fg3, #7f8490)) transparent;
+  }
 
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-)::-webkit-scrollbar,
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-) *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+  &::-webkit-scrollbar,
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
 
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-)::-webkit-scrollbar-track,
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-) *::-webkit-scrollbar-track {
-  background: transparent;
-}
+  &::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
 
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-)::-webkit-scrollbar-thumb,
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-) *::-webkit-scrollbar-thumb {
-  min-height: 32px;
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 26%, var(--fg3, #7f8490));
-  background-clip: content-box;
-}
+  &::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb {
+    min-height: 32px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 26%, var(--fg3, #7f8490));
+    background-clip: content-box;
+  }
 
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-)::-webkit-scrollbar-thumb:hover,
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-) *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 44%, var(--fg2, #a1a1aa));
-  background-clip: content-box;
-}
+  &::-webkit-scrollbar-thumb:hover,
+  *::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 44%, var(--fg2, #a1a1aa));
+    background-clip: content-box;
+  }
 
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-)::-webkit-scrollbar-corner,
-:where(
-  .page-market,
-  .page-deps,
-  .install-panel,
-  .bundle-install-panel,
-  .bundle-uninstall-dialog,
-  .confirm-panel,
-  .manual-panel,
-  .dep-ignore-dialog
-) *::-webkit-scrollbar-corner {
-  background: transparent;
-}
+  &::-webkit-scrollbar-corner,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 
-:where(.page-market, .page-deps) .el-scrollbar__bar .el-scrollbar__thumb {
-  background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 34%, var(--el-scrollbar-bg-color, rgba(144, 147, 153, 0.3)));
-}
+  .el-scrollbar__bar .el-scrollbar__thumb {
+    background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 34%, var(--el-scrollbar-bg-color, rgba(144, 147, 153, 0.3)));
+  }
 
-:where(.page-market, .page-deps) .el-scrollbar__bar .el-scrollbar__thumb:hover {
-  background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 54%, var(--el-scrollbar-hover-bg-color, rgba(144, 147, 153, 0.5)));
+  .el-scrollbar__bar .el-scrollbar__thumb:hover {
+    background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 54%, var(--el-scrollbar-hover-bg-color, rgba(144, 147, 153, 0.5)));
+  }
 }

@@ -105,6 +105,7 @@ export async function addManual(name: string) {
 
 export const showManual = ref(false)
 export const showConfirm = ref(false)
+export const showInstallHistory = ref(false)
 export const expandedDependency = ref('')
 export const activeBundle = ref<SearchObject>()
 export type BundleMemberCleanupTarget = {
@@ -405,6 +406,71 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
     console.error(err)
     installProgressState.status = 'error'
     reportInstallRequestError(err, messages)
+  }
+}
+
+export async function rollbackInstallOperation(id: string, selfUpdate = false) {
+  resetInstallFallbackState()
+  showInstallHistory.value = false
+  installProgressState.title = selfUpdate ? '正在回退 market-next……' : '正在回退依赖版本……'
+  installProgressState.logs = []
+  installProgressState.status = 'running'
+  installProgressState.selfUpdate = selfUpdate
+  installProgressState.visible = true
+  pushInstallLog('正在校验当前依赖状态并准备回退……')
+
+  const runRollback = async (options?: InstallOptions) => {
+    let resolveDisconnected: (value: number) => void
+    const disconnected = new Promise<number>((resolve) => {
+      resolveDisconnected = resolve
+    })
+    let disconnectedBeforeResponse = false
+    const dispose = watch(socket, (value, previous) => {
+      if (value || !previous) return
+      disconnectedBeforeResponse = true
+      resolveDisconnected(0)
+      dispose()
+    })
+    const waitTimer = setTimeout(() => {
+      if (installProgressState.status === 'running') {
+        pushInstallLog('仍在等待包管理器输出；回退较大的依赖可能需要更久。')
+      }
+    }, 8000)
+    try {
+      const task = send('market/install-history-rollback', id, options ?? {}) ?? Promise.resolve(1)
+      const code = await Promise.race([task, disconnected])
+      if (disconnectedBeforeResponse && !selfUpdate) {
+        installProgressState.status = 'error'
+        pushInstallLog('Console 连接已断开，回退结果无法确认。请刷新依赖页和最近操作后确认。', 'stderr')
+        message.warning('连接已断开，回退结果无法确认。')
+        return
+      }
+      if (code) {
+        installProgressState.status = 'error'
+        message.error('依赖回退失败。')
+        if (!disconnectedBeforeResponse) await prepareInstallFallbackRetry(runRollback, options?.installEndpoint)
+        return code
+      }
+      installProgressState.status = 'success'
+      message.success(disconnectedBeforeResponse
+        ? '回退已提交，Console 正在重载。'
+        : '依赖版本回退成功。')
+      return 0
+    } finally {
+      clearTimeout(waitTimer)
+      dispose()
+    }
+  }
+
+  try {
+    await runRollback()
+  } catch (error) {
+    console.error(error)
+    installProgressState.status = 'error'
+    reportInstallRequestError(error, {
+      errorText: '依赖回退失败！',
+      timeoutText: '依赖回退请求超时！',
+    })
   }
 }
 

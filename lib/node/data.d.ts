@@ -11,6 +11,7 @@ export interface MarketDataStorePayload {
     override: Dict<string>;
     updateIgnored: Dict<string | UpdateIgnoreRule>;
     bundleRecords: Dict<PluginBundleRecord>;
+    collapsedGroups: Dict<boolean>;
 }
 export declare class MarketDataStore extends DataService<MarketDataStorePayload> {
     ctx: Context;
@@ -20,6 +21,7 @@ export declare class MarketDataStore extends DataService<MarketDataStorePayload>
     private writeTask?;
     private writeTimer?;
     private writePending;
+    private hasCollapsedGroupsState;
     constructor(ctx: Context);
     get(): Promise<MarketDataStorePayload>;
     patch(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>;
@@ -27,6 +29,7 @@ export declare class MarketDataStore extends DataService<MarketDataStorePayload>
     migrateFromConfig(config: {
         updateIgnored?: Dict<string | UpdateIgnoreRule>;
         bundleRecords?: Dict<PluginBundleRecord>;
+        collapsedGroups?: Dict<boolean>;
     }): Promise<void>;
     private snapshot;
     private load;

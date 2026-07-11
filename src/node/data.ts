@@ -15,12 +15,14 @@ export interface MarketDataStorePayload {
   override: Dict<string>
   updateIgnored: Dict<string | UpdateIgnoreRule>
   bundleRecords: Dict<PluginBundleRecord>
+  collapsedGroups: Dict<boolean>
 }
 
 const emptyStore = (): MarketDataStorePayload => ({
   override: {},
   updateIgnored: {},
   bundleRecords: {},
+  collapsedGroups: {},
 })
 
 export class MarketDataStore extends DataService<MarketDataStorePayload> {
@@ -30,6 +32,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   private writeTask?: Promise<void>
   private writeTimer?: NodeJS.Timeout
   private writePending = false
+  private hasCollapsedGroupsState = false
 
   constructor(public ctx: Context) {
     super(ctx, 'marketData', { immediate: true, authority: 4 })
@@ -49,9 +52,10 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   async patch(patch: Partial<MarketDataStorePayload>) {
     await this.ready
     let changed = false
-    for (const key of ['override', 'updateIgnored', 'bundleRecords'] as const) {
+    for (const key of ['override', 'updateIgnored', 'bundleRecords', 'collapsedGroups'] as const) {
       if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
       this.data[key] = normalizeDict(patch[key])
+      if (key === 'collapsedGroups') this.hasCollapsedGroupsState = true
       changed = true
     }
     if (!changed) return this.snapshot()
@@ -73,6 +77,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   async migrateFromConfig(config: {
     updateIgnored?: Dict<string | UpdateIgnoreRule>
     bundleRecords?: Dict<PluginBundleRecord>
+    collapsedGroups?: Dict<boolean>
   }) {
     await this.ready
     const patch: Partial<MarketDataStorePayload> = {}
@@ -82,6 +87,9 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     if (!Object.keys(this.data.bundleRecords).length && Object.keys(config.bundleRecords ?? {}).length) {
       patch.bundleRecords = config.bundleRecords
     }
+    if (!this.hasCollapsedGroupsState) {
+      patch.collapsedGroups = config.collapsedGroups ?? {}
+    }
     if (Object.keys(patch).length) await this.patch(patch)
   }
 
@@ -90,17 +98,21 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       override: { ...this.data.override },
       updateIgnored: { ...this.data.updateIgnored },
       bundleRecords: { ...this.data.bundleRecords },
+      collapsedGroups: { ...this.data.collapsedGroups },
     }
   }
 
   private async load() {
     try {
       const content = await fsp.readFile(this.file, 'utf8')
-      this.data = normalizeStore(JSON.parse(content))
+      const value = JSON.parse(content)
+      this.hasCollapsedGroupsState = Object.prototype.hasOwnProperty.call(value, 'collapsedGroups')
+      this.data = normalizeStore(value)
     } catch (error) {
       if ((error as any)?.code !== 'ENOENT') {
         this.ctx.logger('market').warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
       }
+      this.hasCollapsedGroupsState = false
       this.data = emptyStore()
     }
   }
@@ -153,6 +165,7 @@ function normalizeStore(value: any): MarketDataStorePayload {
     override: normalizeDict(value?.override),
     updateIgnored: normalizeDict(value?.updateIgnored),
     bundleRecords: normalizeDict(value?.bundleRecords),
+    collapsedGroups: normalizeDict<boolean>(value?.collapsedGroups),
   }
 }
 

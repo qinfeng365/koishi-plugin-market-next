@@ -32,7 +32,6 @@ export interface MarketNextConfigPatch extends UpdatePolicy {
   idleProbeInterval?: number
   bulkMode?: boolean
   removeConfig?: boolean
-  collapsedGroups?: Record<string, boolean>
   bundleRecords?: Record<string, any>
 }
 
@@ -90,12 +89,14 @@ export interface MarketNextDataStore {
   override?: Record<string, string>
   updateIgnored?: IgnoredUpdates
   bundleRecords?: Record<string, any>
+  collapsedGroups?: Record<string, boolean>
 }
 
 const fallbackMarketData = reactive<MarketNextDataStore>({
   override: {},
   updateIgnored: {},
   bundleRecords: {},
+  collapsedGroups: {},
 })
 
 function getMarketDataStore(): MarketNextDataStore {
@@ -106,6 +107,12 @@ export function getPendingOverrides() {
   const data = getMarketDataStore()
   data.override ||= {}
   return data.override
+}
+
+export function getCollapsedGroups() {
+  const data = getMarketDataStore()
+  data.collapsedGroups ||= {}
+  return data.collapsedGroups
 }
 
 export function normalizeFrontendMode(value: unknown): FrontendMode | undefined {

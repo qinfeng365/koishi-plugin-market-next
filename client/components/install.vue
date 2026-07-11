@@ -101,7 +101,7 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="showRemoveDialog" destroy-on-close>
+  <el-dialog v-model="showRemoveDialog" class="market-remove-dialog" destroy-on-close>
     检测到你正在卸载一个已配置的插件，是否同时删除其配置？
     <template #footer>
       <div class="left">

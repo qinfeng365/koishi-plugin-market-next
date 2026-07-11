@@ -197,8 +197,8 @@ market-next 会把市场索引缓存到 Koishi 实例目录下：
 market-next 区分“插件配置”和“运行数据”：
 
 - Koishi 配置树：保存 `frontendMode`、布局、空闲探测、永久过滤、更新策略等用户配置。
-- `data/market-next.json`：保存待应用依赖变更、单次忽略更新记录和插件包归属记录。
-- `data/market-next-install-logs/`：保存每次依赖安装、更新、卸载操作的包管理器日志，超过 3 天会自动清理。
+- `data/market-next.json`：保存待应用依赖变更、单次忽略更新记录、插件包归属记录和依赖分组折叠状态。
+- `data/market-next-install-logs/`：保存每次依赖安装、更新、卸载操作的包管理器日志，默认保留 72 小时，可通过 `registry.installLogRetentionHours` 调整。
 - `cache/`：保存市场索引、路由统计和头像缓存。
 
 这样做是为了避免把临时状态和运行数据塞进 `koishi.yml`，同时仍然让真正的插件设置由 Koishi 配置系统管理。

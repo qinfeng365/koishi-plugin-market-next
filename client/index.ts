@@ -2,13 +2,14 @@ import { defineComponent, h, ref, watch } from 'vue'
 import { Context, Dict, global, message, receive, router, send, store, useConfig } from '@koishijs/client'
 import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
 import { getPendingOverrides, patchMarketNextData, type IgnoredUpdates } from './utils'
-import { showConfirm, showManual } from './components/utils'
+import { showConfirm, showInstallHistory, showManual } from './components/utils'
 import extensions from './extensions'
 import Dependencies from './components/dependencies.vue'
 import Install from './components/install.vue'
 import BundleInstall from './components/bundle-install.vue'
 import Confirm from './components/confirm.vue'
 import InstallProgress from './components/install-progress.vue'
+import InstallHistory from './components/install-history.vue'
 import Market from './components/market.vue'
 import Progress from './components/progress.vue'
 import './icons'
@@ -25,6 +26,7 @@ declare module '@koishijs/client' {
       override?: Dict<string>
       updateIgnored?: IgnoredUpdates
       bundleRecords?: Dict<PluginBundleRecord>
+      collapsedGroups?: Dict<boolean>
     }
   }
 }
@@ -32,7 +34,6 @@ declare module '@koishijs/client' {
 interface MarketConfig {
   bulkMode?: boolean
   removeConfig?: boolean
-  collapsedGroups?: Dict<boolean>
   updateIgnoredPackages?: string
   updateIgnoreDuration?: number
   updateIgnoreVersions?: number
@@ -145,6 +146,11 @@ export default (ctx: Context) => {
     component: InstallProgress,
   })
 
+  ctx.slot({
+    type: 'global',
+    component: InstallHistory,
+  })
+
   ctx.page({
     id: 'market',
     path: '/market',
@@ -238,6 +244,12 @@ export default (ctx: Context) => {
     },
   })
 
+  ctx.action('dependencies.history', {
+    action() {
+      showInstallHistory.value = true
+    },
+  })
+
   ctx.menu('market', [{
     id: '.install',
     icon: 'check',
@@ -266,6 +278,10 @@ export default (ctx: Context) => {
     id: '.manual',
     icon: 'add',
     label: '手动添加',
+  }, {
+    id: '.history',
+    icon: 'info-full',
+    label: '最近操作',
   }, {
     id: 'market.refresh',
     icon: 'refresh',

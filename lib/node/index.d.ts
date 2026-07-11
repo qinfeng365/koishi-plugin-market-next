@@ -2,11 +2,12 @@ import { Context, Dict, Schema } from 'koishi';
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry';
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps';
 import { MarketDataStore, MarketDataStorePayload } from './data';
-import Installer, { InstallFallbackCandidate, InstallOptions } from './installer';
+import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, InstallOptions } from './installer';
 import MarketProvider from './market';
 import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult, PluginBundleRecord } from '../shared/bundle';
 export * from '../shared';
 export { Installer };
+export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail } from './installer';
 declare module 'koishi' {
     interface Context {
         installer: Installer;
@@ -25,6 +26,9 @@ declare module '@koishijs/console' {
         'market/install'(deps: Dict<string>, forced?: boolean, options?: InstallOptions): Promise<number>;
         'market/install-bundle'(request: BundleInstallRequest, forced?: boolean, options?: InstallOptions): Promise<BundleInstallResult>;
         'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>;
+        'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>;
+        'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>;
+        'market/install-history-rollback'(id: string, options?: InstallOptions): Promise<number>;
         'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>;
         'market/update-config'(patch: Partial<Config>): Promise<boolean>;
         'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>;

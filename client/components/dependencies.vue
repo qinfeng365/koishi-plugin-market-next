@@ -122,7 +122,7 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { message, router, store, useConfig, useContext } from '@koishijs/client'
-import { getBundleRecords, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { getBundleRecords, getCollapsedGroups, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { addManual, createLocalBundleRecord, getRegistryStatus, showConfirm } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
@@ -160,16 +160,6 @@ const layoutClass = computed(() => `deps-layout-${depsLayout.value}`)
 
 function getOverride() {
   return getPendingOverrides()
-}
-
-function getCollapsedGroups() {
-  const pluginConfig = getMarketNextConfig()
-  if (pluginConfig) {
-    pluginConfig.collapsedGroups ||= {}
-    return pluginConfig.collapsedGroups
-  }
-  if (!config.value.market.collapsedGroups) config.value.market.collapsedGroups = {}
-  return config.value.market.collapsedGroups
 }
 
 function getUpdatePolicy() {
@@ -325,9 +315,11 @@ function isGroupCollapsed(key: ItemKind) {
 }
 
 function toggleGroup(key: ItemKind) {
-  const groups = getCollapsedGroups()
-  groups[key] = !isGroupCollapsed(key)
-  patchMarketNextConfig({ collapsedGroups: groups })
+  const groups = {
+    ...getCollapsedGroups(),
+    [key]: !isGroupCollapsed(key),
+  }
+  void patchMarketNextData({ collapsedGroups: groups })
 }
 
 function toggleLayout() {
