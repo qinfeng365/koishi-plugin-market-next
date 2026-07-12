@@ -4,18 +4,18 @@
     append-to-body
     destroy-on-close
     :class="['install-history-dialog', modeClass]"
-    title="最近操作"
+    :title="t('operations.history.title')"
     width="min(1040px, calc(100vw - 24px))"
   >
     <div class="history-toolbar">
-      <span>{{ loading ? '正在同步记录……' : `共 ${entries.length} 条记录` }}</span>
-      <el-button :loading="loading" :disabled="rollingBack" @click="loadHistory(true)">刷新</el-button>
+      <span>{{ loading ? t('operations.history.syncing') : t('operations.history.count', { count: entries.length }) }}</span>
+      <el-button :loading="loading" @click="loadHistory(true)">{{ t('operations.history.refresh') }}</el-button>
     </div>
 
     <div class="history-layout">
       <aside class="history-sidebar">
         <div class="list-heading">
-          <span>操作记录</span>
+          <span>{{ t('operations.history.records') }}</span>
           <span>{{ entries.length }}</span>
         </div>
         <div class="history-list" :class="{ loading }">
@@ -38,14 +38,14 @@
             <span :class="['status-label', entry.status]">{{ statusText(entry.status) }}</span>
           </button>
 
-          <div v-if="loading && !entries.length" class="history-state">正在读取操作记录……</div>
+          <div v-if="loading && !entries.length" class="history-state">{{ t('operations.history.reading') }}</div>
           <div v-else-if="loadError && !entries.length" class="history-state error">{{ loadError }}</div>
-          <div v-else-if="!entries.length" class="history-state">暂无依赖操作记录</div>
+          <div v-else-if="!entries.length" class="history-state">{{ t('operations.history.empty') }}</div>
         </div>
       </aside>
 
       <section class="history-detail">
-        <div v-if="detailLoading" class="history-state">正在读取日志……</div>
+        <div v-if="detailLoading" class="history-state">{{ t('operations.history.readingLog') }}</div>
         <div v-else-if="detailError" class="history-state error">{{ detailError }}</div>
         <template v-else-if="detail">
           <header class="detail-header">
@@ -61,54 +61,43 @@
               </p>
             </div>
             <div class="detail-actions">
-              <el-button size="small" @click="copyLog">复制日志</el-button>
-              <el-popconfirm
-                v-if="detail.rollbackAvailable"
-                width="300"
-                title="将依赖回退到本次更新前的实际版本？该操作不会恢复曾被删除的插件配置。"
-                confirm-button-text="确认回退"
-                cancel-button-text="取消"
-                @confirm="rollback"
-              >
-                <template #reference>
-                  <el-button size="small" type="warning" :loading="rollingBack">回退到上版本</el-button>
-                </template>
-              </el-popconfirm>
+              <el-button size="small" @click="copyLog">{{ t('operations.history.copyLog') }}</el-button>
             </div>
           </header>
 
           <dl class="detail-meta">
-            <div><dt>依赖数量</dt><dd>{{ detail.changes.length || '未知' }}</dd></div>
-            <div><dt>安装源</dt><dd :title="detail.installEndpoint">{{ formatEndpoint(detail.installEndpoint) }}</dd></div>
-            <div><dt>日志大小</dt><dd>{{ formatSize(detail.size) }}</dd></div>
+            <div><dt>{{ t('operations.history.dependencyCount') }}</dt><dd>{{ detail.changes.length || t('operations.history.unknown') }}</dd></div>
+            <div><dt>{{ t('operations.history.source') }}</dt><dd :title="detail.installEndpoint">{{ formatEndpoint(detail.installEndpoint) }}</dd></div>
+            <div><dt>{{ t('operations.history.logSize') }}</dt><dd>{{ formatSize(detail.size) }}</dd></div>
           </dl>
 
           <section v-if="detail.changes.length" class="versions-section">
             <div class="section-heading">
-              <span>版本变更</span>
-              <span>{{ detail.changes.length }} 项</span>
+              <span>{{ t('operations.history.versionChanges') }}</span>
+              <span>{{ t('operations.history.items', { count: detail.changes.length }) }}</span>
             </div>
             <div class="change-list">
               <div v-for="change in detail.changes" :key="change.name" class="change-row">
                 <strong :title="change.name">{{ change.name }}</strong>
-                <span class="version-value" :title="beforeVersion(change)">{{ beforeVersion(change) }}</span>
+                <span class="version-value" :title="beforeVersion(change)">
+                  <span class="version-text">{{ beforeVersion(change) }}</span>
+                </span>
                 <span class="version-arrow">→</span>
-                <span class="version-value after" :title="afterVersion(change)">{{ afterVersion(change) }}</span>
+                <span class="version-value after" :title="afterVersion(change)">
+                  <span class="version-text">{{ afterVersion(change) }}</span>
+                </span>
               </div>
             </div>
           </section>
 
-          <p v-if="!detail.rollbackAvailable" class="rollback-note">
-            {{ rollbackReasonText(detail.rollbackReason) }}
-          </p>
-          <p v-if="detail.truncated" class="truncated-note">日志过大，复制内容仅保留开头与末尾。</p>
+          <p v-if="detail.truncated" class="truncated-note">{{ t('operations.history.truncated') }}</p>
         </template>
-        <div v-else class="history-state">选择一条记录查看日志</div>
+        <div v-else class="history-state">{{ t('operations.history.selectRecord') }}</div>
       </section>
     </div>
 
     <template #footer>
-      <el-button @click="showInstallHistory = false">关闭</el-button>
+      <el-button @click="showInstallHistory = false">{{ t('operations.history.close') }}</el-button>
     </template>
   </el-dialog>
 </template>
@@ -118,16 +107,17 @@ import { computed, ref, watch } from 'vue'
 import { message, send, useConfig } from '@koishijs/client'
 import type { InstallHistoryChange, InstallHistoryEntry, InstallLogDetail } from 'koishi-plugin-market-next'
 import { getFrontendMode } from '../utils'
-import { rollbackInstallOperation, showInstallHistory } from './utils'
+import { showInstallHistory } from './utils'
+import { useMarketNextI18n } from '../i18n'
 
 const config = useConfig()
+const { t, locale } = useMarketNextI18n()
 const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 const entries = ref<InstallHistoryEntry[]>([])
 const selectedId = ref('')
 const detail = ref<InstallLogDetail>()
 const loading = ref(false)
 const detailLoading = ref(false)
-const rollingBack = ref(false)
 const loadError = ref('')
 const detailError = ref('')
 let detailSerial = 0
@@ -154,7 +144,7 @@ async function loadHistory(preserveSelection = false) {
     }
   } catch (error) {
     console.error(error)
-    loadError.value = '读取最近操作失败，请检查后端日志。'
+    loadError.value = t('operations.history.loadFailed')
   } finally {
     loading.value = false
   }
@@ -175,7 +165,7 @@ async function selectEntry(id: string, force = false) {
   } catch (error) {
     if (serial !== detailSerial) return
     console.error(error)
-    detailError.value = '读取日志详情失败，文件可能已被自动清理。'
+    detailError.value = t('operations.history.detailFailed')
   } finally {
     if (serial === detailSerial) detailLoading.value = false
   }
@@ -196,47 +186,24 @@ async function copyLog() {
       document.execCommand('copy')
       textarea.remove()
     }
-    message.success('日志已复制。')
+    message.success(t('operations.history.copied'))
   } catch (error) {
     console.error(error)
-    message.error('复制失败，请手动选择日志文本。')
-  }
-}
-
-async function rollback() {
-  if (!detail.value?.rollbackAvailable || rollingBack.value) return
-  rollingBack.value = true
-  const id = detail.value.id
-  const selfUpdate = detail.value.changes.some(change => change.name === 'koishi-plugin-market-next')
-  try {
-    await rollbackInstallOperation(id, selfUpdate)
-  } finally {
-    rollingBack.value = false
+    message.error(t('operations.history.copyFailed'))
   }
 }
 
 function statusText(status: InstallHistoryEntry['status']) {
   switch (status) {
-    case 'running': return '执行中'
-    case 'success': return '成功'
-    case 'error': return '失败'
-    default: return '状态未知'
-  }
-}
-
-function rollbackReasonText(reason: InstallHistoryEntry['rollbackReason']) {
-  switch (reason) {
-    case 'running': return '操作执行中，完成后才能判断是否可回退。'
-    case 'not-successful': return '只有成功完成的版本更新支持一键回退。'
-    case 'legacy': return '这条旧日志没有保存回退所需的版本信息。'
-    case 'unsupported': return '新增安装、卸载或没有实际版本变化的操作不提供一键回退。'
-    case 'state-changed': return '依赖已在此后发生变化，为避免覆盖后续修改，不能直接回退。'
-    default: return '当前记录不支持一键回退。'
+    case 'running': return t('operations.history.statusRunning')
+    case 'success': return t('operations.history.statusSuccess')
+    case 'error': return t('operations.history.statusError')
+    default: return t('operations.history.statusUnknown')
   }
 }
 
 function historyTitle(entry: InstallHistoryEntry) {
-  if (!entry.changes.length) return '依赖操作'
+  if (!entry.changes.length) return t('operations.history.operation')
   let installed = 0
   let removed = 0
   let updated = 0
@@ -246,42 +213,42 @@ function historyTitle(entry: InstallHistoryEntry) {
     else updated++
   }
   const groups = [
-    installed && `安装 ${installed}`,
-    updated && `更新 ${updated}`,
-    removed && `卸载 ${removed}`,
+    installed && t('operations.history.install', { count: installed }),
+    updated && t('operations.history.update', { count: updated }),
+    removed && t('operations.history.uninstall', { count: removed }),
   ].filter(Boolean)
-  if (groups.length === 1) return `${groups[0]} 个依赖`
-  return `变更 ${entry.changes.length} 个依赖`
+  if (groups.length === 1) return groups[0]
+  return t('operations.history.changed', { count: entry.changes.length })
 }
 
 function historyPackages(entry: InstallHistoryEntry) {
   if (!entry.changes.length) return entry.deps
-  return entry.changes.map(change => change.name).join('、')
+  return entry.changes.map(change => change.name).join(t('common.format.listSeparator'))
 }
 
 function beforeVersion(change: InstallHistoryChange) {
-  return change.beforeResolved || change.beforeRequest || '未安装'
+  return change.beforeResolved || change.beforeRequest || t('operations.history.notInstalled')
 }
 
 function afterVersion(change: InstallHistoryChange) {
-  return change.afterResolved || change.afterRequest || '已卸载'
+  return change.afterResolved || change.afterRequest || t('operations.history.uninstalled')
 }
 
 function formatDate(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '时间未知'
-  return new Date(value).toLocaleString()
+  if (!Number.isFinite(value) || value <= 0) return t('operations.history.unknownTime')
+  return new Date(value).toLocaleString(locale.value)
 }
 
 function formatDuration(value: number) {
   if (value < 1000) return `${Math.max(0, Math.round(value))} ms`
-  if (value < 60000) return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)} 秒`
+  if (value < 60000) return t('common.time.seconds', { count: (value / 1000).toFixed(value < 10000 ? 1 : 0) })
   const minutes = Math.floor(value / 60000)
   const seconds = Math.round(value % 60000 / 1000)
-  return `${minutes} 分 ${seconds} 秒`
+  return t('common.time.minutesSeconds', { minutes, seconds })
 }
 
 function formatEndpoint(endpoint?: string) {
-  if (!endpoint) return '项目默认源'
+  if (!endpoint) return t('operations.history.defaultSource')
   try {
     return new URL(endpoint).host
   } catch {
@@ -353,8 +320,9 @@ function formatSize(value: number) {
   .history-layout {
     display: grid;
     grid-template-columns: 300px minmax(0, 1fr);
-    height: min(470px, calc(100vh - 205px));
-    min-height: 360px;
+    height: min(470px, max(320px, calc(100vh - 205px)));
+    height: min(470px, max(320px, calc(100dvh - 205px)));
+    min-height: 320px;
     border: 1px solid var(--history-border);
     border-radius: 8px;
     overflow: hidden;
@@ -366,6 +334,7 @@ function formatSize(value: number) {
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
     border-right: 1px solid var(--history-border);
     background: color-mix(in srgb, var(--history-muted) 62%, var(--history-surface));
   }
@@ -581,7 +550,7 @@ function formatSize(value: number) {
 
   .versions-section {
     min-height: 0;
-    flex: 0 1 230px;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     margin-bottom: 12px;
@@ -604,6 +573,7 @@ function formatSize(value: number) {
   .change-list {
     min-height: 0;
     flex: 1 1 auto;
+    max-height: none;
     overflow-y: auto;
     border: 1px solid color-mix(in srgb, var(--history-border) 82%, transparent);
     border-radius: 6px;
@@ -633,11 +603,13 @@ function formatSize(value: number) {
 
   .version-value {
     min-width: 0;
-    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
     color: var(--history-text-muted);
     font-family: Consolas, Monaco, 'Andale Mono', monospace;
     text-align: right;
-    text-overflow: ellipsis;
     white-space: nowrap;
 
     &.after {
@@ -645,12 +617,17 @@ function formatSize(value: number) {
     }
   }
 
+  .version-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .version-arrow {
     color: color-mix(in srgb, var(--history-text-muted) 64%, transparent);
     text-align: center;
   }
 
-  .rollback-note,
   .truncated-note {
     flex: 0 0 auto;
     margin: 0 0 8px;
@@ -689,29 +666,72 @@ function formatSize(value: number) {
 
 @media (max-width: 720px) {
   .install-history-dialog {
+    .el-dialog__header { padding: 12px 44px 10px 14px; }
+
     .el-dialog__body {
-      padding: 12px;
+      padding: 10px;
     }
 
     .history-toolbar {
       align-items: flex-start;
+      flex-wrap: wrap;
+
+      > span { flex: 1 1 9rem; min-width: 0; }
+      .el-button { margin-left: auto; }
     }
 
     .history-layout {
       grid-template-columns: 1fr;
-      grid-template-rows: 150px minmax(0, 1fr);
-      height: min(540px, calc(100vh - 200px));
-      height: min(540px, calc(100dvh - 200px));
-      min-height: 420px;
+      grid-template-rows: 132px minmax(0, 1fr);
+      height: min(540px, max(300px, calc(100vh - 180px)));
+      height: min(540px, max(300px, calc(100dvh - 180px)));
+      min-height: 300px;
+      overflow: hidden;
     }
 
     .history-sidebar {
+      contain: none;
       border-right: 0;
       border-bottom: 1px solid var(--history-border);
     }
 
     .history-detail {
       padding: 10px;
+      overflow: hidden;
+    }
+
+    .history-row {
+      min-height: 64px;
+      padding: 8px 10px;
+      gap: 7px;
+
+      .row-title { font-size: 12px; }
+      .row-packages,
+      .row-meta,
+      .status-label { font-size: 10px; }
+    }
+
+    .list-heading { flex-basis: 36px; }
+
+    .detail-title h3 { font-size: 14px; }
+
+    .detail-meta {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 8px;
+
+      > div { padding: 6px 8px; }
+      dt, dd { font-size: 10px; }
+    }
+
+    .section-heading { flex-basis: 26px; }
+
+    .el-dialog__footer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+
+      .el-button { flex: 1 1 8rem; margin-left: 0; }
     }
 
     .detail-header {
@@ -735,8 +755,18 @@ function formatSize(value: number) {
 
       .version-value.after {
         text-align: left;
+        justify-content: flex-start;
       }
     }
+  }
+}
+
+@media (max-width: 420px) {
+  .install-history-dialog {
+    .history-layout { grid-template-rows: 118px minmax(0, 1fr); }
+    .detail-meta { grid-template-columns: 1fr; }
+    .history-row { grid-template-columns: 8px minmax(0, 1fr); }
+    .history-row > .status-label { display: none; }
   }
 }
 </style>

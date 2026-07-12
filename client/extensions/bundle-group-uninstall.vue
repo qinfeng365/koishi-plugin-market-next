@@ -20,8 +20,10 @@ import {
 import { getBundleRecords } from '../utils'
 import { bundleGroupUninstallTarget } from './bundle-group-uninstall'
 import BundleUninstall from '../components/bundle-uninstall.vue'
+import { useMarketNextI18n } from '../i18n'
 
 const config = useConfig()
+const { t } = useMarketNextI18n()
 const loadingBundleRecord = ref(false)
 const remoteBundleRecord = ref<BundleRecordView>()
 
@@ -61,7 +63,7 @@ async function loadRemoteBundleRecord() {
     if (next) remoteBundleRecord.value = next
   } catch (error) {
     console.warn(error)
-    message.warning('未能读取插件包成员清单，将只卸载插件包自身。')
+    message.warning(t('extensions.messages.bundleRecordFailedShort'))
   } finally {
     loadingBundleRecord.value = false
   }

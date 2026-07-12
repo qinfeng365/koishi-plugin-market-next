@@ -1,17 +1,17 @@
 <template>
   <el-dialog v-if="store.market?.registry" v-model="showManual" class="manual-panel" destroy-on-close>
-    <template #header>高级：手动添加依赖</template>
+    <template #header>{{ t('operations.manual.title') }}</template>
     <k-comment type="warning">
-      <p>提示：如果你想要安装插件，请前往<router-link to="/market">插件市场</router-link>页面。</p>
+      <p>{{ t('operations.manual.hint') }}<router-link to="/market">{{ t('operations.manual.market') }}</router-link>{{ t('operations.manual.hintAfter') }}</p>
     </k-comment>
-    <el-input :class="{ invalid }" v-model="name" @keydown.enter.stop.prevent="onEnter" placeholder="请输入名称"></el-input>
+    <el-input :class="{ invalid }" v-model="name" @keydown.enter.stop.prevent="onEnter" :placeholder="t('operations.manual.placeholder')"></el-input>
     <template v-if="remote">
-      <p>最新版本：{{ remote['dist-tags']?.latest }}</p>
-      <p>介绍：{{ remote.description }}</p>
+      <p>{{ t('operations.manual.latest') }}: {{ remote['dist-tags']?.latest }}</p>
+      <p>{{ t('operations.manual.description') }}: {{ remote.description }}</p>
     </template>
     <template #footer>
-      <el-button @click="showManual = false">取消</el-button>
-      <el-button type="primary" :disabled="invalid" @click="onEnter">确定</el-button>
+      <el-button @click="showManual = false">{{ t('operations.manual.cancel') }}</el-button>
+      <el-button type="primary" :disabled="invalid" @click="onEnter">{{ t('operations.manual.confirm') }}</el-button>
     </template>
   </el-dialog>
 </template>
@@ -24,6 +24,9 @@ import { store } from '@koishijs/client'
 import { useDebounceFn } from '@vueuse/core'
 import { showManual, addManual } from './utils'
 import { getPendingOverrides, patchMarketNextData } from '../utils'
+import { useMarketNextI18n } from '../i18n'
+
+const { t } = useMarketNextI18n()
 
 const invalid = computed(() => false)
 const name = ref('')

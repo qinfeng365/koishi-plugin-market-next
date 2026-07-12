@@ -18,7 +18,7 @@
             <span>{{ title }}</span>
             <span class="bundle-badge">
               <market-icon name="file-archive"></market-icon>
-              插件包
+              {{ t('bundle.label') }}
             </span>
           </div>
           <div v-if="activeBundle" class="bundle-hero-meta">
@@ -33,7 +33,7 @@
     <template v-if="activeBundle">
       <div v-if="loading" class="bundle-loading">
         <span class="bundle-loading-spinner"></span>
-        正在读取插件包清单……
+        {{ t('bundle.loading') }}
       </div>
       <k-comment v-else-if="error" type="danger">
         <p>{{ error }}</p>
@@ -46,16 +46,16 @@
         <div class="bundle-stats">
           <div class="bundle-stat">
             <span class="bundle-stat-num">{{ selectedMembers.length }}</span>
-            <span class="bundle-stat-label">已选 / {{ members.length }} 成员</span>
+            <span class="bundle-stat-label">{{ t('bundle.stats.selected', { count: selectedMembers.length, total: members.length }) }}</span>
             <div class="bundle-stat-bar"><div class="bundle-stat-fill" :style="{ width: progressPercent + '%' }"></div></div>
           </div>
           <div class="bundle-stat">
             <span class="bundle-stat-num">{{ presetList.length }}</span>
-            <span class="bundle-stat-label">将应用预设</span>
+            <span class="bundle-stat-label">{{ t('bundle.stats.presets') }}</span>
           </div>
           <div class="bundle-stat">
             <span class="bundle-stat-num">{{ moveList.length }}</span>
-            <span class="bundle-stat-label">将移动配置</span>
+            <span class="bundle-stat-label">{{ t('bundle.stats.moved') }}</span>
           </div>
         </div>
 
@@ -68,15 +68,15 @@
 
         <!-- Global Bulk Operations Row -->
         <div class="bundle-bulk-row" v-if="selectedMembers.length">
-          <span class="bulk-label">批量操作:</span>
-          <button class="bundle-section-action" @click="batchSetCreateConfig(true)">创建所有配置</button>
+          <span class="bulk-label">{{ t('bundle.bulk.label') }}</span>
+          <button class="bundle-section-action" @click="batchSetCreateConfig(true)">{{ t('bundle.bulk.createAll') }}</button>
           <span class="bundle-section-spacer">|</span>
-          <button class="bundle-section-action" @click="batchSetCreateConfig(false)">跳过所有配置</button>
+          <button class="bundle-section-action" @click="batchSetCreateConfig(false)">{{ t('bundle.bulk.skipAll') }}</button>
           <template v-if="selectedMembers.some(m => hasPreset(m))">
             <span class="bundle-section-spacer">|</span>
-            <button class="bundle-section-action" @click="batchSetUsePreset(true)">启用所有预设</button>
+            <button class="bundle-section-action" @click="batchSetUsePreset(true)">{{ t('bundle.bulk.enablePresets') }}</button>
             <span class="bundle-section-spacer">|</span>
-            <button class="bundle-section-action" @click="batchSetUsePreset(false)">关闭所有预设</button>
+            <button class="bundle-section-action" @click="batchSetUsePreset(false)">{{ t('bundle.bulk.disablePresets') }}</button>
           </template>
         </div>
 
@@ -84,7 +84,7 @@
         <template v-if="requiredMembers.length">
           <div class="bundle-section-title">
             <k-icon name="check-full"></k-icon>
-            核心成员 <span class="bundle-section-count">{{ requiredMembers.length }}</span>
+            {{ t('bundle.members.required') }} <span class="bundle-section-count">{{ requiredMembers.length }}</span>
           </div>
           <div class="bundle-member-list">
             <section
@@ -118,43 +118,43 @@
                 <div class="member-side">
                   <span class="member-required-pill">
                     <k-icon name="lock"></k-icon>
-                    必装
+                    {{ t('bundle.members.requiredPill') }}
                   </span>
                 </div>
               </div>
 
               <div class="member-options" v-if="member.selected" @click.stop>
-                <el-checkbox v-model="member.createConfig" :disabled="member.conflict === 'same-group'">创建配置</el-checkbox>
+                <el-checkbox v-model="member.createConfig" :disabled="member.conflict === 'same-group'">{{ t('bundle.members.createConfig') }}</el-checkbox>
                 <el-checkbox
                   v-if="member.conflict === 'other-config'"
                   v-model="member.move"
-                >移动已有配置</el-checkbox>
-                <el-checkbox v-model="member.usePreset" :disabled="!member.createConfig || member.move || !hasPreset(member)">使用预设</el-checkbox>
+                >{{ t('bundle.members.moveConfig') }}</el-checkbox>
+                <el-checkbox v-model="member.usePreset" :disabled="!member.createConfig || member.move || !hasPreset(member)">{{ t('bundle.members.usePreset') }}</el-checkbox>
               </div>
 
               <!-- Conflict Warning Comments -->
               <k-comment v-if="member.conflict === 'package-mismatch' && member.selected" type="danger" class="member-warning" @click.stop>
-                <p>版本冲突：当前项目中已安装的版本为 <strong>{{ store.dependencies?.[member.package]?.resolved }}</strong>，不满足插件包声明的版本范围 <strong>{{ member.version }}</strong>。安装将覆盖此依赖！</p>
+                <p>{{ t('bundle.conflict.version', { current: store.dependencies?.[member.package]?.resolved, range: member.version }) }}</p>
               </k-comment>
 
               <k-comment v-if="member.conflict === 'other-config' && member.selected" type="warning" class="member-warning" @click.stop>
-                <p>配置冲突：此插件在包外部已有配置。默认在包内创建停用配置；勾选"移动"可将配置迁移进包内。</p>
+                <p>{{ t('bundle.conflict.config') }}</p>
               </k-comment>
 
               <k-comment v-if="member.conflict === 'same-group' && member.selected" type="info" class="member-warning" @click.stop>
-                <p>配置存在：此插件在包分组下已存在配置，将默认跳过配置创建，仅确保依赖安装。</p>
+                <p>{{ t('bundle.conflict.sameGroup') }}</p>
               </k-comment>
 
               <!-- Sensitive fields in-place editing -->
               <div v-if="member.selected && member.usePreset && sensitiveFields(member).length" class="sensitive-fields-editor" @click.stop>
-                <div class="editor-title">修改敏感预设配置：</div>
+                <div class="editor-title">{{ t('bundle.editor.sensitive') }}</div>
                 <div class="editor-grid">
                   <div v-for="field in sensitiveFields(member)" :key="field" class="editor-field-row">
                     <span class="field-label">{{ field }}:</span>
                     <el-input
                       size="small"
                       v-model="member.config[field]"
-                      :placeholder="`请输入 ${field}`"
+                      :placeholder="t('bundle.editor.placeholder', { field })"
                       show-password
                     ></el-input>
                   </div>
@@ -162,7 +162,7 @@
               </div>
 
               <details v-if="hasPreset(member) && member.selected" class="member-config" @click.stop>
-                <summary>查看/编辑配置预设</summary>
+                <summary>{{ t('bundle.editor.viewPreset') }}</summary>
                 <div class="json-editor-container">
                   <textarea
                     class="raw-json-editor"
@@ -171,7 +171,7 @@
                     rows="8"
                   ></textarea>
                   <div v-if="memberJsonErrors[getMemberKey(member)]" class="json-error-text">
-                    JSON 格式错误：{{ memberJsonErrors[getMemberKey(member)] }}
+                    {{ t('bundle.editor.jsonError', { error: memberJsonErrors[getMemberKey(member)] }) }}
                   </div>
                 </div>
               </details>
@@ -183,9 +183,9 @@
         <template v-if="optionalMembers.length">
           <div class="bundle-section-title">
             <k-icon name="info-full"></k-icon>
-            可选成员 <span class="bundle-section-count">{{ optionalMembers.length }}</span>
+            {{ t('bundle.members.optional') }} <span class="bundle-section-count">{{ optionalMembers.length }}</span>
             <button class="bundle-section-action" @click="toggleAllOptional">
-              {{ allOptionalSelected ? '全部取消' : '全部选中' }}
+              {{ allOptionalSelected ? t('bundle.members.optionalToggleNone') : t('bundle.members.optionalToggleAll') }}
             </button>
           </div>
           <div class="bundle-member-list">
@@ -227,37 +227,37 @@
               </div>
 
               <div class="member-options" v-if="member.selected" @click.stop>
-                <el-checkbox v-model="member.createConfig" :disabled="member.conflict === 'same-group'">创建配置</el-checkbox>
+                <el-checkbox v-model="member.createConfig" :disabled="member.conflict === 'same-group'">{{ t('bundle.members.createConfig') }}</el-checkbox>
                 <el-checkbox
                   v-if="member.conflict === 'other-config'"
                   v-model="member.move"
-                >移动已有配置</el-checkbox>
-                <el-checkbox v-model="member.usePreset" :disabled="!member.createConfig || member.move || !hasPreset(member)">使用预设</el-checkbox>
+                >{{ t('bundle.members.moveConfig') }}</el-checkbox>
+                <el-checkbox v-model="member.usePreset" :disabled="!member.createConfig || member.move || !hasPreset(member)">{{ t('bundle.members.usePreset') }}</el-checkbox>
               </div>
 
               <!-- Conflict Warning Comments -->
               <k-comment v-if="member.conflict === 'package-mismatch' && member.selected" type="danger" class="member-warning" @click.stop>
-                <p>版本冲突：当前项目中已安装的版本为 <strong>{{ store.dependencies?.[member.package]?.resolved }}</strong>，不满足插件包声明的版本范围 <strong>{{ member.version }}</strong>。安装将覆盖此依赖！</p>
+                <p>{{ t('bundle.conflict.version', { current: store.dependencies?.[member.package]?.resolved, range: member.version }) }}</p>
               </k-comment>
 
               <k-comment v-if="member.conflict === 'other-config' && member.selected" type="warning" class="member-warning" @click.stop>
-                <p>配置冲突：此插件在包外部已有配置。默认在包内创建停用配置；勾选"移动"可将配置迁移进包内。</p>
+                <p>{{ t('bundle.conflict.config') }}</p>
               </k-comment>
 
               <k-comment v-if="member.conflict === 'same-group' && member.selected" type="info" class="member-warning" @click.stop>
-                <p>配置存在：此插件在包分组下已存在配置，将默认跳过配置创建，仅确保依赖安装。</p>
+                <p>{{ t('bundle.conflict.sameGroup') }}</p>
               </k-comment>
 
               <!-- Sensitive fields in-place editing -->
               <div v-if="member.selected && member.usePreset && sensitiveFields(member).length" class="sensitive-fields-editor" @click.stop>
-                <div class="editor-title">修改敏感预设配置：</div>
+                <div class="editor-title">{{ t('bundle.editor.sensitive') }}</div>
                 <div class="editor-grid">
                   <div v-for="field in sensitiveFields(member)" :key="field" class="editor-field-row">
                     <span class="field-label">{{ field }}:</span>
                     <el-input
                       size="small"
                       v-model="member.config[field]"
-                      :placeholder="`请输入 ${field}`"
+                      :placeholder="t('bundle.editor.placeholder', { field })"
                       show-password
                     ></el-input>
                   </div>
@@ -265,7 +265,7 @@
               </div>
 
               <details v-if="hasPreset(member) && member.selected" class="member-config" @click.stop>
-                <summary>查看/编辑配置预设</summary>
+                <summary>{{ t('bundle.editor.viewPreset') }}</summary>
                 <div class="json-editor-container">
                   <textarea
                     class="raw-json-editor"
@@ -274,7 +274,7 @@
                     rows="8"
                   ></textarea>
                   <div v-if="memberJsonErrors[getMemberKey(member)]" class="json-error-text">
-                    JSON 格式错误：{{ memberJsonErrors[getMemberKey(member)] }}
+                    {{ t('bundle.editor.jsonError', { error: memberJsonErrors[getMemberKey(member)] }) }}
                   </div>
                 </div>
               </details>
@@ -284,31 +284,31 @@
 
         <!-- Diff: visualized -->
         <div class="bundle-diff">
-          <div class="bundle-diff-title">即将执行</div>
+          <div class="bundle-diff-title">{{ t('bundle.diff.title') }}</div>
           <div class="bundle-diff-grid">
             <div class="bundle-diff-cell">
-              <div class="bundle-diff-head"><k-icon name="cube"></k-icon> 安装依赖 <strong>{{ installList.length }}</strong></div>
+              <div class="bundle-diff-head"><k-icon name="cube"></k-icon> {{ t('bundle.diff.install') }} <strong>{{ installList.length }}</strong></div>
               <div class="bundle-diff-tags">
                 <span v-for="item in installList" :key="item" class="bundle-diff-tag install">{{ item }}</span>
               </div>
             </div>
             <div class="bundle-diff-cell" v-if="configList.length || presetList.length">
-              <div class="bundle-diff-head"><k-icon name="settings"></k-icon> 创建配置 <strong>{{ configList.length }}</strong></div>
+              <div class="bundle-diff-head"><k-icon name="settings"></k-icon> {{ t('bundle.diff.config') }} <strong>{{ configList.length }}</strong></div>
               <div class="bundle-diff-tags">
                 <span v-for="item in configList" :key="item" :class="['bundle-diff-tag config', { 'with-preset': presetList.includes(item) }]">
                   {{ item }}
-                  <span v-if="presetList.includes(item)" class="preset-marker">预设</span>
+                  <span v-if="presetList.includes(item)" class="preset-marker">{{ t('bundle.diff.preset') }}</span>
                 </span>
               </div>
             </div>
             <div class="bundle-diff-cell" v-if="moveList.length">
-              <div class="bundle-diff-head"><k-icon name="arrow-right"></k-icon> 移动配置 <strong>{{ moveList.length }}</strong></div>
+              <div class="bundle-diff-head"><k-icon name="arrow-right"></k-icon> {{ t('bundle.diff.move') }} <strong>{{ moveList.length }}</strong></div>
               <div class="bundle-diff-tags">
                 <span v-for="item in moveList" :key="item" class="bundle-diff-tag move">{{ item }}</span>
               </div>
             </div>
             <div class="bundle-diff-cell" v-if="skippedConfigList.length">
-              <div class="bundle-diff-head"><k-icon name="info-full"></k-icon> 跳过配置 <strong>{{ skippedConfigList.length }}</strong></div>
+              <div class="bundle-diff-head"><k-icon name="info-full"></k-icon> {{ t('bundle.diff.skip') }} <strong>{{ skippedConfigList.length }}</strong></div>
               <div class="bundle-diff-tags">
                 <span v-for="item in skippedConfigList" :key="item" class="bundle-diff-tag skip">{{ item }}</span>
               </div>
@@ -319,9 +319,9 @@
     </template>
 
     <template #footer>
-      <el-button @click="close">取消</el-button>
+      <el-button @click="close">{{ t('bundle.actions.cancel') }}</el-button>
       <el-button type="primary" :loading="installing" :disabled="!canInstall" @click="confirmInstall">
-        安装插件包 <span v-if="selectedMembers.length" class="footer-count">({{ selectedMembers.length }})</span>
+        {{ t('bundle.actions.install') }} <span v-if="selectedMembers.length" class="footer-count">({{ selectedMembers.length }})</span>
       </el-button>
     </template>
   </el-dialog>
@@ -354,6 +354,7 @@ import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import { satisfies } from 'semver'
 import { getFrontendMode } from '../utils'
+import { useMarketNextI18n } from '../i18n'
 
 const loading = ref(false)
 const installing = ref(false)
@@ -364,11 +365,12 @@ const resolvedBundleVersion = ref('')
 const members = reactive<BundleInstallMember[]>([])
 const ctx = useContext()
 const config = useConfig()
+const { t, locale } = useMarketNextI18n()
 
 const frontendMode = computed(() => getFrontendMode(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
-const title = computed(() => activeBundle.value?.shortname || activeBundle.value?.package.name || '插件包')
+const title = computed(() => activeBundle.value?.shortname || activeBundle.value?.package.name || t('bundle.label'))
 const bundleVersion = computed(() => resolvedBundleVersion.value || activeBundle.value?.package.version || '')
 const validation = computed(() => {
   if (!activeBundle.value || !bundle.value) return { valid: false, errors: [], warnings: [] }
@@ -461,7 +463,7 @@ watch(activeBundle, async (value) => {
   try {
     const data = await send('market/package', value.package.name) as Registry
     if (!data?.versions) {
-      error.value = '没有读取到这个插件包的 npm 版本元数据。'
+      error.value = t('bundle.messages.noMetadata')
       return
     }
     registry.value = data
@@ -469,13 +471,13 @@ watch(activeBundle, async (value) => {
       ? [value.package.version, data.versions[value.package.version]] as const
       : Object.entries(data.versions ?? {})[0]
     if (!remoteEntry) {
-      error.value = '没有读取到这个插件包的 npm 版本元数据。'
+      error.value = t('bundle.messages.noMetadata')
       return
     }
     const [remoteVersion, remote] = remoteEntry
     const parsed = parseBundleManifest(remote?.koishi?.bundle)
     if (!parsed) {
-      error.value = '这个包被识别为插件包，但没有提供 koishi.bundle 清单，不能执行展开安装。'
+      error.value = t('bundle.messages.noManifest')
       return
     }
     resolvedBundleVersion.value = remoteVersion
@@ -505,7 +507,7 @@ watch(activeBundle, async (value) => {
     }
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : '读取插件包清单失败。'
+    error.value = err instanceof Error ? err.message : t('bundle.messages.loadFailed')
   } finally {
     loading.value = false
   }
@@ -520,7 +522,14 @@ function getPackageDescription(name: string) {
   const description = data?.manifest?.description || data?.package?.description
   if (typeof description === 'string') return description
   if (description && typeof description === 'object') {
-    return description['zh-CN'] || description.zh || description['en-US'] || description.en || Object.values(description).find(Boolean)
+    const preferred = locale.value.toLowerCase().startsWith('zh')
+      ? ['zh-CN', 'zh', 'en-US', 'en']
+      : ['en-US', 'en', 'zh-CN', 'zh']
+    for (const key of preferred) {
+      const text = description[key]
+      if (text) return text
+    }
+    return Object.values(description).find(Boolean)
   }
 }
 
@@ -540,9 +549,9 @@ function getMaintainer(name: string) {
 
 function getInstalledText(name: string) {
   const dep = store.dependencies?.[name]
-  if (dep?.resolved) return `已安装：${dep.resolved}`
-  if (store.packages?.[name]) return `已加载：${store.packages[name].package.version}`
-  return '未安装'
+  if (dep?.resolved) return t('bundle.members.installed', { version: dep.resolved })
+  if (store.packages?.[name]) return t('bundle.members.loaded', { version: store.packages[name].package.version })
+  return t('bundle.members.notInstalled')
 }
 
 function versionMeta(member: BundleInstallMember) {
@@ -552,13 +561,13 @@ function versionMeta(member: BundleInstallMember) {
 function riskTags(member: BundleInstallMember) {
   const data = memberInfo(member.package)
   const tags: Array<{ label: string, type: string }> = []
-  if (!data) tags.push({ label: '未进入市场索引', type: 'warning' })
-  if (data?.verified) tags.push({ label: '市场认证', type: 'success' })
-  if (data?.insecure) tags.push({ label: '安全风险', type: 'danger' })
-  if (data?.deprecated || versionMeta(member)?.deprecated) tags.push({ label: '已废弃', type: 'danger' })
-  if (data?.manifest?.preview) tags.push({ label: '预览版', type: 'warning' })
-  if (data?.portable) tags.push({ label: '可移植', type: 'info' })
-  if (hasPreset(member)) tags.push({ label: '含预设配置', type: 'warning' })
+  if (!data) tags.push({ label: t('bundle.members.marketMissing'), type: 'warning' })
+  if (data?.verified) tags.push({ label: t('bundle.members.verified'), type: 'success' })
+  if (data?.insecure) tags.push({ label: t('bundle.members.insecure'), type: 'danger' })
+  if (data?.deprecated || versionMeta(member)?.deprecated) tags.push({ label: t('bundle.members.deprecated'), type: 'danger' })
+  if (data?.manifest?.preview) tags.push({ label: t('bundle.members.preview'), type: 'warning' })
+  if (data?.portable) tags.push({ label: t('bundle.members.portable'), type: 'info' })
+  if (hasPreset(member)) tags.push({ label: t('bundle.members.hasPreset'), type: 'warning' })
   return tags
 }
 
@@ -606,15 +615,16 @@ async function confirmInstall() {
   if (!activeBundle.value || !bundle.value || installing.value) return
   installing.value = true
 
-  installProgressState.title = '正在安装插件包……'
+  installProgressState.title = t('bundle.messages.installing')
   installProgressState.logs = []
   installProgressState.status = 'running'
   installProgressState.visible = true
   installProgressState.selfUpdate = false
+  installProgressState.environmentRestore = false
   resetInstallFallbackState()
   installProgressState.logs.push({
     type: 'stdout',
-    line: '已提交插件包安装请求，正在等待后端处理依赖与配置分组……',
+    line: t('bundle.messages.submitted'),
   })
 
   const request = {
@@ -644,7 +654,7 @@ async function confirmInstall() {
       if (installProgressState.status !== 'running') return
       installProgressState.logs.push({
         type: 'stdout',
-        line: '仍在等待包管理器输出；插件包会同时处理多个成员，弱网环境下可能需要更久。',
+        line: t('bundle.messages.waiting'),
       })
     }, 8000)
     try {
@@ -652,19 +662,19 @@ async function confirmInstall() {
       const result = await Promise.race([task ?? Promise.resolve(undefined), disconnected])
       if (disconnectedBeforeResponse) {
         installProgressState.status = 'error'
-        reportInstallError('Console 连接已断开，插件包安装结果无法确认。请刷新依赖页确认实际状态。')
+        reportInstallError(t('bundle.messages.disconnected'))
         return undefined
       }
       if (result?.code) {
         installProgressState.status = 'error'
-        reportInstallError(`包管理器退出码：${result.code}`)
+        reportInstallError(t('bundle.messages.exitCode', { code: result.code }))
         await prepareInstallFallbackRetry(runInstall, options?.installEndpoint)
         return result.code
       }
       installProgressState.status = 'success'
-      const moved = result?.moved?.length ? `，移动配置 ${result.moved.length} 项` : ''
-      const skipped = result?.skipped?.length ? `，跳过配置 ${result.skipped.length} 项` : ''
-      message.success(`插件包安装完成${moved}${skipped}。`)
+      const moved = result?.moved?.length ? t('bundle.messages.moved', { count: result.moved.length }) : ''
+      const skipped = result?.skipped?.length ? t('bundle.messages.skipped', { count: result.skipped.length }) : ''
+      message.success(t('bundle.messages.completed', { moved, skipped }))
       activeBundle.value = undefined
       return 0
     } finally {
@@ -684,12 +694,12 @@ async function confirmInstall() {
 }
 
 function reportInstallError(detail: string) {
-  const text = detail || '未知错误'
+  const text = detail || t('bundle.messages.unknownError')
   installProgressState.logs.push({
     type: 'stderr',
-    line: `插件包安装失败：${text}`,
+    line: t('bundle.messages.installFailed', { detail: text }),
   })
-  message.error(`插件包安装失败：${text}`)
+  message.error(t('bundle.messages.installFailed', { detail: text }))
 }
 
 function formatInstallError(error: unknown) {
@@ -700,7 +710,7 @@ function formatInstallError(error: unknown) {
     if (typeof value.message === 'string') return value.message
     if (typeof value.error === 'string') return value.error
   }
-  return String(error || '未知错误')
+  return String(error || t('bundle.messages.unknownError'))
 }
 
 </script>

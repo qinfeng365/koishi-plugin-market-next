@@ -4,10 +4,12 @@ import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './
 import { MarketDataStore, MarketDataStorePayload } from './data';
 import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, InstallOptions } from './installer';
 import MarketProvider from './market';
+import type { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
 import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult, PluginBundleRecord } from '../shared/bundle';
 export * from '../shared';
 export { Installer };
 export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail } from './installer';
+export type { EnvironmentChangeStatus, EnvironmentDependencySnapshot, EnvironmentSnapshotChange, EnvironmentSnapshotPreview, EnvironmentSnapshotSource, EnvironmentSnapshotSummary, } from './environment';
 declare module 'koishi' {
     interface Context {
         installer: Installer;
@@ -28,7 +30,9 @@ declare module '@koishijs/console' {
         'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>;
         'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>;
         'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>;
-        'market/install-history-rollback'(id: string, options?: InstallOptions): Promise<number>;
+        'market/environment-snapshots'(): Promise<EnvironmentSnapshotSummary[]>;
+        'market/environment-snapshot-preview'(id: string): Promise<EnvironmentSnapshotPreview | undefined>;
+        'market/environment-snapshot-apply'(id: string, options?: InstallOptions): Promise<number>;
         'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>;
         'market/update-config'(patch: Partial<Config>): Promise<boolean>;
         'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>;

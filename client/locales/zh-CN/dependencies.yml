@@ -1,0 +1,68 @@
+toolbar:
+  blockPreview: 屏蔽预览
+  gridView: 网格视图
+  listView: 列表视图
+  searchPlaceholder: 搜索依赖名称
+  loading: 获取中
+empty: 没有匹配的依赖。
+apply:
+  count: 待应用 {count} 项
+  description: 更改将在确认后写入 package.json 并执行安装流程。
+  discard: 丢弃改动
+  apply: 应用更改
+filters:
+  all: 全部
+  pending: 待应用
+  bundle: 插件包
+  unconfigured: 已下载未配置
+  updatable: 可更新
+  ignored: 已忽略
+  checkDisabled: 不检测
+  invalid: 不支持
+  error: 版本异常
+  workspace: 工作区
+  manual: 手动添加
+groups:
+  pending:
+    label: 待应用
+    description: 这些变更已经暂存，确认后才会真正安装、更新或卸载。
+  bundle:
+    label: 插件包
+    description: 插件包用于安装和管理一组成员插件，本身不会出现在插件配置页。
+  updatable:
+    label: 可更新
+    description: 存在比本地版本更新的 npm 版本。
+  ignored:
+    label: 已忽略更新
+    description: 已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。
+  checkDisabled:
+    label: 不检测更新
+    description: 已加入永久不检测更新名单，不会收到版本提示。
+  unconfigured:
+    label: 已下载未配置
+    description: 依赖已安装到本地，但插件配置页里还没有对应的配置项。
+  invalid:
+    label: 不支持
+    description: 当前依赖版本区间语法暂不支持自动版本管理，需手动处理。
+  error:
+    label: 版本异常
+    description: npm 元数据暂时不可用，可能是网络、超时或镜像未同步。
+  workspace:
+    label: 工作区
+    description: 来自当前工作区的本地依赖，不参与远端版本更新。
+  manual:
+    label: 手动添加
+    description: 已加入待安装列表，但当前尚未安装到本地。
+  installed:
+    label: 已安装
+    description: 已安装且当前没有明确需要处理的依赖。
+card:
+  bundle: 插件包
+  update: 更新
+  configure: 配置
+  ignore: 忽略
+  restore: 恢复
+  remove: 移除依赖
+  current: （当前）
+  undo: 撤销
+  cancelChange: 取消改动

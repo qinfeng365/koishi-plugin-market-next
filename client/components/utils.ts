@@ -4,6 +4,7 @@ import type { RegistryStatus } from 'koishi-plugin-market-next'
 import { compare, satisfies } from 'semver'
 import { reactive, ref, watch } from 'vue'
 import { active } from '../utils'
+import { translate } from '../i18n'
 import {
   getBundleGroupIdent,
   getPluginShortname,
@@ -67,24 +68,25 @@ export function getRegistryStatus(name: string) {
 export function getRegistryStatusText(name: string) {
   const status = getRegistryStatus(name)
   if (!status || status.loading) {
-    const endpoint = status?.endpoint ? `（${formatEndpoint(status.endpoint)}）` : ''
-    const attempts = status?.attempts ? `，已尝试 ${status.attempts} 次` : ''
-    return `正在从 npm registry 获取版本数据${endpoint}${attempts}……`
+    return translate('dependencyCard.registry.loading', {
+      endpoint: status?.endpoint ? ` (${formatEndpoint(status.endpoint)})` : '',
+      attempts: status?.attempts ? `, ${translate('dependencyCard.registry.attempts', { count: status.attempts })}` : '',
+    })
   }
-  const endpoint = status.endpoint ? `（${formatEndpoint(status.endpoint)}）` : ''
+  const endpoint = status.endpoint ? ` (${formatEndpoint(status.endpoint)})` : ''
   switch (status.reason) {
     case 'timeout':
-      return `版本获取失败：npm 元数据请求超时${endpoint}`
+      return translate('dependencyCard.registry.timeout', { endpoint })
     case 'not-found':
-      return `版本获取失败：包不存在或镜像尚未同步${endpoint}`
+      return translate('dependencyCard.registry.notFound', { endpoint })
     case 'network':
-      return `版本获取失败：npm registry 网络连接失败${endpoint}`
+      return translate('dependencyCard.registry.network', { endpoint })
     case 'invalid':
-      return `版本获取失败：npm 元数据格式异常${endpoint}`
+      return translate('dependencyCard.registry.invalid', { endpoint })
     case 'http':
-      return `版本获取失败：npm registry 返回错误${endpoint}`
+      return translate('dependencyCard.registry.http', { endpoint })
     default:
-      return `版本获取失败${endpoint}${status.error ? '：' + status.error : ''}`
+      return translate('dependencyCard.registry.unknown', { endpoint, error: status.error ? `: ${status.error}` : '' })
   }
 }
 
@@ -106,6 +108,7 @@ export async function addManual(name: string) {
 export const showManual = ref(false)
 export const showConfirm = ref(false)
 export const showInstallHistory = ref(false)
+export const showEnvironmentVersions = ref(false)
 export const expandedDependency = ref('')
 export const activeBundle = ref<SearchObject>()
 export type BundleMemberCleanupTarget = {
@@ -238,8 +241,9 @@ export const installProgressState = reactive({
   visible: false,
   status: 'idle', // 'idle' | 'running' | 'success' | 'error'
   logs: [] as LogLine[],
-  title: '正在应用依赖更改',
+  title: '',
   selfUpdate: false,
+  environmentRestore: false,
   fallbackCandidate: undefined as InstallFallbackCandidate | undefined,
   fallbackRunning: false,
   fallbackUsed: false,
@@ -282,19 +286,21 @@ export async function prepareInstallFallbackRetry(run: (options?: InstallOptions
   }) as InstallFallbackCandidate | undefined
   if (!candidate?.endpoint) return
   installProgressState.fallbackCandidate = candidate
-  pushInstallLog(`可使用备用 npm 源 ${candidate.label || formatEndpoint(candidate.endpoint)} 重试一次；不会修改你的配置。`)
+  pushInstallLog(translate('operations.progress.fallbackLog', {
+    endpoint: candidate.label || formatEndpoint(candidate.endpoint),
+  }))
   installProgressState.retryFallback = async () => {
     if (installProgressState.fallbackRunning || installProgressState.fallbackUsed) return
     installProgressState.fallbackRunning = true
     installProgressState.fallbackUsed = true
     installProgressState.fallbackCandidate = undefined
     installProgressState.status = 'running'
-    pushInstallLog(`用户确认使用备用 npm 源重试：${candidate.endpoint}`)
+    pushInstallLog(translate('operations.progress.fallbackConfirmed', { endpoint: candidate.endpoint }))
     try {
       const code = await run({ installEndpoint: candidate.endpoint })
       if (code) {
         installProgressState.status = 'error'
-        pushInstallLog(`备用 npm 源重试失败，包管理器退出码：${code}`, 'stderr')
+        pushInstallLog(translate('operations.progress.fallbackFailed', { code }), 'stderr')
       }
     } finally {
       installProgressState.fallbackRunning = false
@@ -317,10 +323,10 @@ function formatInstallError(error: unknown) {
 function reportInstallRequestError(error: unknown, messages: InstallMessages) {
   const detail = formatInstallError(error)
   const isTimeout = detail === 'timeout'
-  pushInstallLog(`安装请求失败：${detail}`, 'stderr')
+  pushInstallLog(translate('operations.progress.requestFailed', { detail }), 'stderr')
   message.error(isTimeout
-    ? messages.timeoutText ?? '安装超时！'
-    : `${messages.errorText ?? '安装失败！'}${detail ? ` ${detail}` : ''}`)
+    ? messages.timeoutText ?? translate('operations.progress.installTimeout')
+    : `${messages.errorText ?? translate('operations.progress.installError')}${detail ? ` ${detail}` : ''}`)
 }
 
 function isSelfUpdate(override: Dict<string>) {
@@ -330,14 +336,17 @@ function isSelfUpdate(override: Dict<string>) {
 export async function install(override: Dict<string>, callback?: () => Awaitable<void>, forced?: boolean, messages: InstallMessages = {}) {
   const selfUpdate = messages.selfUpdate ?? isSelfUpdate(override)
   resetInstallFallbackState()
-  installProgressState.title = messages.loadingText ?? (selfUpdate ? '正在更新 market-next……' : '正在更新依赖……')
+  installProgressState.title = messages.loadingText ?? (selfUpdate
+    ? translate('operations.progress.selfUpdateTitle')
+    : translate('operations.progress.dependencyTitle'))
   installProgressState.logs = []
   installProgressState.status = 'running'
   installProgressState.selfUpdate = selfUpdate
+  installProgressState.environmentRestore = false
   installProgressState.visible = true
-  pushInstallLog('已提交依赖变更，正在等待后端启动包管理器……')
+  pushInstallLog(translate('operations.progress.submitted'))
   if (selfUpdate) {
-    pushInstallLog('正在更新当前插件。安装完成后 Console 可能会短暂断开并自动重载。')
+    pushInstallLog(translate('operations.progress.selfSubmitted'))
   }
 
   const runInstall = async (options?: InstallOptions) => {
@@ -355,21 +364,21 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
     const waitTimer = setTimeout(() => {
       if (installProgressState.status !== 'running') return
       pushInstallLog(messages.waitingText ?? (selfUpdate
-        ? '仍在等待包管理器输出；如果 Console 随后断开连接，这是 market-next 自更新重载的正常过程。'
-        : '仍在等待包管理器输出；大型依赖变更或弱网环境下可能需要更久。'))
+        ? translate('operations.progress.waitingSelf')
+        : translate('operations.progress.waitingDependencies')))
     }, 8000)
     try {
       const task = send('market/install', override, forced, options ?? {}) ?? Promise.resolve(1)
       const code = await Promise.race([task, disconnected])
       if (disconnectedBeforeResponse && !selfUpdate && !messages.allowDisconnectSuccess) {
         installProgressState.status = 'error'
-        pushInstallLog('Console 连接已断开，安装结果无法确认。请刷新依赖页确认实际状态。', 'stderr')
-        message.warning('连接已断开，安装结果无法确认，请刷新后检查。')
+        pushInstallLog(translate('operations.progress.disconnected'), 'stderr')
+        message.warning(translate('operations.progress.disconnectedShort'))
         return undefined
       }
       if (code) {
         installProgressState.status = 'error'
-        message.error(messages.errorText ?? '安装失败！')
+        message.error(messages.errorText ?? translate('operations.progress.installError'))
         if (!disconnectedBeforeResponse) await prepareInstallFallbackRetry(runInstall, options?.installEndpoint)
         return code
       }
@@ -387,10 +396,12 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
       }
       if (disconnectedBeforeResponse && !socket.value) {
         message.success(messages.successText ?? (selfUpdate
-          ? 'market-next 更新已提交，Console 正在重载。'
-          : '依赖变更已提交，控制台正在重载。'))
+          ? translate('operations.progress.selfSubmittedSuccess')
+          : translate('operations.progress.dependenciesSubmittedSuccess')))
       } else {
-        message.success(messages.successText ?? (selfUpdate ? 'market-next 更新完成，Console 即将重载。' : '安装成功！'))
+        message.success(messages.successText ?? (selfUpdate
+          ? translate('operations.progress.selfSuccessToast')
+          : translate('operations.progress.successToast')))
       }
       return 0
     } finally {
@@ -409,17 +420,18 @@ export async function install(override: Dict<string>, callback?: () => Awaitable
   }
 }
 
-export async function rollbackInstallOperation(id: string, selfUpdate = false) {
+export async function applyEnvironmentSnapshot(id: string, selfUpdate = false) {
   resetInstallFallbackState()
-  showInstallHistory.value = false
-  installProgressState.title = selfUpdate ? '正在回退 market-next……' : '正在回退依赖版本……'
+  showEnvironmentVersions.value = false
+  installProgressState.title = translate('operations.progress.environmentTitle')
   installProgressState.logs = []
   installProgressState.status = 'running'
-  installProgressState.selfUpdate = selfUpdate
+  installProgressState.selfUpdate = false
+  installProgressState.environmentRestore = true
   installProgressState.visible = true
-  pushInstallLog('正在校验当前依赖状态并准备回退……')
+  pushInstallLog(translate('operations.progress.environmentPreparing'))
 
-  const runRollback = async (options?: InstallOptions) => {
+  const runRestore = async (options?: InstallOptions) => {
     let resolveDisconnected: (value: number) => void
     const disconnected = new Promise<number>((resolve) => {
       resolveDisconnected = resolve
@@ -433,28 +445,28 @@ export async function rollbackInstallOperation(id: string, selfUpdate = false) {
     })
     const waitTimer = setTimeout(() => {
       if (installProgressState.status === 'running') {
-        pushInstallLog('仍在等待包管理器输出；回退较大的依赖可能需要更久。')
+        pushInstallLog(translate('operations.progress.environmentWaiting'))
       }
     }, 8000)
     try {
-      const task = send('market/install-history-rollback', id, options ?? {}) ?? Promise.resolve(1)
+      const task = send('market/environment-snapshot-apply', id, options ?? {}) ?? Promise.resolve(1)
       const code = await Promise.race([task, disconnected])
       if (disconnectedBeforeResponse && !selfUpdate) {
         installProgressState.status = 'error'
-        pushInstallLog('Console 连接已断开，回退结果无法确认。请刷新依赖页和最近操作后确认。', 'stderr')
-        message.warning('连接已断开，回退结果无法确认。')
+        pushInstallLog(translate('operations.progress.environmentDisconnected'), 'stderr')
+        message.warning(translate('operations.progress.environmentDisconnectedShort'))
         return
       }
       if (code) {
         installProgressState.status = 'error'
-        message.error('依赖回退失败。')
-        if (!disconnectedBeforeResponse) await prepareInstallFallbackRetry(runRollback, options?.installEndpoint)
+        message.error(translate('operations.progress.environmentError'))
+        if (!disconnectedBeforeResponse) await prepareInstallFallbackRetry(runRestore, options?.installEndpoint)
         return code
       }
       installProgressState.status = 'success'
       message.success(disconnectedBeforeResponse
-        ? '回退已提交，Console 正在重载。'
-        : '依赖版本回退成功。')
+        ? translate('operations.progress.environmentSubmitted')
+        : translate('operations.progress.environmentSuccess'))
       return 0
     } finally {
       clearTimeout(waitTimer)
@@ -463,13 +475,13 @@ export async function rollbackInstallOperation(id: string, selfUpdate = false) {
   }
 
   try {
-    await runRollback()
+    await runRestore()
   } catch (error) {
     console.error(error)
     installProgressState.status = 'error'
     reportInstallRequestError(error, {
-      errorText: '依赖回退失败！',
-      timeoutText: '依赖回退请求超时！',
+      errorText: translate('operations.progress.environmentErrorTitle'),
+      timeoutText: translate('operations.progress.environmentTimeout'),
     })
   }
 }

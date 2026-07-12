@@ -1,0 +1,125 @@
+status:
+  pendingRemove: 待卸载
+  pendingApply: 待应用
+  pendingInstall: 待安装
+  workspace: 工作区
+  unsupported: 不支持
+  bundle: 插件包
+  unconfigured: 未配置
+  versionError: 版本异常
+  manual: 手动添加
+  checkDisabled: 不检测
+  ignored: 已忽略
+  updatable: 可更新
+  installed: 已安装
+current:
+  notInstalled: 未安装
+  workspace: 工作区
+  installError: 安装异常
+target:
+  remove: 移除依赖
+  keepWorkspace: 保持工作区
+  loading: 获取中
+  waitingData: 等待版本数据
+  waitingInstall: 等待安装
+  waiting: 等待
+label:
+  pending: 待应用
+  latest: 最新
+  ignored: 已忽略
+  target: 目标
+detail:
+  pendingRemove: 此依赖将在应用更改后从 package.json 中移除。
+  pendingApply: 此依赖已有暂存的版本变更，应用后生效。
+  pendingInstall: 此依赖已加入待安装列表，应用后会安装到本地。
+  workspace: 本地工作区依赖，不参与 npm registry 版本更新。
+  unsupported: 版本区间语法暂不支持自动版本管理，请手动修改 package.json。
+  bundle: 插件包本身不需要配置；成员配置由插件包分组管理。
+  unconfigured: 本地已下载，但插件配置页还没有对应配置项。
+  checkDisabled: 已加入不检测更新名单；可点击“恢复提示”重新参与版本检测。
+  ignored: 已忽略当前更新。
+  foundUpdate: 发现新版本 {version}。
+  workspaceShort: 工作区依赖
+  unsupportedShort: 暂不支持
+  fetching: 正在获取版本数据
+  noData: 暂无版本数据
+config:
+  notNeeded: 不需要配置
+  notPlugin: 非插件
+  unknown: 未知
+  pending: 待安装
+  notLoaded: 未加载
+  unconfigured: 未配置
+  configured: 已配置
+source:
+  bundle: 插件包：{name}
+  bundleSelf: 插件包自身
+  workspace: 工作区
+  pending: 待安装
+  local: 本地
+  manual: 手动
+  packageJson: package.json
+actions:
+  update: 更新
+  configure: 配置
+  ignore: 忽略
+  restore: 恢复
+  remove: 移除依赖
+  current: （当前）
+  undo: 撤销
+  updateLatest: 更新到最新
+  restorePrompt: 恢复提示
+  addConfig: 添加配置
+  cancelChange: 取消改动
+  manage: 管理
+  collapse: 收起
+  versions: 版本
+  edit: 修改
+  operate: 操作
+  uninstall: 卸载
+  uninstallBundle: 卸载插件包
+ignore:
+  title: 忽略更新提示
+  intro: 将忽略 {name}
+  versionIntro: 的 {version} 更新提示。
+  permanent: 永久不检测这个插件的更新
+  duration: 忽略多久
+  forever: 不限时
+  day: '{count} 天'
+  custom: 自定义
+  customDays: 自定义天数
+  versionCount: 连续忽略版本数
+  permanentNote: 永久不检测会记录在依赖管理的忽略规则中，可在“不检测更新”分组中恢复。
+  durationNote: 不限时表示不按时间过期；达到连续忽略版本数后，后续新版本会重新提示。
+  cancel: 取消
+  confirm: 确认忽略
+  addedToDisabled: 已加入不检测更新名单。
+  saved: 已忽略更新提示。
+identity:
+  adapter: 适配器
+  database: 数据库
+  webui: 控制台
+  core: 核心
+  general: 通用
+  extension: 扩展
+  manage: 管理
+  preset: 预设
+  image: 图片
+  media: 资讯
+  tool: 工具
+  life: 生活
+  ai: 人工智能
+  meme: 趣味
+  game: 游戏
+  gametool: 游戏辅助
+  bundle: 插件包
+  other: 插件
+registry:
+  loading: 正在从 npm registry 获取版本数据{endpoint}{attempts}……
+  attempts: 已尝试 {count} 次
+  timeout: 版本获取失败：npm 元数据请求超时{endpoint}
+  notFound: 版本获取失败：包不存在或镜像尚未同步{endpoint}
+  network: 版本获取失败：npm registry 网络连接失败{endpoint}
+  invalid: 版本获取失败：npm 元数据格式异常{endpoint}
+  http: 版本获取失败：npm registry 返回错误{endpoint}
+  unknown: 版本获取失败{endpoint}{error}

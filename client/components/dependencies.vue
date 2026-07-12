@@ -21,12 +21,12 @@
           @click="togglePrereleaseFilter"
         >
           <market-icon name="tag"></market-icon>
-          <span>屏蔽预览</span>
+          <span>{{ t('dependencies.toolbar.blockPreview') }}</span>
         </button>
         <button
           class="deps-filter deps-layout-toggle"
           @click="toggleLayout"
-          :title="depsLayout === 'grid' ? '切换到列表视图' : '切换到网格视图'"
+          :title="depsLayout === 'grid' ? t('dependencies.toolbar.listView') : t('dependencies.toolbar.gridView')"
         >
           <svg v-if="depsLayout === 'grid'" viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor">
             <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/>
@@ -34,18 +34,22 @@
           <svg v-else viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor">
             <path d="M4 4h4v4H4V4zm6 0h4v4h-4V4zm6 0h4v4h-4V4zM4 10h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4zM4 16h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z"/>
           </svg>
-          <span>{{ depsLayout === 'grid' ? '列表视图' : '网格视图' }}</span>
+          <span>{{ depsLayout === 'grid' ? t('dependencies.toolbar.listView') : t('dependencies.toolbar.gridView') }}</span>
+        </button>
+        <button class="deps-filter deps-version-manager" @click="showEnvironmentVersions = true">
+          <market-icon name="file-archive"></market-icon>
+          <span>{{ t('common.actions.versionManagement') }}</span>
         </button>
         <div class="deps-search">
-          <el-input ref="searchInput" v-model="keyword" clearable placeholder="搜索依赖名称"></el-input>
+          <el-input ref="searchInput" v-model="keyword" clearable :placeholder="t('dependencies.toolbar.searchPlaceholder')"></el-input>
         </div>
         <div class="deps-summary">
-          <span v-if="summary.pending" class="primary">待 {{ summary.pending }}</span>
-          <span v-if="summary.updatable" class="success">更 {{ summary.updatable }}</span>
-          <span v-if="summary.unconfigured" class="warning">配 {{ summary.unconfigured }}</span>
-          <span v-if="summary.errors" class="danger">误 {{ summary.errors }}</span>
-          <span v-if="summary.invalid" class="warning">无效 {{ summary.invalid }}</span>
-          <span v-if="refreshing" class="loading">获取中</span>
+          <span v-if="summary.pending" class="primary">{{ t('dependencies.filters.pending') }} {{ summary.pending }}</span>
+          <span v-if="summary.updatable" class="success">{{ t('dependencies.filters.updatable') }} {{ summary.updatable }}</span>
+          <span v-if="summary.unconfigured" class="warning">{{ t('dependencies.filters.unconfigured') }} {{ summary.unconfigured }}</span>
+          <span v-if="summary.errors" class="danger">{{ t('dependencies.filters.error') }} {{ summary.errors }}</span>
+          <span v-if="summary.invalid" class="warning">{{ t('dependencies.filters.invalid') }} {{ summary.invalid }}</span>
+          <span v-if="refreshing" class="loading">{{ t('dependencies.toolbar.loading') }}</span>
         </div>
       </div>
     </div>
@@ -83,10 +87,10 @@
               <template v-if="depsLayout === 'list'">
                 <div class="deps-list-header">
                   <span class="col-icon"></span>
-                  <span class="col-name">名称</span>
-                  <span class="col-version">已安装</span>
-                  <span class="col-latest">最新</span>
-                  <span class="col-actions">操作</span>
+                  <span class="col-name">{{ t('common.labels.name') }}</span>
+                  <span class="col-version">{{ t('common.labels.installed') }}</span>
+                  <span class="col-latest">{{ t('common.labels.latest') }}</span>
+                  <span class="col-actions">{{ t('common.labels.operation') }}</span>
                 </div>
               </template>
               <package-view
@@ -99,19 +103,19 @@
             </div>
           </section>
         </template>
-        <k-empty v-else>没有匹配的依赖。</k-empty>
+        <k-empty v-else>{{ t('dependencies.empty') }}</k-empty>
       </div>
     </el-scrollbar>
   </k-layout>
 
   <div v-if="summary.pending" :class="['deps-apply-bar', modeClass]">
     <div>
-      <strong>待应用 {{ summary.pending }} 项</strong>
-      <span>更改将在确认后写入 package.json 并执行安装流程。</span>
+      <strong>{{ t('dependencies.apply.count', { count: summary.pending }) }}</strong>
+      <span>{{ t('dependencies.apply.description') }}</span>
     </div>
     <div class="deps-apply-actions">
-      <el-button @click="clearChanges">丢弃改动</el-button>
-      <el-button type="primary" @click="showConfirm = true">应用更改</el-button>
+      <el-button @click="clearChanges">{{ t('dependencies.apply.discard') }}</el-button>
+      <el-button type="primary" @click="showConfirm = true">{{ t('dependencies.apply.apply') }}</el-button>
     </div>
   </div>
 
@@ -122,8 +126,9 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { message, router, store, useConfig, useContext } from '@koishijs/client'
+import { useMarketNextI18n } from '../i18n'
 import { getBundleRecords, getCollapsedGroups, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
-import { addManual, createLocalBundleRecord, getRegistryStatus, showConfirm } from './utils'
+import { addManual, createLocalBundleRecord, getRegistryStatus, showConfirm, showEnvironmentVersions } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
 import { isBundlePackageName } from '../../src/shared/bundle'
@@ -150,6 +155,7 @@ interface DependencyGroup {
 
 const config = useConfig()
 const ctx = useContext()
+const { t } = useMarketNextI18n()
 const keyword = ref('')
 const filter = ref<FilterKey>('all')
 const searchInput = ref<{ focus?: () => void }>()
@@ -274,32 +280,32 @@ const refreshing = computed(() => {
 })
 
 const filterOptions = computed(() => [
-  { value: 'all' as const, label: '全部', icon: 'solid:all', count: summary.value.total },
-  { value: 'pending' as const, label: '待应用', icon: 'tag', count: summary.value.pending },
-  { value: 'bundle' as const, label: '插件包', icon: 'file-archive', count: summary.value.bundle },
-  { value: 'unconfigured' as const, label: '未配置', icon: 'preview', count: summary.value.unconfigured },
-  { value: 'updatable' as const, label: '可更新', icon: 'asc', count: summary.value.updatable },
-  { value: 'ignored' as const, label: '已忽略', icon: 'installed', count: summary.value.ignored },
-  { value: 'check-disabled' as const, label: '不检测', icon: 'installed', count: summary.value.checkDisabled },
-  { value: 'invalid' as const, label: '不支持', icon: 'insecure', count: summary.value.invalid },
-  { value: 'error' as const, label: '版本异常', icon: 'insecure', count: summary.value.errors },
-  { value: 'workspace' as const, label: '工作区', icon: 'file-archive', count: summary.value.workspace },
-  { value: 'manual' as const, label: '手动添加', icon: 'search', count: summary.value.manual },
+  { value: 'all' as const, label: t('dependencies.filters.all'), icon: 'solid:all', count: summary.value.total },
+  { value: 'pending' as const, label: t('dependencies.filters.pending'), icon: 'tag', count: summary.value.pending },
+  { value: 'bundle' as const, label: t('dependencies.filters.bundle'), icon: 'file-archive', count: summary.value.bundle },
+  { value: 'unconfigured' as const, label: t('dependencies.filters.unconfigured'), icon: 'preview', count: summary.value.unconfigured },
+  { value: 'updatable' as const, label: t('dependencies.filters.updatable'), icon: 'asc', count: summary.value.updatable },
+  { value: 'ignored' as const, label: t('dependencies.filters.ignored'), icon: 'installed', count: summary.value.ignored },
+  { value: 'check-disabled' as const, label: t('dependencies.filters.checkDisabled'), icon: 'installed', count: summary.value.checkDisabled },
+  { value: 'invalid' as const, label: t('dependencies.filters.invalid'), icon: 'insecure', count: summary.value.invalid },
+  { value: 'error' as const, label: t('dependencies.filters.error'), icon: 'insecure', count: summary.value.errors },
+  { value: 'workspace' as const, label: t('dependencies.filters.workspace'), icon: 'file-archive', count: summary.value.workspace },
+  { value: 'manual' as const, label: t('dependencies.filters.manual'), icon: 'search', count: summary.value.manual },
 ])
 
-const groupMeta: Record<ItemKind, Omit<DependencyGroup, 'items' | 'collapsed' | 'collapsible'>> = {
-  pending: { key: 'pending', label: '待应用', icon: 'tag', description: '这些变更已经暂存，确认后才会真正安装、更新或卸载。' },
-  bundle: { key: 'bundle', label: '插件包', icon: 'file-archive', description: '插件包用于安装和管理一组成员插件，本身不会出现在插件配置页。' },
-  updatable: { key: 'updatable', label: '可更新', icon: 'asc', description: '存在比本地版本更新的 npm 版本。' },
-  ignored: { key: 'ignored', label: '已忽略更新', icon: 'installed', description: '已按规则忽略当前更新；达到忽略版本数或到期后会重新提示。' },
-  'check-disabled': { key: 'check-disabled', label: '不检测更新', icon: 'installed', description: '已加入永久不检测更新名单，不会收到版本提示。' },
-  unconfigured: { key: 'unconfigured', label: '已下载未配置', icon: 'preview', description: '依赖已安装到本地，但插件配置页里还没有对应的配置项。' },
-  invalid: { key: 'invalid', label: '不支持', icon: 'insecure', description: '当前依赖版本区间语法暂不支持自动版本管理，需手动处理。' },
-  error: { key: 'error', label: '版本异常', icon: 'insecure', description: 'npm 元数据暂时不可用，可能是网络、超时或镜像未同步。' },
-  workspace: { key: 'workspace', label: '工作区', icon: 'file-archive', description: '来自当前工作区的本地依赖，不参与远端版本更新。' },
-  manual: { key: 'manual', label: '手动添加', icon: 'search', description: '已加入待安装列表，但当前尚未安装到本地。' },
-  installed: { key: 'installed', label: '已安装', icon: 'installed', description: '已安装且当前没有明确需要处理的依赖。' },
-}
+const groupMeta = computed<Record<ItemKind, Omit<DependencyGroup, 'items' | 'collapsed' | 'collapsible'>>>(() => ({
+  pending: { key: 'pending', label: t('dependencies.groups.pending.label'), icon: 'tag', description: t('dependencies.groups.pending.description') },
+  bundle: { key: 'bundle', label: t('dependencies.groups.bundle.label'), icon: 'file-archive', description: t('dependencies.groups.bundle.description') },
+  updatable: { key: 'updatable', label: t('dependencies.groups.updatable.label'), icon: 'asc', description: t('dependencies.groups.updatable.description') },
+  ignored: { key: 'ignored', label: t('dependencies.groups.ignored.label'), icon: 'installed', description: t('dependencies.groups.ignored.description') },
+  'check-disabled': { key: 'check-disabled', label: t('dependencies.groups.checkDisabled.label'), icon: 'installed', description: t('dependencies.groups.checkDisabled.description') },
+  unconfigured: { key: 'unconfigured', label: t('dependencies.groups.unconfigured.label'), icon: 'preview', description: t('dependencies.groups.unconfigured.description') },
+  invalid: { key: 'invalid', label: t('dependencies.groups.invalid.label'), icon: 'insecure', description: t('dependencies.groups.invalid.description') },
+  error: { key: 'error', label: t('dependencies.groups.error.label'), icon: 'insecure', description: t('dependencies.groups.error.description') },
+  workspace: { key: 'workspace', label: t('dependencies.groups.workspace.label'), icon: 'file-archive', description: t('dependencies.groups.workspace.description') },
+  manual: { key: 'manual', label: t('dependencies.groups.manual.label'), icon: 'search', description: t('dependencies.groups.manual.description') },
+  installed: { key: 'installed', label: t('dependencies.groups.installed.label'), icon: 'installed', description: t('dependencies.groups.installed.description') },
+}))
 
 const groupOrder: ItemKind[] = ['pending', 'bundle', 'unconfigured', 'updatable', 'ignored', 'check-disabled', 'invalid', 'error', 'workspace', 'manual', 'installed']
 
@@ -345,7 +351,7 @@ const visibleGroups = computed<DependencyGroup[]>(() => {
   }
   return groupOrder
     .map(key => ({
-      ...groupMeta[key],
+       ...groupMeta.value[key],
       items: buckets[key],
       collapsed: isGroupCollapsed(key),
       collapsible: collapseEnabled.value,
@@ -366,7 +372,7 @@ async function togglePrereleaseFilter() {
   const saved = await patchMarketNextConfig({ updateIgnorePrerelease: policy.updateIgnorePrerelease })
   if (!saved) {
     policy.updateIgnorePrerelease = previous
-    message.error('保存预发布过滤设置失败。')
+    message.error(t('common.messages.saveFailed'))
   }
 }
 
@@ -427,7 +433,8 @@ ctx.action('dependencies.upgrade', {
   min-width: 0;
 }
 
-.deps-prerelease-toggle {
+.deps-prerelease-toggle,
+.deps-version-manager {
   flex: 0 0 auto;
   height: 2rem;
   display: inline-flex;
@@ -816,6 +823,7 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-prerelease-toggle,
+  .deps-version-manager,
   .deps-layout-toggle,
   .deps-summary span {
     border-color: color-mix(in srgb, var(--k-color-border) 64%, transparent);
@@ -827,6 +835,7 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-prerelease-toggle:hover,
+  .deps-version-manager:hover,
   .deps-layout-toggle:hover {
     border-color: color-mix(in srgb, var(--k-color-primary) 40%, var(--k-color-border));
     background: var(--deps-polished-glass-strong);
@@ -1103,10 +1112,16 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-prerelease-toggle,
+  .deps-version-manager,
   .deps-layout-toggle {
     flex: 1 1 auto;
     justify-content: center;
     min-width: 0;
+  }
+
+  .deps-version-manager {
+    flex: 1 1 100%;
+    order: 3;
   }
 
   .deps-search {

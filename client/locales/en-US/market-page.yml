@@ -1,0 +1,93 @@
+loading:
+  title: Loading plugin market…
+  slow: The market is still waiting for a network response. The source may be slow, the proxy unavailable, or this may be the first cold start without a local cache.
+  timeout: 'Timeout: {value}'
+  autoRoute: Automatic fallback routing is enabled
+  openSettings: Open market settings
+  registry: 'Registry: {value}'
+  timeoutLabel: 'Timeout: {value}'
+  openMarketSettings: Open market settings
+cache:
+  stale: Market refresh failed. The last usable data is still shown.
+  cached: Showing locally cached market data.
+  refreshing: Refreshing the latest data in the background…
+  registry: 'Registry: {value}'
+  unknownRegistry: Unknown
+  reason: 'Reason: {value}'
+  cachedAt: 'Cached: {value}'
+  validatedAt: 'Validated: {value}'
+error:
+  title: 'The plugin market could not be reached. Possible causes:'
+  network: The network is unavailable. Check your network connection and proxy settings.
+  unsupportedRegistry: This registry does not support search. Consider switching to another source.
+  openSettings: Open settings to change the registry
+  reason: 'Reason: {value}'
+  registry: 'Registry: {value}'
+  openRegistrySettings: Open settings to change the registry
+  networkHint: The network is unavailable. Check your network connection and proxy settings.
+  searchHint: This registry does not support search. Consider switching to another source.
+layout:
+  grid: Switch to grid view
+  list: Switch to list view
+registry:
+  label: 'Registry: {value}'
+  unknown: Unknown source
+  reason: 'Reason: {value}'
+results:
+  filtered: 'Found {filtered} / {total} plugins.'
+  all: 'Found {total} plugins.'
+list:
+  loadMore: Load more
+  complete: 'All {count} plugins are shown'
+  empty: No matching plugins found.
+debug:
+  performance: 'Debug performance: {source} / {endpoint}'
+  objectCount: Objects
+  decodedSize: Decoded size
+  wireSize: Wire size
+  encoding: Encoding
+  compressionRatio: Compression ratio
+  candidates: Candidates
+  preferredEndpoint: Preferred source
+  fallbackReason: Fallback reason
+  hash: Hash
+  etag: ETag
+  lastModified: Last-Modified
+  cacheTime: Cached
+  validationTime: Validated
+  frontendMatched: Frontend matched
+  loadedRendered: Loaded / rendered
+  initial: Initial
+  background: Background
+  sourceNetwork: Network
+  sourceDiskCache: Disk cache
+  sourceHttp304: HTTP 304
+  sourceHashCache: Hash cache
+  sourceLegacy: Legacy index
+  unknown: Unknown
+  request: Request
+  parse: JSON
+  apply: Index
+  total: Total
+  cacheRead: Cache read
+  cacheParse: Cache JSON
+  payloadData: Mapping
+  payload: Payload
+  frontendSort: Frontend sort
+  frontendFilter: Frontend filter
+  frontendVirtual: Virtual list
+  primaryFailed: Primary source failed
+  primarySlow: Primary source was slow
+  rescue: Cooling-source rescue
+  uncompressed: Uncompressed
+actions:
+  configure: Configure
+  waitingRemove: Waiting to remove
+  waitingUpdate: Waiting to update
+  edit: Edit
+  waitingInstall: Waiting to install
+  add: Add
+  config: Configure
+  addPlugin: Add
+progress:
+  loading: Loading plugin market

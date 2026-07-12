@@ -1,0 +1,52 @@
+links:
+  homepage: Plugin homepage
+  currentVersion: 'Current version: {version}'
+  repository: Repository
+  issues: Report an issue
+actions:
+  cancelUninstall: Cancel uninstall
+  uninstallBundle: Uninstall plugin bundle
+  uninstallPlugin: Uninstall plugin
+  goDependencies: Open dependency management
+  add: Add
+  onlyUninstall: Uninstall plugin only
+  uninstallAndRemoveConfig: Uninstall and remove config
+  cancel: Cancel
+  removeConfig: Remove config
+  keepConfig: Keep config
+  removeGroup: Delete group
+  removeConfigTitle: Confirm config deletion
+  removeGroupTitle: Confirm group deletion
+messages:
+  outdatedPrefix: 'This plugin is not at the latest version. '
+  outdatedSuffix: .
+  deprecated: 'This version is deprecated. Migrate soon: {reason}'
+  externalPrefix: 'This plugin is not listed as a dependency. '
+  externalSuffix: .
+  configQuestion: This plugin has configuration. Remove it too?
+  stagedUninstall: Uninstall staged. It will take effect after applying changes.
+  bundleRecordFailed: Failed to save plugin bundle ownership. Refresh and check again.
+  bundleRecordFailedShort: Could not read the plugin bundle manifest; only the bundle itself will be uninstalled.
+  cancelUninstall: Uninstall canceled.
+  configRemoveFailed: Failed to remove configuration. Check the logs.
+  removeGroupConfirm: 'Delete group {name}? This cannot be undone!'
+  removeConfigConfirm: 'Delete the configuration for plugin {name}? This cannot be undone!'
+dependency:
+  requiredDependency: Required dependency
+  optionalDependency: Optional dependency
+  requiredService: Required service
+  optionalService: Optional service
+  loaded: loaded
+  unavailable: not loaded
+  serviceHint: 'not loaded; enable one of the following plugins to provide this service'
+  clickLoaded: (loaded)
+  clickConfigure: (click to configure)
+  clickAdd: (click to add)
+missing:
+  notInstalled: 'This plugin is not installed. '
+  quickInstall: Click to install it
+  goMarket: Open the plugin market
+menu:
+  uninstallBundle: Uninstall plugin bundle
+  removeGroup: Delete group
+  removeConfig: Delete config

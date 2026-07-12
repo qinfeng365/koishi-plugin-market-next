@@ -17,6 +17,10 @@ import Installer, {
   loadManifest,
 } from './installer'
 import MarketProvider from './market'
+import type {
+  EnvironmentSnapshotPreview,
+  EnvironmentSnapshotSummary,
+} from './environment'
 import { applyChatLunaTool } from './chatluna'
 import {
   BUNDLE_KEYWORD,
@@ -39,6 +43,14 @@ export * from '../shared'
 
 export { Installer }
 export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail } from './installer'
+export type {
+  EnvironmentChangeStatus,
+  EnvironmentDependencySnapshot,
+  EnvironmentSnapshotChange,
+  EnvironmentSnapshotPreview,
+  EnvironmentSnapshotSource,
+  EnvironmentSnapshotSummary,
+} from './environment'
 
 const SELF_PACKAGE = 'koishi-plugin-market-next'
 
@@ -64,7 +76,9 @@ declare module '@koishijs/console' {
     'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>
     'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>
     'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>
-    'market/install-history-rollback'(id: string, options?: InstallOptions): Promise<number>
+    'market/environment-snapshots'(): Promise<EnvironmentSnapshotSummary[]>
+    'market/environment-snapshot-preview'(id: string): Promise<EnvironmentSnapshotPreview | undefined>
+    'market/environment-snapshot-apply'(id: string, options?: InstallOptions): Promise<number>
     'market/remove-bundle-configs'(request: BundleConfigRemoveRequest): Promise<BundleConfigRemoveResult>
     'market/update-config'(patch: Partial<Config>): Promise<boolean>
     'market/update-data'(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>
@@ -641,6 +655,7 @@ export const Config: Schema<Config> = Schema.object({
   marketSilentRules: MarketSilentRules,
 }).i18n({
   'zh-CN': require('./locales/schema.zh-CN'),
+  'en-US': require('./locales/schema.en-US'),
 })
 
 function hasPluginConfig(plugins: any, shortname: string): boolean {
@@ -1255,6 +1270,7 @@ export function apply(ctx: Context, config: Config = {}) {
 
   ctx.inject(['installer'], (ctx) => {
     ctx.i18n.define('zh-CN', require('./locales/message.zh-CN'))
+    ctx.i18n.define('en-US', require('./locales/message.en-US'))
 
     ctx.command('plugin.install <name>', { authority: 4 })
       .alias('.i')
@@ -1406,20 +1422,20 @@ export function apply(ctx: Context, config: Config = {}) {
       return ctx.installer.getInstallLogDetail(id)
     }, { authority: 4 })
 
-    ctx.console.addListener('market/install-history-rollback', async (id, options) => {
-      const record = await ctx.installer.getInstallLogDetail(id)
-      const installNames = (record?.changes ?? [])
-        .map(change => change.name)
-        .filter(name => name !== SELF_PACKAGE)
-      const code = await ctx.installer.rollbackInstallHistory(id, installNames.length
-        ? () => ensurePluginConfigs(ctx, installNames)
-        : undefined, options)
-      if (!code) await ensurePluginConfigs(ctx, installNames)
+    ctx.console.addListener('market/environment-snapshots', async () => {
+      return ctx.installer.getEnvironmentSnapshots()
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/environment-snapshot-preview', async (id) => {
+      return ctx.installer.getEnvironmentSnapshotPreview(id)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/environment-snapshot-apply', async (id, options) => {
+      const code = await ctx.installer.applyEnvironmentSnapshot(id, options)
       await Promise.all([
         ctx.get('console')?.refresh('dependencies'),
         ctx.get('console')?.refresh('registry'),
         ctx.get('console')?.refresh('packages'),
-        ctx.get('console')?.refresh('config'),
       ])
       return code
     }, { authority: 4 })

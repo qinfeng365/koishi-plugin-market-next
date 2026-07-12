@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Next-generation Koishi plugin market and dependency management center",
-  "version": "3.6.1-alpha.4",
+  "version": "3.6.1",
   "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
   "repository": {
     "type": "git",
@@ -18,7 +18,8 @@
     "build": "tsc -p tsconfig.json && node build.mjs",
     "build:dts": "tsc -p tsconfig.json",
     "build:js": "node build.mjs",
-    "check:package": "node scripts/check-package.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "check:package": "node scripts/check-package.mjs && npm run check:i18n",
     "deploy:local": "powershell -ExecutionPolicy Bypass -File scripts/deploy-local-koishi.ps1"
   },
   "exports": {

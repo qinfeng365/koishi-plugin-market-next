@@ -1,0 +1,71 @@
+pages:
+  market: 插件市场
+  dependencies: 依赖管理
+welcome:
+  marketTitle: 浏览插件
+  marketDescription: 浏览插件市场中的插件，并根据自己的需要安装和配置。
+actions:
+  apply: 应用更改
+  refresh: 刷新
+  upgradeAll: 全部更新
+  manual: 手动添加
+  history: 最近操作
+  versionManagement: 版本管理
+  cancel: 取消
+  confirm: 确定
+  close: 关闭
+  remove: 移除
+  uninstall: 卸载
+  configure: 配置
+  update: 更新
+  install: 安装
+  retry: 重试
+messages:
+  refreshMarketSubmitted: 插件市场刷新请求已提交。
+  refreshMarketSuccess: 插件市场刷新成功。
+  refreshMarketFailed: 插件市场刷新失败，已保留可用数据。
+  refreshDependenciesStarted: 依赖版本刷新已开始。
+  refreshFailed: 刷新失败，请检查网络或日志。
+  disconnected: 连接已断开，安装结果无法确认，请刷新后检查。
+  saved: 保存成功。
+  saveFailed: 保存失败，请检查日志。
+  unknownError: 未知错误
+  timeUnknown: 时间未知
+  metadataTimeout: npm 元数据请求长时间未完成，请刷新依赖版本后重试。
+ignore:
+  version: 已忽略 {version}
+  count: 连续 {count} 个版本
+  until: 到 {time}
+  separator: ，
+format:
+  listSeparator: 、
+status:
+  loading: 获取中
+  waiting: 等待
+  ready: 准备就绪
+  success: 成功
+  failed: 失败
+  unknown: 状态未知
+labels:
+  current: 当前
+  target: 目标
+  latest: 最新
+  version: 版本
+  range: 范围
+  type: 类型
+  config: 配置
+  source: 来源
+  versionSource: 版本源
+  name: 名称
+  installed: 已安装
+  operation: 操作
+  unknown: 未知
+  notInstalled: 未安装
+  workspace: 工作区
+  packageBundle: 插件包
+  package: 插件
+  dependency: 依赖
+time:
+  seconds: '{count} 秒'
+  minutes: '{count} 分'
+  minutesSeconds: '{minutes} 分 {seconds} 秒'

@@ -1,17 +1,16 @@
 import { SearchObject, User } from '@koishijs/registry'
 import { InjectionKey, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { Dict } from 'cosmokit'
-import zhCN from './locales/zh-CN.yml'
 import * as md5 from 'spark-md5'
 import { send } from '@koishijs/client'
 import { hasBundleKeyword, isBundlePackageName } from '../../src/shared/bundle'
+import { useMarketNextI18n } from '../i18n'
 
-export const useMarketI18n = () => useI18n({
-  messages: {
-    'zh-CN': zhCN,
-  },
-})
+export function useMarketI18n() {
+  const { t: baseT, locale } = useMarketNextI18n()
+  const t = (key: string, ...args: any[]) => baseT(`market.${key}`, ...args)
+  return { t, locale }
+}
 
 export function getUsers(data: SearchObject) {
   const cached = usersCache.get(data)

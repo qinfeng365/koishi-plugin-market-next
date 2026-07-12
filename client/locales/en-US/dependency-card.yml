@@ -1,0 +1,125 @@
+status:
+  pendingRemove: Pending removal
+  pendingApply: Pending change
+  pendingInstall: Pending install
+  workspace: Workspace
+  unsupported: Unsupported
+  bundle: Plugin bundle
+  unconfigured: Not configured
+  versionError: Version error
+  manual: Added manually
+  checkDisabled: Checks disabled
+  ignored: Update ignored
+  updatable: Update available
+  installed: Installed
+current:
+  notInstalled: Not installed
+  workspace: Workspace
+  installError: Installation error
+target:
+  remove: Remove dependency
+  keepWorkspace: Keep workspace
+  loading: Loading
+  waitingData: Waiting for version data
+  waitingInstall: Waiting for installation
+  waiting: Waiting
+label:
+  pending: Pending
+  latest: Latest
+  ignored: Ignored
+  target: Target
+detail:
+  pendingRemove: This dependency will be removed from package.json after the changes are applied.
+  pendingApply: A version change is staged for this dependency and will take effect after applying.
+  pendingInstall: This dependency is staged for installation and will be installed locally after applying.
+  workspace: This local workspace dependency does not participate in npm registry updates.
+  unsupported: This version range cannot be managed automatically. Edit package.json manually.
+  bundle: The bundle itself does not need a config entry; member configs are managed by the bundle group.
+  unconfigured: Downloaded locally, but no matching plugin config exists yet.
+  checkDisabled: Update checks are disabled for this dependency. Click “Restore prompt” to enable them again.
+  ignored: The current update is ignored.
+  foundUpdate: New version {version} is available.
+  workspaceShort: Workspace dependency
+  unsupportedShort: Unsupported
+  fetching: Fetching version data
+  noData: No version data
+config:
+  notNeeded: Not needed
+  notPlugin: Not a plugin
+  unknown: Unknown
+  pending: Pending install
+  notLoaded: Not loaded
+  unconfigured: Not configured
+  configured: Configured
+source:
+  bundle: 'Plugin bundle: {name}'
+  bundleSelf: Bundle itself
+  workspace: Workspace
+  pending: Pending install
+  local: Local
+  manual: Manual
+  packageJson: package.json
+actions:
+  update: Update
+  configure: Configure
+  ignore: Ignore
+  restore: Restore
+  remove: Remove dependency
+  current: (current)
+  undo: Undo
+  updateLatest: Update to latest
+  restorePrompt: Restore prompt
+  addConfig: Add config
+  cancelChange: Cancel change
+  manage: Manage
+  collapse: Collapse
+  versions: Versions
+  edit: Edit
+  operate: Actions
+  uninstall: Uninstall
+  uninstallBundle: Uninstall plugin bundle
+ignore:
+  title: Ignore update
+  intro: Ignore updates for {name}
+  versionIntro: ' for {version}.'
+  permanent: Disable update checks for this plugin permanently
+  duration: Ignore for
+  forever: No expiry
+  day: '{count} day(s)'
+  custom: Custom
+  customDays: Custom days
+  versionCount: Consecutive versions to ignore
+  permanentNote: Permanent rules are saved in dependency management and can be restored from the “Update checks disabled” group.
+  durationNote: No expiry means the rule does not expire by time; new versions are shown after the ignored-version count is reached.
+  cancel: Cancel
+  confirm: Confirm ignore
+  addedToDisabled: Added to the update-check exclusion list.
+  saved: Update prompt ignored.
+identity:
+  adapter: Adapter
+  database: Database
+  webui: Console
+  core: Core
+  general: General
+  extension: Extension
+  manage: Administration
+  preset: Preset
+  image: Image
+  media: Information
+  tool: Utilities
+  life: Life
+  ai: AI
+  meme: Fun
+  game: Games
+  gametool: Game tools
+  bundle: Plugin bundle
+  other: Plugin
+registry:
+  loading: 'Fetching version data from npm registry{endpoint}{attempts}…'
+  attempts: 'attempted {count} time(s)'
+  timeout: 'Version lookup failed: npm metadata request timed out{endpoint}'
+  notFound: 'Version lookup failed: the package is missing or the mirror has not synced it{endpoint}'
+  network: 'Version lookup failed: npm registry network error{endpoint}'
+  invalid: 'Version lookup failed: invalid npm metadata{endpoint}'
+  http: 'Version lookup failed: npm registry returned an error{endpoint}'
+  unknown: 'Version lookup failed{endpoint}{error}'

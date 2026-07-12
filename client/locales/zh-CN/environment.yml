@@ -1,0 +1,44 @@
+title: 版本管理
+syncing: 正在同步环境版本……
+count: 共 {count} 个环境版本
+refresh: 刷新
+snapshots: 环境版本
+current: 当前
+currentEnvironment: 当前环境
+savedEnvironment: 已保存环境
+dependencies: '{count} 个直接依赖'
+reading: 正在读取环境版本……
+empty: 暂无可用环境版本
+readingPreview: 正在计算当前环境到目标环境的差异……
+selectSnapshot: 选择一个环境版本查看差异
+loadFailed: 读取环境版本失败，请检查后端日志。
+previewFailed: 读取环境版本差异失败，目标可能已被清理。
+targetEnvironment: 目标环境
+changedCount: 变更 {count}
+unchangedCount: 未变化 {count}
+unsupportedCount: 无法恢复 {count}
+scopeWarning: 仅恢复 package.json 中的直接依赖版本；插件配置、数据库和插件生成的数据不会恢复或删除。
+dependency: 依赖
+currentVersion: 当前版本
+targetVersion: 目标版本
+status: 状态
+notInstalled: 未安装
+alreadyCurrent: 当前版本
+restore: 恢复到此版本
+confirmTitle: 确认恢复依赖环境
+confirmText: 将一次性应用 {count} 项依赖版本变更。
+removeWarning: 目标环境会移除 {count} 个直接依赖，但不会删除对应插件配置和数据。
+confirmRestore: 确认恢复
+sourceStartup: 启动时记录
+sourceOperation: 依赖操作后记录
+sourceExternal: 检测到外部变化
+change:
+  upgrade: 升级
+  downgrade: 降级
+  added: 新增
+  removed: 移除
+  changed: 变更
+  unchanged: 未变化
+  unsupported: 不支持
+reason:
+  workspace: 工作区依赖由本地源码决定，不能通过环境版本自动恢复。

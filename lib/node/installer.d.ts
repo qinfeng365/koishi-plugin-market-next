@@ -1,6 +1,7 @@
 import { Context, Dict, HTTP, Schema, Service } from 'koishi';
 import { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry';
 import type { RegistryStatus } from '../shared';
+import { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
 export interface InstallOptions {
     installEndpoint?: string;
 }
@@ -28,8 +29,6 @@ export interface InstallHistoryEntry {
     installEndpoint?: string;
     size: number;
     changes: InstallHistoryChange[];
-    rollbackAvailable: boolean;
-    rollbackReason?: 'running' | 'not-successful' | 'legacy' | 'unsupported' | 'state-changed';
 }
 export interface InstallLogDetail extends InstallHistoryEntry {
     content: string;
@@ -97,6 +96,7 @@ declare class Installer extends Service {
     private installLogMetadata?;
     private installLogWriteTask;
     private installLogCleanupTask?;
+    private environmentSnapshots;
     private serial;
     constructor(ctx: Context, config?: Installer.Config);
     get cwd(): string;
@@ -158,24 +158,25 @@ declare class Installer extends Service {
     private readInstallLogMetadata;
     private readInstallLog;
     private parseLegacyInstallLog;
-    private getRollbackChanges;
-    private getInstalledHistoryVersion;
-    private assessInstallRollback;
     private createInstallHistoryEntry;
     private getInstallHistoryEntry;
     getInstallHistory(limit?: number): Promise<InstallHistoryEntry[]>;
     getInstallLogDetail(id: string): Promise<InstallLogDetail>;
+    getEnvironmentSnapshots(): Promise<EnvironmentSnapshotSummary[]>;
+    getEnvironmentSnapshotPreview(id: string): Promise<EnvironmentSnapshotPreview | undefined>;
     exec(args: string[]): Promise<number>;
     override(deps: Dict<string>): Promise<void>;
     private snapshotPackageManifest;
     private restorePackageManifest;
     private _install;
     private _getLocalDeps;
-    private validateInstallHistoryState;
+    private captureCurrentEnvironmentSnapshot;
+    private recordCurrentEnvironmentSnapshot;
     private _installLocked;
+    private withInstallLock;
     private queueInstall;
     install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options?: InstallOptions): Promise<number>;
-    rollbackInstallHistory(id: string, beforeReload?: () => unknown | Promise<unknown>, options?: InstallOptions): Promise<number>;
+    applyEnvironmentSnapshot(id: string, options?: InstallOptions): Promise<number>;
     isSelfUpdate(deps: Dict<string>): boolean;
 }
 declare namespace Installer {

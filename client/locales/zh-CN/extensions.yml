@@ -1,0 +1,52 @@
+links:
+  homepage: 插件主页
+  currentVersion: 当前版本：{version}
+  repository: 存储库
+  issues: 问题反馈
+actions:
+  cancelUninstall: 取消卸载
+  uninstallBundle: 卸载插件包
+  uninstallPlugin: 卸载插件
+  goDependencies: 点击前往依赖管理
+  add: 点击添加
+  onlyUninstall: 仅卸载插件
+  uninstallAndRemoveConfig: 卸载并删除配置
+  cancel: 取消
+  removeConfig: 删除配置
+  keepConfig: 保留配置
+  removeGroup: 删除分组
+  removeConfigTitle: 确认删除配置
+  removeGroupTitle: 确认删除分组
+messages:
+  outdatedPrefix: 当前的插件版本不是最新，
+  outdatedSuffix: 。
+  deprecated: 此版本已废弃，请尽快迁移：{reason}
+  externalPrefix: 尚未将当前插件列入依赖，
+  externalSuffix: 。
+  configQuestion: 检测到当前插件存在配置。是否同时删除配置？
+  stagedUninstall: 卸载已暂存，应用更改后生效。
+  bundleRecordFailed: 插件包归属记录保存失败，请刷新后确认。
+  bundleRecordFailedShort: 未能读取插件包成员清单，将只卸载插件包自身。
+  cancelUninstall: 已取消卸载。
+  configRemoveFailed: 删除配置失败，请检查日志。
+  removeGroupConfirm: 确定要删除分组 {name} 吗？此操作不可撤销！
+  removeConfigConfirm: 确定要删除插件 {name} 的配置吗？此操作不可撤销！
+dependency:
+  requiredDependency: 必需依赖
+  optionalDependency: 可选依赖
+  requiredService: 必需服务
+  optionalService: 可选服务
+  loaded: 已加载
+  unavailable: 未加载
+  serviceHint: 未加载，启用下列任一插件可实现此服务
+  clickLoaded: （已加载）
+  clickConfigure: （点击配置）
+  clickAdd: （点击添加）
+missing:
+  notInstalled: 此插件尚未安装，
+  quickInstall: 点击快速安装
+  goMarket: 点击前往插件市场
+menu:
+  uninstallBundle: 卸载插件包
+  removeGroup: 删除分组
+  removeConfig: 删除配置

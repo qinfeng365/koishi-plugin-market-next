@@ -1,0 +1,95 @@
+label: 插件包
+loading: 正在读取插件包清单……
+stats:
+  selected: 已选 / {count} 成员
+  presets: 将应用预设
+  moved: 将移动配置
+bulk:
+  label: 批量操作：
+  createAll: 创建所有配置
+  skipAll: 跳过所有配置
+  enablePresets: 启用所有预设
+  disablePresets: 关闭所有预设
+  removeDependency: 全部卸载依赖并清配置
+  cleanConfig: 全部只清配置
+  keepAll: 全部保留
+members:
+  required: 核心成员
+  optional: 可选成员
+  requiredPill: 必装
+  optionalToggleAll: 全部选中
+  optionalToggleNone: 全部取消
+  createConfig: 创建配置
+  moveConfig: 移动已有配置
+  usePreset: 使用预设
+  notDeclared: 未声明版本
+  installed: 已安装：{version}
+  loaded: 已加载：{version}
+  notInstalled: 未安装
+  dependencyInstalled: 依赖已安装
+  dependencyNotInstalled: 依赖未安装
+  groupConfig: 包内配置
+  externalConfig: 存在包外配置
+  workspace: 工作区依赖
+  cleanGroupConfig: 只清包内配置
+  removeDependency: 卸载依赖并清配置
+  keep: 保留
+  marketMissing: 未进入市场索引
+  verified: 市场认证
+  insecure: 安全风险
+  deprecated: 已废弃
+  preview: 预览版
+  portable: 可移植
+  hasPreset: 含预设配置
+conflict:
+  version: 版本冲突：当前项目中已安装的版本为 {current}，不满足插件包声明的版本范围 {range}。安装将覆盖此依赖！
+  config: 配置冲突：此插件在包外部已有配置。默认在包内创建停用配置；勾选“移动”可将配置迁移进包内。
+  sameGroup: 配置存在：此插件在包分组下已存在配置，将默认跳过配置创建，仅确保依赖安装。
+  externalNote: 检测到根层级或其他分组仍有配置，默认只清理插件包分组下的副本，不卸载成员依赖。
+editor:
+  sensitive: 修改敏感预设配置：
+  placeholder: 请输入 {field}
+  viewPreset: 查看/编辑配置预设
+  jsonError: JSON 格式错误：{error}
+diff:
+  title: 即将执行
+  install: 安装依赖
+  config: 创建配置
+  preset: 预设
+  move: 移动配置
+  skip: 跳过配置
+actions:
+  cancel: 取消
+  install: 安装插件包
+  uninstall: 卸载插件包
+  uninstallOnly: 只卸载插件包
+messages:
+  isBundle: 是一个插件包。将卸载插件包自身；成员插件按下方选择处理。
+  fallbackRecord: 未找到 NEXT 写入的安装归属记录；当前是根据包名或远端清单识别的插件包。默认更保守：只清理包分组配置，不主动卸载成员依赖。
+  noMetadata: 没有读取到这个插件包的 npm 版本元数据。
+  noManifest: 这个包被识别为插件包，但没有提供 koishi.bundle 清单，不能执行展开安装。
+  loadFailed: 读取插件包清单失败。
+  recordFailed: 未能读取插件包成员清单，将只卸载插件包自身。
+  noMembers: 没有读取到可处理的成员清单。将只卸载插件包自身。
+  noDependency: 没有找到这个分组对应的插件包依赖。
+  outsideConfig: 包分组外的配置永远不会被删除；只要某个成员存在包外配置，NEXT 默认不会卸载它的依赖。
+  submitted: 已提交插件包安装请求，正在等待后端处理依赖与配置分组……
+  installing: 正在安装插件包……
+  waiting: 仍在等待包管理器输出；插件包会同时处理多个成员，弱网环境下可能需要更久。
+  disconnected: Console 连接已断开，插件包安装结果无法确认。请刷新依赖页确认实际状态。
+  exitCode: 包管理器退出码：{code}
+  completed: 插件包安装完成{moved}{skipped}。
+  moved: ，移动配置 {count} 项
+  skipped: ，跳过配置 {count} 项
+  installFailed: 插件包安装失败：{detail}
+  unknownError: 未知错误
+  stagedUninstall: 插件包卸载已暂存，卸载成员 {members} 项，清理配置 {configs} 项，应用更改后生效。
+  recordSaveFailed: 插件包归属记录保存失败，请刷新后确认。
+  uninstalling: 正在卸载插件包……
+  uninstalled: 插件包卸载成功！
+  uninstallFailed: 插件包卸载失败！
+  uninstallTimeout: 插件包卸载超时！
+summary:
+  remove: 卸载成员依赖：{count}
+  clean: 清理包内配置：{count}
+  keep: 保留成员：{count}

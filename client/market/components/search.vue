@@ -27,10 +27,8 @@
 <script lang="ts" setup>
 
 import { computed, ref, watch } from 'vue'
-import { validateWord } from '../utils'
-import { useI18n } from 'vue-i18n'
+import { useMarketI18n, validateWord } from '../utils'
 import { useDebounceFn } from '@vueuse/core'
-import zhCN from '../locales/zh-CN.yml'
 import MarketIcon from '../icons'
 
 const props = defineProps<{
@@ -133,17 +131,7 @@ function sameWords(a: string[], b: string[]) {
 
 defineExpose({ focus })
 
-const { t, setLocaleMessage } = useI18n({
-  messages: {
-    'zh-CN': zhCN,
-  },
-})
-
-if (import.meta.hot) {
-  import.meta.hot.accept('../locales/zh-CN.yml', (module) => {
-    setLocaleMessage('zh-CN', module.default)
-  })
-}
+const { t } = useMarketI18n()
 
 </script>
 

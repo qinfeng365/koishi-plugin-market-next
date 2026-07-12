@@ -1,6 +1,7 @@
 import { reactive, ref } from 'vue'
 import { send, store } from '@koishijs/client'
 import { gt, prerelease, valid } from 'semver'
+import { translate } from './i18n'
 
 export const active = ref('')
 
@@ -358,10 +359,10 @@ export function getIgnoredUpdateVersion(name: string, policy?: UpdatePolicy) {
 export function getUpdateIgnoreText(name: string, policy?: UpdatePolicy) {
   const rule = normalizeIgnoreRule(policy?.updateIgnored?.[name])
   if (!rule?.version) return ''
-  const parts = [`已忽略 ${rule.version}`]
-  if (rule.count && rule.count > 1) parts.push(`连续 ${rule.count} 个版本`)
-  if (rule.until) parts.push(`到 ${new Date(rule.until).toLocaleString()}`)
-  return parts.join('，')
+  const parts = [translate('common.ignore.version', { version: rule.version })]
+  if (rule.count && rule.count > 1) parts.push(translate('common.ignore.count', { count: rule.count }))
+  if (rule.until) parts.push(translate('common.ignore.until', { time: new Date(rule.until).toLocaleString() }))
+  return parts.join(translate('common.ignore.separator'))
 }
 
 export function isUpdateIgnored(name: string, policy?: UpdatePolicy) {

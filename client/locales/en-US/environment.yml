@@ -1,0 +1,44 @@
+title: Version Management
+syncing: Synchronizing environment versions…
+count: '{count} environment version(s)'
+refresh: Refresh
+snapshots: Environment Versions
+current: Current
+currentEnvironment: Current Environment
+savedEnvironment: Saved Environment
+dependencies: '{count} direct dependencies'
+reading: Reading environment versions…
+empty: No environment versions are available
+readingPreview: Calculating the difference between the current and target environments…
+selectSnapshot: Select an environment version to view its differences
+loadFailed: Failed to read environment versions. Check the backend log.
+previewFailed: Failed to read the environment difference. The target may have been cleaned up.
+targetEnvironment: Target Environment
+changedCount: '{count} changed'
+unchangedCount: '{count} unchanged'
+unsupportedCount: '{count} unsupported'
+scopeWarning: Only direct dependency versions in package.json are restored. Plugin config, databases, and plugin-generated data are not restored or deleted.
+dependency: Dependency
+currentVersion: Current Version
+targetVersion: Target Version
+status: Status
+notInstalled: Not Installed
+alreadyCurrent: Current Version
+restore: Restore This Version
+confirmTitle: Confirm Dependency Environment Restore
+confirmText: This will apply {count} dependency version change(s) in one operation.
+removeWarning: The target environment removes {count} direct dependency/dependencies, but matching plugin config and data will be kept.
+confirmRestore: Confirm Restore
+sourceStartup: Recorded at startup
+sourceOperation: Recorded after a dependency operation
+sourceExternal: External change detected
+change:
+  upgrade: Upgrade
+  downgrade: Downgrade
+  added: Add
+  removed: Remove
+  changed: Change
+  unchanged: Unchanged
+  unsupported: Unsupported
+reason:
+  workspace: Workspace dependencies are determined by local source and cannot be restored automatically.

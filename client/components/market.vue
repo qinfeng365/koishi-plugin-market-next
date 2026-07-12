@@ -11,18 +11,18 @@
         <svg class="circular" viewBox="25 25 50 50">
           <circle class="path" cx="50" cy="50" r="20" fill="none"></circle>
         </svg>
-        <p class="el-loading-text">正在加载插件市场……</p>
-        <p class="market-loading-detail">Registry：{{ loadingEndpoint }}</p>
+        <p class="el-loading-text">{{ t('marketPage.loading.title') }}</p>
+        <p class="market-loading-detail">{{ t('marketPage.loading.registry', { value: loadingEndpoint }) }}</p>
       </div>
       <k-comment v-if="loadingSlow" type="warning" class="market-loading-warning">
-        <p>插件市场仍在等待网络响应，可能是当前市场源连接慢、代理不可用或首次冷启动没有本地缓存。</p>
+        <p>{{ t('marketPage.loading.slow') }}</p>
         <p>
-          Registry：{{ loadingEndpoint }}
-          <template v-if="loadingTimeout">；超时：{{ loadingTimeout }}</template>
-          <template v-if="loadingAutoRoute">；备用源自动路由已开启</template>
+          {{ t('marketPage.loading.registry', { value: loadingEndpoint }) }}
+          <template v-if="loadingTimeout"> · {{ t('marketPage.loading.timeoutLabel', { value: loadingTimeout }) }}</template>
+          <template v-if="loadingAutoRoute"> · {{ t('marketPage.loading.autoRoute') }}</template>
         </p>
         <p style="margin-top: 0.5rem;">
-          <el-button type="primary" size="small" @click="router.push('/settings/market')">前往市场设置修改源</el-button>
+          <el-button type="primary" size="small" @click="router.push('/settings/market')">{{ t('marketPage.loading.openMarketSettings') }}</el-button>
         </p>
       </k-comment>
     </div>
@@ -38,7 +38,7 @@
         <template #header="{ hasFilter, all, packages }">
           <div class="market-search-row">
             <market-search ref="searchBox" v-model="words"></market-search>
-            <button class="layout-toggle-btn" @click="toggleLayout" :title="marketLayout === 'grid' ? '切换到列表视图' : '切换到网格视图'">
+            <button class="layout-toggle-btn" @click="toggleLayout" :title="marketLayout === 'grid' ? t('marketPage.layout.list') : t('marketPage.layout.grid')">
               <svg v-if="marketLayout === 'grid'" viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="currentColor">
                 <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/>
               </svg>
@@ -48,28 +48,28 @@
             </button>
           </div>
           <div class="market-hint text-center">
-            共搜索到 {{ hasFilter ? packages.length + ' / ' : '' }}{{ all.length }} 个插件。
+            {{ hasFilter ? t('marketPage.results.filtered', { filtered: packages.length, total: all.length }) : t('marketPage.results.all', { total: all.length }) }}
           </div>
           <k-comment v-if="showMarketCacheHint && store.market.stale" type="warning" class="market-stale">
-            <p>插件市场刷新失败，当前显示的是上一次成功加载的数据。</p>
+            <p>{{ t('marketPage.cache.stale') }}</p>
             <p>
-              Registry：{{ store.market.registry || '未知' }}
-              <template v-if="store.market.error">；原因：{{ store.market.error }}</template>
+              {{ t('marketPage.registry.label', { value: store.market.registry || t('marketPage.registry.unknown') }) }}
+              <template v-if="store.market.error"> · {{ t('marketPage.registry.reason', { value: store.market.error }) }}</template>
             </p>
           </k-comment>
           <k-comment v-else-if="showMarketCacheHint && store.market.cached" type="warning" class="market-stale">
             <p>
-              当前显示的是本地缓存的插件市场数据。
-              <template v-if="store.market.refreshing">正在后台刷新最新数据……</template>
+              {{ t('marketPage.cache.cached') }}
+              <template v-if="store.market.refreshing">{{ t('marketPage.cache.refreshing') }}</template>
             </p>
             <p>
-              Registry：{{ store.market.registry || '未知' }}
-              <template v-if="store.market.cachedAt">；缓存时间：{{ formatTime(store.market.cachedAt) }}</template>
-              <template v-if="store.market.validatedAt">；校验时间：{{ formatTime(store.market.validatedAt) }}</template>
+              {{ t('marketPage.registry.label', { value: store.market.registry || t('marketPage.registry.unknown') }) }}
+              <template v-if="store.market.cachedAt"> · {{ t('marketPage.cache.cachedAt', { value: formatTime(store.market.cachedAt) }) }}</template>
+              <template v-if="store.market.validatedAt"> · {{ t('marketPage.cache.validatedAt', { value: formatTime(store.market.validatedAt) }) }}</template>
             </p>
           </k-comment>
           <k-comment v-if="store.market.debug" type="primary" class="market-debug">
-            <p>Debug 性能：{{ formatSource(store.market.debug.source) }} / {{ store.market.debug.endpoint || store.market.registry || '未知源' }}</p>
+            <p>{{ t('marketPage.debug.performance', { source: formatSource(store.market.debug.source), endpoint: store.market.debug.endpoint || store.market.registry || t('marketPage.registry.unknown') }) }}</p>
             <div class="market-debug-grid">
               <span v-for="item in debugItems" :key="item.label" class="market-debug-item">
                 <span>{{ item.label }}</span>
@@ -80,7 +80,7 @@
               <span v-for="[key, value] in debugTimings" :key="key">{{ formatTimingName(key) }} {{ formatDuration(value) }}</span>
             </div>
             <div v-if="debugPhases.length" class="market-debug-timings">
-              <span v-for="item in debugPhases" :key="item.label">{{ item.label }}：{{ item.value }}</span>
+              <span v-for="item in debugPhases" :key="item.label">{{ item.label }}: {{ item.value }}</span>
             </div>
             <div v-if="debugRoutes.length" class="market-debug-routes">
               <span v-for="route in debugRoutes" :key="route.endpoint" class="market-debug-route">
@@ -105,17 +105,17 @@
     </el-scrollbar>
 
     <k-comment v-else type="danger" class="market-error">
-      <p>无法连接到插件市场。这可能是以下原因导致的：</p>
+      <p>{{ t('marketPage.error.title') }}</p>
       <p>
-        Registry：{{ store.market?.registry || loadingEndpoint }}
-        <template v-if="store.market?.error">；原因：{{ store.market.error }}</template>
+        {{ t('marketPage.error.registry', { value: store.market?.registry || loadingEndpoint }) }}
+        <template v-if="store.market?.error"> · {{ t('marketPage.error.reason', { value: store.market.error }) }}</template>
       </p>
       <ul>
-        <li>无法连接到网络，请检查你的网络连接和代理设置</li>
-        <li>您所用的 registry 不支持搜索功能，请考虑进行更换</li>
+        <li>{{ t('marketPage.error.networkHint') }}</li>
+        <li>{{ t('marketPage.error.searchHint') }}</li>
       </ul>
       <p style="margin-top: 0.8rem;">
-        <el-button type="primary" size="small" @click="router.push('/settings/market')">前往设置修改 Registry 下载源</el-button>
+        <el-button type="primary" size="small" @click="router.push('/settings/market')">{{ t('marketPage.error.openRegistrySettings') }}</el-button>
       </p>
     </k-comment>
   </k-layout>
@@ -130,6 +130,7 @@ import { getSilentFiltered, getVisible, kConfig, MarketFilter, MarketList, Marke
 import { SearchObject } from '@koishijs/registry'
 import { activeBundle } from './utils'
 import { canInstallBundleSearchObject } from '../market/utils'
+import { useMarketNextI18n } from '../i18n'
 
 function installed(data: SearchObject) {
   if (store.packages) {
@@ -142,6 +143,7 @@ function installed(data: SearchObject) {
 const root = ref()
 const searchBox = ref<{ focus?: () => void }>()
 const config = useConfig()
+const { t, locale } = useMarketNextI18n()
 const frontendMode = computed(() => getFrontendMode(config.value))
 const marketLayout = computed(() => getMarketLayout(config.value))
 const marketGravatar = computed(() => config.value.market?.gravatar || store.market?.gravatar)
@@ -202,21 +204,21 @@ const debugItems = computed(() => {
   const debug = store.market?.debug
   if (!debug) return []
   return [
-    ['对象数', formatNumber(debug.objects ?? store.market?.total)],
-    ['解压大小', formatSize(debug.size)],
-    ['传输大小', formatSize(debug.wireSize)],
-    ['压缩方式', formatEncoding(debug.contentEncoding)],
-    ['压缩比例', formatCompressionRatio(debug.size, debug.wireSize)],
-    ['候选源', formatNumber(debug.candidates)],
-    ['优先源', debug.preferredEndpoint || '-'],
-    ['回退原因', formatFallbackReason(debug.fallbackReason)],
+    [t('marketPage.debug.objectCount'), formatNumber(debug.objects ?? store.market?.total)],
+    [t('marketPage.debug.decodedSize'), formatSize(debug.size)],
+    [t('marketPage.debug.wireSize'), formatSize(debug.wireSize)],
+    [t('marketPage.debug.encoding'), formatEncoding(debug.contentEncoding)],
+    [t('marketPage.debug.compressionRatio'), formatCompressionRatio(debug.size, debug.wireSize)],
+    [t('marketPage.debug.candidates'), formatNumber(debug.candidates)],
+    [t('marketPage.debug.preferredEndpoint'), debug.preferredEndpoint || '-'],
+    [t('marketPage.debug.fallbackReason'), formatFallbackReason(debug.fallbackReason)],
     ['Hash', debug.hash || '-'],
     ['ETag', debug.etag || '-'],
     ['Last-Modified', debug.lastModified || '-'],
-    ['缓存时间', debug.cachedAt ? formatTime(debug.cachedAt) : '-'],
-    ['校验时间', debug.validatedAt ? formatTime(debug.validatedAt) : '-'],
-    ['前端匹配', clientDebug.value.matched == null ? '-' : `${clientDebug.value.matched} / ${clientDebug.value.total ?? '-'}`],
-    ['已加载/渲染', clientDebug.value.visible == null ? '-' : `${clientDebug.value.visible} / ${clientDebug.value.rendered ?? '-'}`],
+    [t('marketPage.debug.cacheTime'), debug.cachedAt ? formatTime(debug.cachedAt) : '-'],
+    [t('marketPage.debug.validationTime'), debug.validatedAt ? formatTime(debug.validatedAt) : '-'],
+    [t('marketPage.debug.frontendMatched'), clientDebug.value.matched == null ? '-' : `${clientDebug.value.matched} / ${clientDebug.value.total ?? '-'}`],
+    [t('marketPage.debug.loadedRendered'), clientDebug.value.visible == null ? '-' : `${clientDebug.value.visible} / ${clientDebug.value.rendered ?? '-'}`],
   ].map(([label, value]) => ({ label, value }))
 })
 
@@ -233,8 +235,8 @@ const debugPhases = computed(() => {
   const debug = store.market?.debug
   if (!debug) return []
   return [
-    ['首屏', debug.initial],
-    ['后台', debug.refresh],
+    [t('marketPage.debug.initial'), debug.initial],
+    [t('marketPage.debug.background'), debug.refresh],
   ].filter(([, value]) => value).map(([label, value]) => ({
     label,
     value: formatDebugPhase(value as any),
@@ -320,15 +322,15 @@ function getType(data: SearchObject) {
 }
 
 function getText(data: SearchObject) {
-  if (global.static) return '配置'
+  if (global.static) return t('marketPage.actions.config')
   const version = getPendingOverrides()[data.package.name]
   if (installed(data)) {
-    if (version === '') return '等待移除'
-    if (version) return '等待更新'
-    return '修改'
+    if (version === '') return t('marketPage.actions.waitingRemove')
+    if (version) return t('marketPage.actions.waitingUpdate')
+    return t('marketPage.actions.edit')
   }
-  if (version) return '等待安装'
-  return '添加'
+  if (version) return t('marketPage.actions.waitingInstall')
+  return t('marketPage.actions.addPlugin')
 }
 
 function openPackage(data: SearchObject) {
@@ -344,7 +346,7 @@ function scrollToTop() {
 }
 
 function formatTime(value: number) {
-  return new Date(value).toLocaleString()
+  return new Date(value).toLocaleString(locale.value)
 }
 
 function updateClientDebug(value: typeof clientDebug.value) {
@@ -353,29 +355,29 @@ function updateClientDebug(value: typeof clientDebug.value) {
 
 function formatSource(source?: string) {
   const labels: Record<string, string> = {
-    'network': '网络',
-    'disk-cache': '磁盘缓存',
-    'http-304': 'HTTP 304',
-    'hash-cache': 'Hash 命中',
-    'legacy': '旧索引',
+    'network': t('marketPage.debug.sourceNetwork'),
+    'disk-cache': t('marketPage.debug.sourceDiskCache'),
+    'http-304': t('marketPage.debug.sourceHttp304'),
+    'hash-cache': t('marketPage.debug.sourceHashCache'),
+    'legacy': t('marketPage.debug.sourceLegacy'),
   }
-  return source ? labels[source] || source : '未知'
+  return source ? labels[source] || source : t('marketPage.debug.unknown')
 }
 
 function formatTimingName(name: string) {
   const labels: Record<string, string> = {
-    request: '请求',
+    request: t('marketPage.debug.request'),
     hash: 'Hash',
-    parse: 'JSON',
-    apply: '索引',
-    total: '总计',
-    cacheRead: '读缓存',
-    cacheParse: '缓存 JSON',
-    payloadData: '映射',
-    payload: 'Payload',
-    frontendSort: '前端排序',
-    frontendFilter: '前端筛选',
-    frontendVirtual: '虚拟滚动',
+    parse: t('marketPage.debug.parse'),
+    apply: t('marketPage.debug.apply'),
+    total: t('marketPage.debug.total'),
+    cacheRead: t('marketPage.debug.cacheRead'),
+    cacheParse: t('marketPage.debug.cacheParse'),
+    payloadData: t('marketPage.debug.payloadData'),
+    payload: t('marketPage.debug.payload'),
+    frontendSort: t('marketPage.debug.frontendSort'),
+    frontendFilter: t('marketPage.debug.frontendFilter'),
+    frontendVirtual: t('marketPage.debug.frontendVirtual'),
   }
   return labels[name] || name
 }
@@ -405,9 +407,9 @@ function formatDebugPhase(value: {
 
 function formatFallbackReason(value?: string) {
   switch (value) {
-    case 'primary-failed': return '主源失败'
-    case 'primary-slow': return '主源慢'
-    case 'rescue': return '冷却源救援'
+    case 'primary-failed': return t('marketPage.debug.primaryFailed')
+    case 'primary-slow': return t('marketPage.debug.primarySlow')
+    case 'rescue': return t('marketPage.debug.rescue')
     default: return '-'
   }
 }
@@ -425,7 +427,7 @@ function formatEncoding(value?: string) {
 
 function formatCompressionRatio(decoded?: number, encoded?: number) {
   if (!decoded || !encoded) return '-'
-  if (encoded >= decoded) return '未压缩'
+  if (encoded >= decoded) return t('marketPage.debug.uncompressed')
   return `${(decoded / encoded).toFixed(1)}x`
 }
 

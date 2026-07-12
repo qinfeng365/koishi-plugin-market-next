@@ -11,6 +11,18 @@ import spawn from 'execa'
 import pMap from 'p-map'
 import type { RegistryStatus } from '../shared'
 import {} from '.'
+import {
+  createEnvironmentSnapshot,
+  EnvironmentSnapshot,
+  EnvironmentSnapshotPreview,
+  EnvironmentSnapshotStore,
+  EnvironmentSnapshotSummary,
+  getEnvironmentDiff,
+  getEnvironmentInstallChanges,
+  summarizeEnvironmentSnapshot,
+  type EnvironmentDependencySnapshot,
+  type EnvironmentSnapshotSource,
+} from './environment'
 
 const logger = new Logger('market')
 const REGISTRY_FALLBACK_ENDPOINTS = [
@@ -110,8 +122,6 @@ export interface InstallHistoryEntry {
   installEndpoint?: string
   size: number
   changes: InstallHistoryChange[]
-  rollbackAvailable: boolean
-  rollbackReason?: 'running' | 'not-successful' | 'legacy' | 'unsupported' | 'state-changed'
 }
 
 export interface InstallLogDetail extends InstallHistoryEntry {
@@ -221,12 +231,17 @@ class Installer extends Service {
   private installLogMetadata?: InstallHistoryMetadata
   private installLogWriteTask = Promise.resolve()
   private installLogCleanupTask?: Promise<void>
+  private environmentSnapshots: EnvironmentSnapshotStore
   private serial = 0
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
     super(ctx, 'installer')
     this.manifest = loadManifest(this.cwd)
     this.statsFile = resolve(ctx.baseDir, 'cache', 'market-next-registry-stats.json')
+    this.environmentSnapshots = new EnvironmentSnapshotStore(
+      resolve(ctx.baseDir, 'data', 'market-next-environment-snapshots.json'),
+      message => logger.warn(message),
+    )
     ctx.effect(() => () => {
       clearTimeout(this.statsWriteTimer)
       this.abortPendingRequests('installer disposed')
@@ -255,6 +270,14 @@ class Installer extends Service {
     await this.resetEndpoint()
     logger.debug(`registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
     logger.info(`npm registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
+
+    // Probe once per backend lifecycle; DataService reads stay passive so F5 does not retrigger it.
+    await this.recordCurrentEnvironmentSnapshot('startup').catch((error) => {
+      logger.warn(`failed to record startup environment snapshot: ${error instanceof Error ? error.message : error}`)
+    })
+    const dependencies = this.getDeps({ background: false })
+    logger.info(`dependency startup metadata probe scheduled: deps=${Object.keys(dependencies).length}`)
+    this.refreshDependencyMetadata(false)
   }
 
   private createHttp(endpoint: string): HTTP {
@@ -1173,47 +1196,9 @@ class Installer extends Service {
       installEndpoint: endpointText && endpointText !== '(default)' ? endpointText : undefined,
       size,
       changes: [],
-      rollbackAvailable: false,
-      rollbackReason: status === 'running' ? 'running' : status !== 'success' ? 'not-successful' : 'legacy',
     }
   }
-
-  private getRollbackChanges(metadata: InstallHistoryMetadata) {
-    if (metadata.changes.some(change => !change.beforeRequest || !change.afterRequest)) return []
-    return metadata.changes.filter(change => change.beforeResolved
-      && change.afterResolved
-      && change.beforeResolved !== change.afterResolved)
-  }
-
-  private getInstalledHistoryVersion(name: string, cache: Map<string, string | null>) {
-    if (cache.has(name)) return cache.get(name)!
-    let version: string | null = null
-    try {
-      version = loadManifest(name).version
-    } catch {}
-    cache.set(name, version)
-    return version
-  }
-
-  private assessInstallRollback(metadata: InstallHistoryMetadata, currentDependencies?: Dict<string>, resolvedCache = new Map<string, string | null>()) {
-    const active = basename(this.installLogFile || '') === metadata.id
-    if (active) return 'running' as const
-    if (metadata.status !== 'success') return 'not-successful' as const
-    if (!metadata.changes.length) return 'legacy' as const
-    const changes = this.getRollbackChanges(metadata)
-    if (!changes.length) return 'unsupported' as const
-    if (!currentDependencies) return 'state-changed' as const
-    for (const change of changes) {
-      const currentRequest = Object.prototype.hasOwnProperty.call(currentDependencies, change.name)
-        ? currentDependencies[change.name]
-        : null
-      if (currentRequest !== change.afterRequest) return 'state-changed' as const
-      if (this.getInstalledHistoryVersion(change.name, resolvedCache) !== change.afterResolved) return 'state-changed' as const
-    }
-  }
-
-  private createInstallHistoryEntry(metadata: InstallHistoryMetadata, size: number, currentDependencies?: Dict<string>, resolvedCache?: Map<string, string | null>): InstallHistoryEntry {
-    const rollbackReason = this.assessInstallRollback(metadata, currentDependencies, resolvedCache)
+  private createInstallHistoryEntry(metadata: InstallHistoryMetadata, size: number): InstallHistoryEntry {
     const status = metadata.status === 'running' && basename(this.installLogFile || '') !== metadata.id
       ? 'unknown'
       : metadata.status
@@ -1228,12 +1213,10 @@ class Installer extends Service {
       installEndpoint: metadata.installEndpoint,
       size,
       changes: metadata.changes,
-      rollbackAvailable: !rollbackReason,
-      rollbackReason,
     }
   }
 
-  private async getInstallHistoryEntry(id: string, currentDependencies?: Dict<string>, resolvedCache?: Map<string, string | null>) {
+  private async getInstallHistoryEntry(id: string) {
     const file = this.getInstallLogPath(id)
     if (!file) return
     if (file === this.installLogFile) await this.installLogWriteTask
@@ -1245,7 +1228,7 @@ class Installer extends Service {
       return
     }
     const metadata = await this.readInstallLogMetadata(id)
-    if (metadata) return this.createInstallHistoryEntry(metadata, stat.size, currentDependencies, resolvedCache)
+    if (metadata) return this.createInstallHistoryEntry(metadata, stat.size)
     const preview = await this.readInstallLog(file, INSTALL_LOG_HEAD_LIMIT + INSTALL_LOG_TAIL_LIMIT, INSTALL_LOG_HEAD_LIMIT, INSTALL_LOG_TAIL_LIMIT)
     return this.parseLegacyInstallLog(id, preview.content, stat.size)
   }
@@ -1269,11 +1252,7 @@ class Installer extends Service {
       if (error?.code === 'ENOENT') return []
       throw error
     }
-    const currentDependencies = await this.snapshotPackageManifest()
-      .then(snapshot => snapshot.dependencies)
-      .catch(() => undefined)
-    const resolvedCache = new Map<string, string | null>()
-    const records = await Promise.all(files.map(file => this.getInstallHistoryEntry(file.id, currentDependencies, resolvedCache)))
+    const records = await Promise.all(files.map(file => this.getInstallHistoryEntry(file.id)))
     return records.filter(Boolean) as InstallHistoryEntry[]
   }
 
@@ -1281,10 +1260,7 @@ class Installer extends Service {
     const file = this.getInstallLogPath(id)
     if (!file) return
     if (file === this.installLogFile) await this.installLogWriteTask
-    const currentDependencies = await this.snapshotPackageManifest()
-      .then(snapshot => snapshot.dependencies)
-      .catch(() => undefined)
-    const entry = await this.getInstallHistoryEntry(id, currentDependencies)
+    const entry = await this.getInstallHistoryEntry(id)
     if (!entry) return
     const result = await this.readInstallLog(file, INSTALL_LOG_DETAIL_LIMIT, 128 * 1024, 384 * 1024)
     return {
@@ -1292,6 +1268,29 @@ class Installer extends Service {
       content: sanitizeInstallLogText(result.content),
       truncated: result.truncated,
     } as InstallLogDetail
+  }
+
+  async getEnvironmentSnapshots(): Promise<EnvironmentSnapshotSummary[]> {
+    const current = this.installActive
+      ? await this.captureCurrentEnvironmentSnapshot('external')
+      : await this.recordCurrentEnvironmentSnapshot('external')
+    const snapshots = await this.environmentSnapshots.list()
+    return snapshots.map(snapshot => summarizeEnvironmentSnapshot(snapshot, current.id))
+  }
+
+  async getEnvironmentSnapshotPreview(id: string): Promise<EnvironmentSnapshotPreview | undefined> {
+    const target = await this.environmentSnapshots.get(id)
+    if (!target) return
+    const current = this.installActive
+      ? await this.captureCurrentEnvironmentSnapshot('external')
+      : await this.recordCurrentEnvironmentSnapshot('external')
+    const changes = getEnvironmentDiff(current, target)
+    return {
+      snapshot: summarizeEnvironmentSnapshot(target, current.id),
+      changes,
+      actionableCount: changes.filter(change => !['unchanged', 'unsupported'].includes(change.status)).length,
+      unsupportedCount: changes.filter(change => change.status === 'unsupported').length,
+    }
   }
 
   async exec(args: string[]) {
@@ -1458,18 +1457,29 @@ class Installer extends Service {
     })
   }
 
-  private validateInstallHistoryState(snapshot: PackageManifestSnapshot, localDeps: Dict<Dependency>, expectedChanges: InstallHistoryChange[]) {
-    for (const change of expectedChanges) {
-      const currentRequest = Object.prototype.hasOwnProperty.call(snapshot.dependencies, change.name)
-        ? snapshot.dependencies[change.name]
-        : null
-      const currentResolved = localDeps[change.name]?.resolved ?? null
-      if (currentRequest === change.afterRequest && currentResolved === change.afterResolved) continue
-      throw new Error(`依赖 ${change.name} 已在该操作后发生变化，已取消回退。`)
+  private async captureCurrentEnvironmentSnapshot(source: EnvironmentSnapshotSource, operationId?: string): Promise<EnvironmentSnapshot> {
+    const manifest = await this.snapshotPackageManifest()
+    const local = this._getLocalDeps(manifest.dependencies)
+    const dependencies: Dict<EnvironmentDependencySnapshot> = {}
+    for (const [name, request] of Object.entries(manifest.dependencies)) {
+      const normalizedRequest = request.replace(/^[~^]/, '')
+      dependencies[name] = {
+        request,
+        resolved: local[name]?.resolved,
+        workspace: local[name]?.workspace,
+        invalid: !valid(normalizedRequest),
+      }
     }
+    return createEnvironmentSnapshot(dependencies, source, operationId)
   }
 
-  private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}, expectedChanges: InstallHistoryChange[] = []) {
+  private async recordCurrentEnvironmentSnapshot(source: EnvironmentSnapshotSource, operationId?: string) {
+    const snapshot = await this.captureCurrentEnvironmentSnapshot(source, operationId)
+    await this.environmentSnapshots.record(snapshot)
+    return snapshot
+  }
+
+  private async _installLocked(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
     options ||= {}
     const start = Date.now()
     let resultCode: number | undefined
@@ -1483,6 +1493,9 @@ class Installer extends Service {
     }
     const localDeps = this._getLocalDeps(deps)
     const changes = snapshot ? createInstallHistoryChanges(snapshot.dependencies, deps, localDeps) : []
+    await this.recordCurrentEnvironmentSnapshot('external').catch((error) => {
+      logger.warn(`failed to record pre-operation environment snapshot: ${error instanceof Error ? error.message : error}`)
+    })
     await this.startInstallLog(deps, forced, options, changes).catch((error) => {
       this.installLogFile = undefined
       this.installLogMetadataFile = undefined
@@ -1498,7 +1511,6 @@ class Installer extends Service {
       }
       if (snapshotError) throw snapshotError
       if (!snapshot) throw new Error('failed to snapshot package.json before dependency operation')
-      if (expectedChanges.length) this.validateInstallHistoryState(snapshot, localDeps, expectedChanges)
       logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
       await this.override(deps)
       this.emitInstallLog('stdout', 'package.json dependencies updated, preparing package manager workflow…')
@@ -1545,6 +1557,9 @@ class Installer extends Service {
         await beforeReload()
       }
       await this.refreshData()
+      await this.recordCurrentEnvironmentSnapshot('operation', this.installLogMetadata?.id).catch((error) => {
+        logger.warn(`failed to record dependency environment snapshot: ${error instanceof Error ? error.message : error}`)
+      })
       logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!forced}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
       if (shouldReload) {
         this.emitInstallLog('stdout', `full reload scheduled in ${FULL_RELOAD_DELAY}ms`)
@@ -1573,35 +1588,51 @@ class Installer extends Service {
     }
   }
 
-  private async queueInstall(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}, expectedChanges: InstallHistoryChange[] = []) {
-    options ||= {}
+  private async withInstallLock<T>(description: string, callback: () => Promise<T>) {
     const previous = this.installTask
     let release: () => void
     this.installTask = new Promise<void>((resolve) => { release = resolve })
-    if (this.installActive) logger.info(`dependency install queued: deps=${formatDeps(deps)}`)
+    if (this.installActive) logger.info(`dependency install queued: ${description}`)
     await previous
     this.installActive = true
     try {
-      return await this._installLocked(deps, forced, beforeReload, options, expectedChanges)
+      return await callback()
     } finally {
       this.installActive = false
       release!()
     }
   }
 
+  private async queueInstall(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
+    options ||= {}
+    return this.withInstallLock(`deps=${formatDeps(deps)}`, () => {
+      return this._installLocked(deps, forced, beforeReload, options)
+    })
+  }
+
   async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
     return this.queueInstall(deps, forced, beforeReload, options)
   }
 
-  async rollbackInstallHistory(id: string, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
-    const metadata = await this.readInstallLogMetadata(id)
-    if (!metadata) throw new Error('该操作没有可用的回退记录。')
-    const currentDependencies = await this.snapshotPackageManifest().then(snapshot => snapshot.dependencies)
-    const rollbackReason = this.assessInstallRollback(metadata, currentDependencies)
-    if (rollbackReason) throw new Error(formatRollbackError(rollbackReason))
-    const changes = this.getRollbackChanges(metadata)
-    const deps = Object.fromEntries(changes.map(change => [change.name, change.beforeResolved!]))
-    return this.queueInstall(deps, true, beforeReload, options, changes)
+  async applyEnvironmentSnapshot(id: string, options: InstallOptions = {}) {
+    options ||= {}
+    return this.withInstallLock(`environmentSnapshot=${id}`, async () => {
+      const target = await this.environmentSnapshots.get(id)
+      if (!target) throw new Error('目标环境版本不存在或已被清理。')
+      const current = await this.captureCurrentEnvironmentSnapshot('external')
+      const diff = getEnvironmentDiff(current, target)
+      const unsupported = diff.filter(change => change.status === 'unsupported')
+      if (unsupported.length) {
+        throw new Error(`目标环境包含无法自动恢复的工作区依赖：${unsupported.map(change => change.name).join(', ')}`)
+      }
+      const changes = getEnvironmentInstallChanges(diff, target)
+      if (!Object.keys(changes).length) {
+        await this.environmentSnapshots.record(current)
+        return 0
+      }
+      logger.info(`environment snapshot restore requested: target=${id}, changes=${formatDeps(changes)}`)
+      return this._installLocked(changes, true, undefined, options)
+    })
   }
 
   isSelfUpdate(deps: Dict<string>) {
@@ -1654,17 +1685,6 @@ function createInstallHistoryChanges(before: Dict<string>, after: Dict<string>, 
     afterRequest: after[name] || null,
     afterResolved: null,
   }))
-}
-
-function formatRollbackError(reason: InstallHistoryEntry['rollbackReason']) {
-  switch (reason) {
-    case 'running': return '该依赖操作仍在执行，暂时不能回退。'
-    case 'not-successful': return '只有成功完成的依赖更新才能回退。'
-    case 'legacy': return '旧版日志没有保存回退所需的版本信息。'
-    case 'unsupported': return '新增安装、卸载或未改变版本的操作不支持一键回退。'
-    case 'state-changed': return '依赖状态已在该操作后发生变化，为避免覆盖后续修改，已取消回退。'
-    default: return '该操作当前不能回退。'
-  }
 }
 
 function formatLogTimestamp(value: number) {

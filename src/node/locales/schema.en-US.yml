@@ -1,32 +1,67 @@
 registry:
-  $description: 插件源设置
-  endpoint: 插件的下载源。默认跟随当前项目的 npm config。
-  timeout: 获取插件数据的超时时间。
+  $description: Registry settings
+  endpoint: Package download source. Follows the current project's npm config by default.
+  timeout: Timeout for fetching package metadata.
   autoRoute: Automatically try fallback npm registries when version metadata cannot be fetched from the current registry.
   retry: Retry count after version metadata fails on each npm registry.
   concurrency: Maximum concurrency when loading dependency version metadata.
   installLogRetentionHours: How many hours dependency operation logs are retained. Defaults to 72 hours.
 search:
-  $description: 搜索设置
-  endpoint: 用于搜索插件市场的网址。默认使用 t4wefan 镜像。
-  timeout: 搜索插件市场的超时时间。
-  proxyAgent: 用于搜索插件市场的代理。
-  autoRoute: 当前市场源失败时自动尝试备用市场源。
-  logLevel: 插件市场调试日志级别。silent 关闭日志，debug 输出最详细。
+  $description: Search settings
+  endpoint: URL used to search the plugin market. Uses the t4wefan mirror by default.
+  timeout: Timeout for searching the plugin market.
+  proxyAgent: Proxy used to search the plugin market.
+  autoRoute: Automatically try fallback market sources when the current source fails.
+  logLevel: Plugin market log level. silent disables logs; debug enables detailed logs.
 
-frontendMode: Frontend display mode. Performance mode keeps low-motion dense UI; polished mode enables richer visual effects.
-depsLayout: Dependencies page layout. Grid shows compact cards; list shows a denser single-column view.
-marketLayout: Market page layout. Grid shows multi-column cards; list shows compact rows.
-marketSilentRules: Permanent silent market filters. Matched plugins are hidden from the market page and do not appear in the search box. Status rules need no value; date rules use YYYY-MM-DD; recent rules use a number of days.
 marketSilentFilters: Legacy permanent silent filters.
 idleProbe: Automatically probes dependency versions and market data while Console is idle. It only runs when no browser console is connected, and page reloads do not trigger it.
 idleProbeDelay: How long Console must stay idle before the background probe starts.
 idleProbeBootDelay: Minimum delay after Koishi startup or reload before idle probing is allowed.
 idleProbeInterval: Minimum interval between idle background probes.
 bulkMode: Batch operation mode. Dependency install, update, and uninstall actions are staged until applying changes.
-removeConfig: Whether to remove existing plugin config when uninstalling a plugin. Ask every time when unset.
+removeConfig:
+  $description: Whether to remove existing plugin config when uninstalling a plugin. Ask every time when unset.
+  $inner:
+    - Ask every time
+    - Always remove plugin config
+    - Never remove plugin config
 updateIgnoredPackages: Dependency package names that should not be checked for updates. One package per line, or separated by commas, semicolons, or spaces.
 updateIgnoreDuration: Default duration after ignoring one update. 0 means no time-based expiry.
 updateIgnoreVersions: How many consecutive newer versions should be ignored after ignoring one update. 1 means only the current latest version.
 updateIgnorePrerelease: When enabled, alpha / beta / rc and other prerelease versions are not treated as update targets.
 chatlunaTool: Enable the ChatLuna plugin market query tool. When ChatLuna is installed, this registers the read-only koishi_plugin_market_search tool.
+
+frontendMode:
+  $description: Frontend display mode. Performance mode keeps low-motion dense UI; polished mode enables richer visual effects.
+  $inner:
+    - Performance mode
+    - Polished mode
+depsLayout:
+  $description: Dependencies page layout. Grid shows compact cards; list shows a denser single-column view.
+  $inner:
+    - Grid
+    - List
+marketLayout:
+  $description: Market page layout. Grid shows multi-column cards; list shows compact rows.
+  $inner:
+    - Grid
+    - List
+marketSilentRules:
+  $description: Permanent silent market filters. Matched plugins are hidden from the market page.
+  type:
+    $description: Rule type
+    $inner:
+      - 'Status: plugin in development'
+      - 'Status: insecure plugin'
+      - 'Status: plugin bundle'
+      - Created before a date
+      - Created after a date
+      - Updated before a date
+      - Updated after a date
+      - Created within the last N days
+      - Updated within the last N days
+      - Custom advanced condition
+  value: 'Rule value. Leave status rules empty; use YYYY-MM-DD for dates, a number for recent-day rules, or a search condition for custom rules.'
+  note: Note
+  enabled: Enabled

@@ -1,0 +1,68 @@
+toolbar:
+  blockPreview: Hide previews
+  gridView: Grid view
+  listView: List view
+  searchPlaceholder: Search dependencies
+  loading: Loading
+empty: No matching dependencies.
+apply:
+  count: '{count} pending change(s)'
+  description: Changes will be written to package.json and installed after confirmation.
+  discard: Discard Changes
+  apply: Apply Changes
+filters:
+  all: All
+  pending: Pending
+  bundle: Plugin bundles
+  unconfigured: Installed, not configured
+  updatable: Updates available
+  ignored: Ignored
+  checkDisabled: Update checks disabled
+  invalid: Unsupported
+  error: Version error
+  workspace: Workspace
+  manual: Added manually
+groups:
+  pending:
+    label: Pending Changes
+    description: These changes are staged and will be applied only after confirmation.
+  bundle:
+    label: Plugin Bundles
+    description: Bundles manage a group of member plugins and do not need a config entry themselves.
+  updatable:
+    label: Updates Available
+    description: A newer npm version is available than the installed version.
+  ignored:
+    label: Updates Ignored
+    description: This update is ignored by policy and will be shown again when the rule expires.
+  checkDisabled:
+    label: Update Checks Disabled
+    description: This dependency is permanently excluded from update checks.
+  unconfigured:
+    label: Installed, Not Configured
+    description: The dependency is installed locally but has no corresponding plugin configuration.
+  invalid:
+    label: Unsupported
+    description: This version range cannot be managed automatically and requires manual editing.
+  error:
+    label: Version Error
+    description: npm metadata is currently unavailable, possibly because of a network or mirror issue.
+  workspace:
+    label: Workspace
+    description: This local workspace dependency does not participate in remote version checks.
+  manual:
+    label: Added Manually
+    description: This dependency is staged for installation but is not installed yet.
+  installed:
+    label: Installed
+    description: Installed and currently has no action requiring attention.
+card:
+  bundle: Plugin bundle
+  update: Update
+  configure: Configure
+  ignore: Ignore
+  restore: Restore
+  remove: Remove dependency
+  current: (current)
+  undo: Undo
+  cancelChange: Cancel change

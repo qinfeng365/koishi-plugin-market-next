@@ -1,0 +1,71 @@
+pages:
+  market: Plugin Market
+  dependencies: Dependencies
+welcome:
+  marketTitle: Browse Plugins
+  marketDescription: Browse plugins in the market and install the ones you need.
+actions:
+  apply: Apply Changes
+  refresh: Refresh
+  upgradeAll: Update All
+  manual: Add Manually
+  history: Recent Operations
+  versionManagement: Version Management
+  cancel: Cancel
+  confirm: Confirm
+  close: Close
+  remove: Remove
+  uninstall: Uninstall
+  configure: Configure
+  update: Update
+  install: Install
+  retry: Retry
+messages:
+  refreshMarketSubmitted: The market refresh request has been submitted.
+  refreshMarketSuccess: The plugin market was refreshed successfully.
+  refreshMarketFailed: Market refresh failed. The last usable data is still shown.
+  refreshDependenciesStarted: Dependency version refresh started.
+  refreshFailed: Refresh failed. Check the network or logs.
+  disconnected: The connection was lost, so the operation result is unknown. Refresh and check again.
+  saved: Saved successfully.
+  saveFailed: Failed to save. Check the logs.
+  unknownError: Unknown error
+  timeUnknown: Unknown time
+  metadataTimeout: The npm metadata request is taking too long. Refresh dependency versions and try again.
+ignore:
+  version: Ignored {version}
+  count: '{count} consecutive versions'
+  until: 'until {time}'
+  separator: ', '
+format:
+  listSeparator: ', '
+status:
+  loading: Loading
+  waiting: Waiting
+  ready: Ready
+  success: Success
+  failed: Failed
+  unknown: Unknown status
+labels:
+  current: Current
+  target: Target
+  latest: Latest
+  version: Version
+  range: Range
+  type: Type
+  config: Config
+  source: Source
+  versionSource: Version source
+  name: Name
+  installed: Installed
+  operation: Operation
+  unknown: Unknown
+  notInstalled: Not installed
+  workspace: Workspace
+  packageBundle: Plugin bundle
+  package: Plugin
+  dependency: Dependency
+time:
+  seconds: '{count} sec'
+  minutes: '{count} min'
+  minutesSeconds: '{minutes} min {seconds} sec'

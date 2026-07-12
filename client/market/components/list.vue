@@ -19,14 +19,14 @@
       <div v-if="bottomSpacer" class="virtual-spacer" :style="{ height: bottomSpacer + 'px' }"></div>
     </div>
     <div v-if="hasMore" ref="sentinel" class="load-more">
-      <el-button text @click="loadMore">加载更多</el-button>
+      <el-button text @click="loadMore">{{ t('marketPage.list.loadMore') }}</el-button>
     </div>
     <div v-else class="load-complete">
-      已显示全部 {{ packages.length }} 个插件
+      {{ t('marketPage.list.complete', { count: packages.length }) }}
     </div>
   </template>
   <k-empty v-else>
-    没有搜索到相关插件。
+    {{ t('marketPage.list.empty') }}
   </k-empty>
 </template>
 
@@ -36,6 +36,7 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, wa
 import { SearchObject } from '@koishijs/registry'
 import { getSortedFiltered, getVisible, hasFilter, kConfig } from '../utils'
 import MarketPackage from './package.vue'
+import { useMarketNextI18n } from '../../i18n'
 
 const props = defineProps<{
   modelValue: string[],
@@ -44,6 +45,8 @@ const props = defineProps<{
   gravatar?: string,
   debug?: boolean,
 }>()
+
+const { t } = useMarketNextI18n()
 
 const emit = defineEmits(['update:modelValue', 'update:page', 'debug'])
 

@@ -4,8 +4,8 @@
       {{ content }}
     </template>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="danger" :loading="removing" @click="remove">确定</el-button>
+      <el-button @click="visible = false">{{ t('extensions.actions.cancel') }}</el-button>
+      <el-button type="danger" :loading="removing" @click="remove">{{ t('common.actions.confirm') }}</el-button>
     </template>
   </el-dialog>
 </template>
@@ -15,8 +15,10 @@
 import { computed, ref } from 'vue'
 import { message, router, send } from '@koishijs/client'
 import { configRemoveTarget } from './config-remove'
+import { useMarketNextI18n } from '../i18n'
 
 const removing = ref(false)
+const { t } = useMarketNextI18n()
 
 const target = computed(() => configRemoveTarget.value)
 
@@ -28,16 +30,16 @@ const visible = computed({
 })
 
 const title = computed(() => {
-  return target.value?.children ? '确认删除分组' : '确认删除配置'
+  return target.value?.children ? t('extensions.actions.removeGroupTitle') : t('extensions.actions.removeConfigTitle')
 })
 
 const content = computed(() => {
   const item = target.value
   if (!item) return ''
   if (item.children) {
-    return `确定要删除分组 ${item.label || item.path} 吗？此操作不可撤销！`
+    return t('extensions.messages.removeGroupConfirm', { name: item.label || item.path })
   }
-  return `确定要删除插件 ${item.label || item.name} 的配置吗？此操作不可撤销！`
+  return t('extensions.messages.removeConfigConfirm', { name: item.label || item.name })
 })
 
 async function remove() {
@@ -50,7 +52,7 @@ async function remove() {
     await router.replace('/plugins/' + (item.parent?.path ?? ''))
   } catch (error) {
     console.error(error)
-    message.error('删除配置失败，请检查日志。')
+    message.error(t('extensions.messages.configRemoveFailed'))
   } finally {
     removing.value = false
   }

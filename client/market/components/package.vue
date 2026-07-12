@@ -79,10 +79,8 @@ import { computed, inject, onUnmounted, ref, watch } from 'vue'
 import { SearchObject } from '@koishijs/registry'
 import { useI18nText } from '@koishijs/components'
 import { store } from '@koishijs/client'
-import { badges, cacheAvatarFailure, fetchAndCacheAvatar, fetchCachedAvatar, getCachedAvatarFromCandidates, getUserAvatarCandidates, getUserKey, getUsers, isAvatarFailureCached, isBundleSearchObject, resolveCategory, validate } from '../utils'
+import { badges, cacheAvatarFailure, fetchAndCacheAvatar, fetchCachedAvatar, getCachedAvatarFromCandidates, getUserAvatarCandidates, getUserKey, getUsers, isAvatarFailureCached, isBundleSearchObject, resolveCategory, useMarketI18n, validate } from '../utils'
 import { kConfig } from '../utils'
-import { useI18n } from 'vue-i18n'
-import zhCN from '../locales/zh-CN.yml'
 import MarketIcon from '../icons'
 
 defineEmits(['query'])
@@ -266,11 +264,7 @@ function formatSize(value: number) {
   }
 }
 
-const { t, setLocaleMessage } = useI18n({
-  messages: {
-    'zh-CN': zhCN,
-  },
-})
+const { t, locale } = useMarketI18n()
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
@@ -283,7 +277,7 @@ function getReferenceNow() {
 }
 
 function formatAbsoluteDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  return new Date(timestamp).toLocaleDateString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -303,12 +297,6 @@ function timeAgo(time?: string) {
 
 function updatedAgo(time?: string) {
   return t('time.updated-ago', [timeAgo(time)])
-}
-
-if (import.meta.hot) {
-  import.meta.hot.accept('../locales/zh-CN.yml', (module) => {
-    setLocaleMessage('zh-CN', module.default)
-  })
 }
 
 watch(() => [props.data.package.name, props.gravatar], () => {

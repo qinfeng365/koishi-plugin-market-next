@@ -1,0 +1,141 @@
+confirm:
+  title: 确认依赖更改
+  dependency: 依赖
+  oldVersion: 旧版本
+  newVersion: 新版本
+  notInstalled: 未安装
+  removeDependency: 移除依赖
+  removeConfig: 为卸载的插件删除配置
+  discard: 丢弃改动
+  apply: 应用更改
+  saveBundleFailed: 插件包归属记录保存失败，请刷新后确认。
+install:
+  installErrorHint: 该依赖的安装发生了错误，你可以尝试修复或移除它。
+  peerName: 依赖名称
+  peerRange: 版本区间
+  peerCurrent: 当前版本
+  peerAvailability: 可用性
+  bulkMode: 批量操作模式
+  bulkModeHint: 批量操作模式下，你可以同时安装、更新或移除多个插件。勾选此选项后，你的所有操作会被暂存，直到你点击右上角的“应用更改”按钮。
+  remove: 移除
+  add: 添加
+  uninstall: 卸载
+  update: 更新
+  repair: 修复
+  install: 安装
+  removeConfigQuestion: 检测到你正在卸载一个已配置的插件，是否同时删除其配置？
+  rememberChoice: 记住我的选择
+  rememberChoiceHint: 未来将不再弹出此对话框。你仍然可以在用户设置中更改此行为。
+  delete: 删除
+  keep: 保留
+  deprecated: 此版本已废弃：{reason}
+  insecure: 警告：从此插件的最新版本中检测出安全性问题。安装或升级此插件可能导致严重问题。
+  majorWarning: 提示：你正在更改依赖的主版本号。这可能导致不兼容的行为。
+  waitingRemove: 等待移除
+  optional: 可选
+  incompatible: 不兼容
+  notDownloaded: 未下载
+  waitingUpdate: 等待更新
+  waitingInstall: 等待安装
+  downloaded: 已下载
+  select: 选择
+  added: 依赖已添加。
+  addFailed: 依赖添加失败！
+  addTimeout: 依赖添加超时！
+  uninstalling: 正在卸载插件……
+  uninstalled: 卸载成功！
+  uninstallFailed: 卸载失败！
+  uninstallTimeout: 卸载超时！
+manual:
+  title: 高级：手动添加依赖
+  hint: 提示：如果你想要安装插件，请前往
+  market: 插件市场
+  hintAfter: 页面。
+  placeholder: 请输入名称
+  latest: 最新版本
+  description: 介绍
+  cancel: 取消
+  confirm: 确定
+progress:
+  logTitle: 安装日志 / Package Manager Output
+  initializing: 正在初始化安装进程并挂载输出……
+  fallbackPrefix: 当前源安装失败，是否使用备用源
+  fallbackSuffix: 重试一次？不会修改你的配置。
+  retryFallback: 使用备用源重试
+  executing: 正在执行...
+  close: 关闭
+  runningSelf: 正在更新 market-next，请勿关闭页面……
+  runningDependencies: 正在应用依赖变更，请勿关闭页面……
+  successSelf: market-next 更新成功，控制台正在重载。
+  successDependencies: 依赖安装成功！控制台正在重载服务。
+  errorSelf: market-next 更新失败，请检查控制台输出。
+  errorDependencies: 依赖安装失败，请检查控制台输出。
+  ready: 准备就绪
+  applyTitle: 正在应用依赖更改
+  selfUpdateTitle: 正在更新 market-next……
+  dependencyTitle: 正在更新依赖……
+  submitted: 已提交依赖变更，正在等待后端启动包管理器……
+  selfSubmitted: 正在更新当前插件。安装完成后 Console 可能会短暂断开并自动重载。
+  waitingSelf: 仍在等待包管理器输出；如果 Console 随后断开连接，这是 market-next 自更新重载的正常过程。
+  waitingDependencies: 仍在等待包管理器输出；大型依赖变更或弱网环境下可能需要更久。
+  disconnected: Console 连接已断开，安装结果无法确认。请刷新依赖页确认实际状态。
+  disconnectedShort: 连接已断开，安装结果无法确认，请刷新后检查。
+  selfSubmittedSuccess: market-next 更新已提交，Console 正在重载。
+  dependenciesSubmittedSuccess: 依赖变更已提交，控制台正在重载。
+  selfSuccessToast: market-next 更新完成，Console 即将重载。
+  successToast: 安装成功！
+  runningEnvironment: 正在恢复整个依赖环境，请勿关闭页面……
+  successEnvironment: 依赖环境恢复成功，控制台正在同步状态。
+  errorEnvironment: 依赖环境恢复失败，请检查控制台输出。
+  requestFailed: 安装请求失败：{detail}
+  installError: 安装失败！
+  installTimeout: 安装超时！
+  environmentTitle: 正在恢复依赖环境……
+  environmentPreparing: 正在重新读取当前环境并校验目标版本……
+  environmentWaiting: 仍在等待包管理器输出；恢复多个依赖可能需要更久。
+  environmentDisconnected: Console 连接已断开，恢复结果无法确认。请刷新依赖页和版本管理后确认。
+  environmentDisconnectedShort: 连接已断开，环境恢复结果无法确认。
+  environmentError: 依赖环境恢复失败。
+  environmentSubmitted: 环境恢复已提交，Console 正在重载。
+  environmentSuccess: 依赖环境恢复成功。
+  environmentErrorTitle: 依赖环境恢复失败！
+  environmentTimeout: 依赖环境恢复请求超时！
+  fallbackLog: 可使用备用 npm 源 {endpoint} 重试一次；不会修改你的配置。
+  fallbackConfirmed: 用户确认使用备用 npm 源重试：{endpoint}
+  fallbackFailed: 备用 npm 源重试失败，包管理器退出码：{code}
+history:
+  title: 最近操作
+  syncing: 正在同步记录……
+  count: 共 {count} 条记录
+  refresh: 刷新
+  records: 操作记录
+  reading: 正在读取操作记录……
+  empty: 暂无依赖操作记录
+  readingLog: 正在读取日志……
+  copyLog: 复制日志
+  copied: 日志已复制。
+  copyFailed: 复制失败，请手动选择日志文本。
+  close: 关闭
+  dependencyCount: 依赖数量
+  source: 安装源
+  logSize: 日志大小
+  unknown: 未知
+  versionChanges: 版本变更
+  items: '{count} 项'
+  truncated: 日志过大，复制内容仅保留开头与末尾。
+  selectRecord: 选择一条记录查看日志
+  loadFailed: 读取最近操作失败，请检查后端日志。
+  detailFailed: 读取日志详情失败，文件可能已被自动清理。
+  statusRunning: 执行中
+  statusSuccess: 成功
+  statusError: 失败
+  statusUnknown: 状态未知
+  operation: 依赖操作
+  install: 安装 {count}
+  update: 更新 {count}
+  uninstall: 卸载 {count}
+  changed: 变更 {count} 个依赖
+  notInstalled: 未安装
+  uninstalled: 已卸载
+  unknownTime: 时间未知
+  defaultSource: 项目默认源

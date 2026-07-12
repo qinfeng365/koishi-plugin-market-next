@@ -7,37 +7,38 @@
     <div class="col-name">
       <span class="name-display" :title="name">
         <span class="name-label">{{ displayName }}</span>
-        <span v-if="bundlePackage" class="dep-list-kind-pill" title="插件包">
+        <span v-if="bundlePackage" class="dep-list-kind-pill" :title="t('dependencyCard.identity.bundle')">
           <market-icon name="file-archive"></market-icon>
-          插件包
+          {{ t('dependencyCard.identity.bundle') }}
         </span>
       </span>
       <span class="name-full" :title="name">{{ name }}</span>
     </div>
-    <div class="col-version">{{ currentText }}</div>
-    <div class="col-latest" :class="{ 'has-update': updatable, 'pending-val': pending }">
+    <div class="col-version" :data-label="t('common.labels.current')">{{ currentText }}</div>
+    <div class="col-latest" :data-label="targetLabel" :class="{ 'has-update': updatable, 'pending-val': pending }">
       {{ showTargetMeta ? targetText : '—' }}
     </div>
     <div class="col-actions" @click.stop>
-      <el-button v-if="showQuickUpdate" size="small" type="primary" @click="selectedVersion = latestVersion">更新</el-button>
-      <el-button v-if="showConfigure" size="small" type="primary" :loading="configuring" @click="configure">配置</el-button>
-      <el-button v-if="showInlineIgnoreUpdate" size="small" @click="openIgnoreDialog">忽略</el-button>
-      <el-button v-if="showRestoreUpdate" size="small" @click="restoreUpdate">恢复</el-button>
+      <el-button v-if="showQuickUpdate" size="small" type="primary" @click="selectedVersion = latestVersion">{{ t('dependencyCard.actions.update') }}</el-button>
+      <el-button v-if="showConfigure" size="small" type="primary" :loading="configuring" @click="configure">{{ t('dependencyCard.actions.configure') }}</el-button>
+      <el-button v-if="showInlineIgnoreUpdate" size="small" @click="openIgnoreDialog">{{ t('dependencyCard.actions.ignore') }}</el-button>
+      <el-button v-if="showRestoreUpdate" size="small" @click="restoreUpdate">{{ t('dependencyCard.actions.restore') }}</el-button>
       <el-select
         v-if="showVersionControl && data && (editing || pending)"
         v-model="selectedVersion"
         size="small"
-        class="dep-list-select"
+        class="dep-list-select market-version-select"
         :class="{ pending }"
+        :popper-class="versionPopperClass"
       >
-        <el-option v-if="dep" :value="removeValue">移除依赖</el-option>
+        <el-option v-if="dep" :value="removeValue">{{ t('dependencyCard.actions.remove') }}</el-option>
         <el-option v-for="({ result }, itemVersion) in data" :key="itemVersion" :value="itemVersion">
           {{ itemVersion }}
-          <template v-if="itemVersion === dep?.resolved">(当前)</template>
+          <template v-if="itemVersion === dep?.resolved">{{ t('dependencyCard.actions.current') }}</template>
           <span :class="[result, 'theme-color', 'dot-hint']"></span>
         </el-option>
       </el-select>
-      <el-button v-if="pending" size="small" @click="clearOverride">撤销</el-button>
+      <el-button v-if="pending" size="small" @click="clearOverride">{{ t('dependencyCard.actions.undo') }}</el-button>
       <el-button v-if="showRemoveDependency" class="dep-remove-button" size="small" @click="removeDependency">{{ removeButtonText }}</el-button>
       <el-button v-if="canExpandCard && !pending" size="small" @click.stop="toggleEdit">
         {{ editToggleText }}
@@ -78,7 +79,7 @@
           size="small"
           @click="openIgnoreDialog"
         >
-          忽略更新
+          {{ t('dependencyCard.actions.ignore') }}
         </el-button>
         <el-button v-if="showEditToggle" size="small" @click.stop="toggleEdit">
           {{ editToggleText }}
@@ -92,7 +93,7 @@
 
     <div class="dep-meta-row">
       <div class="dep-meta-item">
-        <span>当前</span>
+        <span>{{ t('common.labels.current') }}</span>
         <strong>{{ currentText }}</strong>
       </div>
       <div v-if="showTargetMeta" class="dep-meta-item">
@@ -100,23 +101,23 @@
         <strong :class="{ danger: pendingRemove }">{{ targetText }}</strong>
       </div>
       <div v-if="requestText" class="dep-meta-item">
-        <span>范围</span>
+        <span>{{ t('common.labels.range') }}</span>
         <strong>{{ requestText }}</strong>
       </div>
       <div v-if="showIdentityMeta" class="dep-meta-item dep-meta-kind">
-        <span>类型</span>
+        <span>{{ t('common.labels.type') }}</span>
         <strong>{{ identityText }}</strong>
       </div>
       <div v-if="showConfigMeta" class="dep-meta-item">
-        <span>配置</span>
+        <span>{{ t('common.labels.config') }}</span>
         <strong :class="{ warning: unconfigured }">{{ configText }}</strong>
       </div>
       <div v-if="showSourceMeta" class="dep-meta-item">
-        <span>来源</span>
+        <span>{{ t('common.labels.source') }}</span>
         <strong>{{ sourceText }}</strong>
       </div>
       <div v-if="versionSourceText" class="dep-meta-item">
-        <span>版本源</span>
+        <span>{{ t('common.labels.versionSource') }}</span>
         <strong>{{ versionSourceText }}</strong>
       </div>
     </div>
@@ -130,12 +131,14 @@
         v-if="showVersionControl && data"
         v-model="selectedVersion"
         size="small"
+        class="market-version-select"
         :class="{ pending }"
+        :popper-class="versionPopperClass"
       >
-        <el-option v-if="dep" :value="removeValue">移除依赖</el-option>
+        <el-option v-if="dep" :value="removeValue">{{ t('dependencyCard.actions.remove') }}</el-option>
         <el-option v-for="({ result }, itemVersion) in data" :key="itemVersion" :value="itemVersion">
           {{ itemVersion }}
-          <template v-if="itemVersion === dep?.resolved">(当前)</template>
+          <template v-if="itemVersion === dep?.resolved">{{ t('dependencyCard.actions.current') }}</template>
           <span :class="[result, 'theme-color', 'dot-hint']"></span>
         </el-option>
       </el-select>
@@ -148,14 +151,14 @@
           type="primary"
           @click="selectedVersion = latestVersion"
         >
-          更新到最新
+          {{ t('dependencyCard.actions.updateLatest') }}
         </el-button>
         <el-button
           v-if="showRestoreUpdate"
           size="small"
           @click="restoreUpdate"
         >
-          恢复提示
+          {{ t('dependencyCard.actions.restorePrompt') }}
         </el-button>
         <el-button
           v-if="showConfigure"
@@ -164,7 +167,7 @@
           :loading="configuring"
           @click="configure"
         >
-          添加配置
+          {{ t('dependencyCard.actions.addConfig') }}
         </el-button>
         <el-button
           v-if="showRemoveDependency"
@@ -174,53 +177,53 @@
         >
           {{ removeButtonText }}
         </el-button>
-        <el-button v-if="pending" size="small" @click="clearOverride">取消改动</el-button>
+      <el-button v-if="pending" size="small" @click="clearOverride">{{ t('dependencyCard.actions.cancelChange') }}</el-button>
       </div>
     </div>
   </article>
 
   <el-dialog v-model="showIgnoreDialog" :class="['dep-ignore-dialog', modeClass]" append-to-body destroy-on-close>
-    <template #header>忽略更新提示</template>
+    <template #header>{{ t('dependencyCard.ignore.title') }}</template>
     <div class="dep-ignore-body">
       <p>
-        将忽略 <strong>{{ displayName }}</strong>
-        <template v-if="latestVersion"> 的 {{ latestVersion }} 更新提示。</template>
+        {{ t('dependencyCard.ignore.intro', { name: displayName }) }}
+        <template v-if="latestVersion">{{ t('dependencyCard.ignore.versionIntro', { version: latestVersion }) }}</template>
       </p>
       <el-checkbox v-model="ignorePackagePermanently">
-        永久不检测这个插件的更新
+        {{ t('dependencyCard.ignore.permanent') }}
       </el-checkbox>
       <template v-if="!ignorePackagePermanently">
         <label class="dep-ignore-field">
-          <span>忽略多久</span>
+          <span>{{ t('dependencyCard.ignore.duration') }}</span>
           <el-radio-group v-model="ignoreDurationPreset">
-            <el-radio-button value="forever">不限时</el-radio-button>
-            <el-radio-button value="1d">1 天</el-radio-button>
-            <el-radio-button value="7d">7 天</el-radio-button>
-            <el-radio-button value="30d">30 天</el-radio-button>
-            <el-radio-button value="custom">自定义</el-radio-button>
+            <el-radio-button value="forever">{{ t('dependencyCard.ignore.forever') }}</el-radio-button>
+            <el-radio-button value="1d">{{ t('dependencyCard.ignore.day', { count: 1 }) }}</el-radio-button>
+            <el-radio-button value="7d">{{ t('dependencyCard.ignore.day', { count: 7 }) }}</el-radio-button>
+            <el-radio-button value="30d">{{ t('dependencyCard.ignore.day', { count: 30 }) }}</el-radio-button>
+            <el-radio-button value="custom">{{ t('dependencyCard.ignore.custom') }}</el-radio-button>
           </el-radio-group>
         </label>
         <label v-if="ignoreDurationPreset === 'custom'" class="dep-ignore-field inline">
-          <span>自定义天数</span>
+          <span>{{ t('dependencyCard.ignore.customDays') }}</span>
           <el-input-number v-model="ignoreCustomDays" :min="1" :max="3650" :step="1" controls-position="right"></el-input-number>
         </label>
         <label class="dep-ignore-field inline">
-          <span>连续忽略版本数</span>
+          <span>{{ t('dependencyCard.ignore.versionCount') }}</span>
           <el-input-number v-model="ignoreCount" :min="1" :max="20" :step="1" controls-position="right"></el-input-number>
         </label>
       </template>
       <p class="dep-ignore-note">
         <template v-if="ignorePackagePermanently">
-          永久不检测会记录在依赖管理的忽略规则中，可在“不检测更新”分组中恢复。
+          {{ t('dependencyCard.ignore.permanentNote') }}
         </template>
         <template v-else>
-          不限时表示不按时间过期；达到连续忽略版本数后，后续新版本会重新提示。
+          {{ t('dependencyCard.ignore.durationNote') }}
         </template>
       </p>
     </div>
     <template #footer>
-      <el-button @click="showIgnoreDialog = false">取消</el-button>
-      <el-button type="primary" :loading="ignoreSaving" @click="confirmIgnoreUpdate">确认忽略</el-button>
+      <el-button @click="showIgnoreDialog = false">{{ t('dependencyCard.ignore.cancel') }}</el-button>
+      <el-button type="primary" :loading="ignoreSaving" @click="confirmIgnoreUpdate">{{ t('dependencyCard.ignore.confirm') }}</el-button>
     </template>
   </el-dialog>
 
@@ -242,6 +245,7 @@ import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalled
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import BundleUninstall from './bundle-uninstall.vue'
+import { useMarketNextI18n } from '../i18n'
 
 type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
 
@@ -255,8 +259,10 @@ const removeValue = '__market_next_remove__'
 const day = 24 * 60 * 60 * 1000
 const config = useConfig()
 const ctx = useContext()
+const { t, locale } = useMarketNextI18n()
 const frontendMode = computed(() => getFrontendMode(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
+const versionPopperClass = computed(() => `market-version-popper ${modeClass.value}`)
 const configuring = ref(false)
 const editing = computed({
   get: () => expandedDependency.value === props.name,
@@ -353,19 +359,19 @@ const statusClass = computed<ItemKind>(() => {
 })
 
 const statusLabel = computed(() => {
-  if (pendingRemove.value) return '待卸载'
-  if (pending.value && dep.value) return '待应用'
-  if (pending.value) return '待安装'
-  if (dep.value?.workspace) return '工作区'
-  if (dep.value?.invalid) return '不支持'
-  if (bundlePackage.value && (dep.value || local.value)) return '插件包'
-  if (unconfigured.value) return '未配置'
-  if (status.value?.error) return '版本异常'
-  if (!dep.value && !local.value) return '手动添加'
-  if (updateCheckDisabled.value) return '不检测'
-  if (ignoredUpdate.value) return '已忽略'
-  if (updatable.value) return '可更新'
-  return '已安装'
+  if (pendingRemove.value) return t('dependencyCard.status.pendingRemove')
+  if (pending.value && dep.value) return t('dependencyCard.status.pendingApply')
+  if (pending.value) return t('dependencyCard.status.pendingInstall')
+  if (dep.value?.workspace) return t('dependencyCard.status.workspace')
+  if (dep.value?.invalid) return t('dependencyCard.status.unsupported')
+  if (bundlePackage.value && (dep.value || local.value)) return t('dependencyCard.status.bundle')
+  if (unconfigured.value) return t('dependencyCard.status.unconfigured')
+  if (status.value?.error) return t('dependencyCard.status.versionError')
+  if (!dep.value && !local.value) return t('dependencyCard.status.manual')
+  if (updateCheckDisabled.value) return t('dependencyCard.status.checkDisabled')
+  if (ignoredUpdate.value) return t('dependencyCard.status.ignored')
+  if (updatable.value) return t('dependencyCard.status.updatable')
+  return t('dependencyCard.status.installed')
 })
 
 const statusIcon = computed(() => {
@@ -391,74 +397,74 @@ const markIcon = computed(() => {
 })
 
 const currentText = computed(() => {
-  if (!dep.value) return local.value?.package.version ?? '未安装'
-  if (dep.value.workspace) return dep.value.resolved ? `${dep.value.resolved} / 工作区` : '工作区'
-  return dep.value.resolved ?? '安装异常'
+  if (!dep.value) return local.value?.package.version ?? t('dependencyCard.current.notInstalled')
+  if (dep.value.workspace) return dep.value.resolved ? `${dep.value.resolved} / ${t('dependencyCard.current.workspace')}` : t('dependencyCard.current.workspace')
+  return dep.value.resolved ?? t('dependencyCard.current.installError')
 })
 
 const targetText = computed(() => {
-  if (pendingRemove.value) return '移除依赖'
+  if (pendingRemove.value) return t('dependencyCard.target.remove')
   if (overrideValue.value) return overrideValue.value
   if (updatable.value && latestVersion.value) return latestVersion.value
   if (ignoredUpdate.value && latestVersion.value) return latestVersion.value
-  if (dep.value?.workspace) return '保持工作区'
+  if (dep.value?.workspace) return t('dependencyCard.target.keepWorkspace')
   if (statusClass.value === 'installed' && dep.value && !dep.value.workspace) {
     if (dep.value.latest) return dep.value.latest
-    if (status.value?.loading) return '获取中'
+    if (status.value?.loading) return t('dependencyCard.target.loading')
   }
   if (latestVersion.value) return latestVersion.value
-  return dep.value || local.value ? '等待版本数据' : '等待安装'
+  return dep.value || local.value ? t('dependencyCard.target.waitingData') : t('dependencyCard.target.waitingInstall')
 })
 
 const targetLabel = computed(() => {
-  if (pending.value) return '待应用'
-  if (updatable.value) return '最新'
-  if (ignoredUpdate.value) return '已忽略'
-  if (dep.value || local.value) return '最新'
-  return '目标'
+  if (pending.value) return t('dependencyCard.label.pending')
+  if (updatable.value) return t('dependencyCard.label.latest')
+  if (ignoredUpdate.value) return t('dependencyCard.label.ignored')
+  if (dep.value || local.value) return t('dependencyCard.label.latest')
+  return t('dependencyCard.label.target')
 })
 
 const detailText = computed(() => {
-  if (pendingRemove.value) return '此依赖将在应用更改后从 package.json 中移除。'
-  if (pending.value && dep.value) return '此依赖已有暂存的版本变更，应用后生效。'
-  if (pending.value) return '此依赖已加入待安装列表，应用后会安装到本地。'
-  if (dep.value?.workspace) return '本地工作区依赖，不参与 npm registry 版本更新。'
-  if (dep.value?.invalid) return '版本区间语法暂不支持自动版本管理，请手动修改 package.json。'
-  if (bundlePackage.value && (dep.value || local.value)) return '插件包本身不需要配置；成员配置由插件包分组管理。'
-  if (unconfigured.value) return '本地已下载，但插件配置页还没有对应配置项。'
+  if (pendingRemove.value) return t('dependencyCard.detail.pendingRemove')
+  if (pending.value && dep.value) return t('dependencyCard.detail.pendingApply')
+  if (pending.value) return t('dependencyCard.detail.pendingInstall')
+  if (dep.value?.workspace) return t('dependencyCard.detail.workspace')
+  if (dep.value?.invalid) return t('dependencyCard.detail.unsupported')
+  if (bundlePackage.value && (dep.value || local.value)) return t('dependencyCard.detail.bundle')
+  if (unconfigured.value) return t('dependencyCard.detail.unconfigured')
   if (status.value?.error) return getRegistryStatusText(props.name)
   if (!data.value && !dep.value?.workspace) return getRegistryStatusText(props.name)
-  if (updateCheckDisabled.value) return '已加入不检测更新名单；可点击“恢复提示”重新参与版本检测。'
-  if (ignoredUpdate.value) return getUpdateIgnoreText(props.name, getUpdatePolicy()) || '已忽略当前更新。'
-  if (updatable.value && latestVersion.value) return `发现新版本 ${latestVersion.value}。`
+  if (updateCheckDisabled.value) return t('dependencyCard.detail.checkDisabled')
+  if (ignoredUpdate.value) return getUpdateIgnoreText(props.name, getUpdatePolicy()) || t('dependencyCard.detail.ignored')
+  if (updatable.value && latestVersion.value) return t('dependencyCard.detail.foundUpdate', { version: latestVersion.value })
   return ''
 })
 
 const compactStatusText = computed(() => {
-  if (dep.value?.workspace) return '工作区依赖'
-  if (dep.value?.invalid) return '暂不支持'
-  return status.value?.loading || !status.value ? '正在获取版本数据' : '暂无版本数据'
+  if (dep.value?.workspace) return t('dependencyCard.detail.workspaceShort')
+  if (dep.value?.invalid) return t('dependencyCard.detail.unsupportedShort')
+  return status.value?.loading || !status.value ? t('dependencyCard.detail.fetching') : t('dependencyCard.detail.noData')
 })
 
 const configText = computed(() => {
-  if (bundlePackage.value) return '不需要配置'
-  if (!isPluginPackage(props.name)) return '非插件'
-  if (!ctx.configWriter) return '未知'
-  if (!local.value) return pending.value ? '待安装' : '未加载'
-  return unconfigured.value ? '未配置' : '已配置'
+  if (bundlePackage.value) return t('dependencyCard.config.notNeeded')
+  if (!isPluginPackage(props.name)) return t('dependencyCard.config.notPlugin')
+  if (!ctx.configWriter) return t('dependencyCard.config.unknown')
+  if (!local.value) return pending.value ? t('dependencyCard.config.pending') : t('dependencyCard.config.notLoaded')
+  return unconfigured.value ? t('dependencyCard.config.unconfigured') : t('dependencyCard.config.configured')
 })
 
 const sourceText = computed(() => {
-  if (bundleOrigin.value) return `插件包：${bundleOrigin.value.label || formatPackageDisplayName(bundleOrigin.value.package)}`
-  if (bundleRecord.value) return '插件包自身'
-  if (dep.value?.workspace || local.value?.workspace) return '工作区'
-  if (pending.value && !dep.value) return '待安装'
-  if (!dep.value && local.value) return '本地'
-  if (!dep.value) return '手动'
-  return 'package.json'
+  if (bundleOrigin.value) return t('dependencyCard.source.bundle', { name: bundleOrigin.value.label || formatPackageDisplayName(bundleOrigin.value.package) })
+  if (bundleRecord.value) return t('dependencyCard.source.bundleSelf')
+  if (dep.value?.workspace || local.value?.workspace) return t('dependencyCard.source.workspace')
+  if (pending.value && !dep.value) return t('dependencyCard.source.pending')
+  if (!dep.value && local.value) return t('dependencyCard.source.local')
+  if (!dep.value) return t('dependencyCard.source.manual')
+  return t('dependencyCard.source.packageJson')
 })
 
-const removeButtonText = computed(() => bundleRecord.value ? '卸载插件包' : '卸载')
+const removeButtonText = computed(() => bundleRecord.value ? t('dependencyCard.actions.uninstallBundle') : t('dependencyCard.actions.uninstall'))
 
 const requestText = computed(() => {
   if (!dep.value?.request) return ''
@@ -470,14 +476,14 @@ const versionSourceText = computed(() => {
   if (statusClass.value === 'installed' && !editing.value) return ''
   if (dep.value?.workspace) return ''
   if (status.value?.endpoint) return formatEndpoint(status.value.endpoint)
-  if (status.value?.loading) return '获取中'
-  if (!data.value && dep.value) return '等待'
+  if (status.value?.loading) return t('dependencyCard.target.loading')
+  if (!data.value && dep.value) return t('dependencyCard.target.waiting')
   return ''
 })
 
 const identity = computed(() => resolveIdentity(props.name))
 
-const identityText = computed(() => identity.value.label)
+const identityText = computed(() => t(identity.value.label))
 const identityIcon = computed(() => identity.value.icon)
 
 const cardStyle = computed(() => {
@@ -493,9 +499,9 @@ const showIdentityMeta = computed(() => statusClass.value !== 'installed')
 
 const showStatusBadge = computed(() => statusClass.value !== 'installed')
 
-const showConfigMeta = computed(() => statusClass.value !== 'installed' || configText.value !== '已配置')
+const showConfigMeta = computed(() => statusClass.value !== 'installed' || configText.value !== t('dependencyCard.config.configured'))
 
-const showSourceMeta = computed(() => statusClass.value !== 'installed' || sourceText.value !== 'package.json')
+const showSourceMeta = computed(() => statusClass.value !== 'installed' || sourceText.value !== t('dependencyCard.source.packageJson'))
 
 const summaryText = computed(() => {
   if (statusClass.value !== 'installed') return ''
@@ -520,9 +526,9 @@ const showVersionControl = computed(() => {
 })
 
 const editToggleText = computed(() => {
-  if (bundlePackage.value) return '管理'
-  if (editing.value) return '收起'
-  return data.value ? (props.listMode ? '版本' : '修改') : '操作'
+  if (bundlePackage.value) return t('dependencyCard.actions.manage')
+  if (editing.value) return t('dependencyCard.actions.collapse')
+  return data.value ? (props.listMode ? t('dependencyCard.actions.versions') : t('dependencyCard.actions.edit')) : t('dependencyCard.actions.operate')
 })
 
 const showEditToggle = computed(() => {
@@ -640,11 +646,11 @@ async function confirmIgnoreUpdate() {
     const saved = await persistUpdatePolicy()
     ignoreSaving.value = false
     if (!saved) {
-      message.error('保存忽略设置失败。')
+      message.error(t('common.messages.saveFailed'))
       return
     }
     showIgnoreDialog.value = false
-    message.success('已加入不检测更新名单。')
+    message.success(t('dependencyCard.ignore.addedToDisabled'))
     return
   }
   const rule = createUpdateIgnoreRule(props.name, getUpdatePolicy(), {
@@ -659,11 +665,11 @@ async function confirmIgnoreUpdate() {
   const saved = await persistUpdatePolicy()
   ignoreSaving.value = false
   if (!saved) {
-    message.error('保存忽略设置失败。')
+    message.error(t('common.messages.saveFailed'))
     return
   }
   showIgnoreDialog.value = false
-  message.success('已忽略更新提示。')
+  message.success(t('dependencyCard.ignore.saved'))
 }
 
 function getDurationPreset(duration: number) {
@@ -704,7 +710,7 @@ async function restoreUpdate() {
   delete getUpdateIgnored()[props.name]
   removePackageFromIgnoredList(props.name)
   const saved = await persistUpdatePolicy()
-  if (!saved) message.error('保存忽略设置失败。')
+  if (!saved) message.error(t('common.messages.saveFailed'))
 }
 
 async function persistUpdatePolicy() {
@@ -756,7 +762,10 @@ function pickDescription(value: unknown) {
   if (typeof value === 'string') return value.trim()
   if (!value || typeof value !== 'object') return ''
   const object = value as Record<string, unknown>
-  for (const key of ['zh-CN', 'zh', 'en-US', 'en']) {
+  const preferred = locale.value.toLowerCase().startsWith('zh')
+    ? ['zh-CN', 'zh', 'en-US', 'en']
+    : ['en-US', 'en', 'zh-CN', 'zh']
+  for (const key of preferred) {
     const text = object[key]
     if (typeof text === 'string' && text.trim()) return text.trim()
   }
@@ -782,24 +791,24 @@ function resolveIdentity(name: string) {
 }
 
 const identityMap: Record<string, { label: string, icon: string, color: string }> = {
-  adapter: { label: '适配器', icon: 'solid:adapter', color: '#4d8df7' },
-  database: { label: '数据库', icon: 'solid:tool', color: '#21a67a' },
-  webui: { label: '控制台', icon: 'solid:webui', color: '#8b6cf6' },
-  core: { label: '核心', icon: 'solid:core', color: '#d89b32' },
-  general: { label: '通用', icon: 'solid:general', color: '#6b8cff' },
-  extension: { label: '扩展', icon: 'solid:extension', color: '#5c9ded' },
-  manage: { label: '管理', icon: 'solid:manage', color: '#26a0a7' },
-  preset: { label: '预设', icon: 'solid:preset', color: '#9b74df' },
-  image: { label: '图片', icon: 'solid:image', color: '#d66aa8' },
-  media: { label: '资讯', icon: 'solid:media', color: '#3e9fbb' },
-  tool: { label: '工具', icon: 'solid:tool', color: '#54966f' },
-  life: { label: '生活', icon: 'solid:life', color: '#8da44b' },
-  ai: { label: 'AI', icon: 'solid:ai', color: '#b66be8' },
-  meme: { label: '趣味', icon: 'solid:meme', color: '#d98445' },
-  game: { label: '游戏', icon: 'solid:game', color: '#df6b5f' },
-  gametool: { label: '游戏辅助', icon: 'solid:gametool', color: '#c77745' },
-  bundle: { label: '插件包', icon: 'file-archive', color: '#9b74df' },
-  other: { label: '插件', icon: 'solid:other', color: '#778294' },
+  adapter: { label: 'dependencyCard.identity.adapter', icon: 'solid:adapter', color: '#4d8df7' },
+  database: { label: 'dependencyCard.identity.database', icon: 'solid:tool', color: '#21a67a' },
+  webui: { label: 'dependencyCard.identity.webui', icon: 'solid:webui', color: '#8b6cf6' },
+  core: { label: 'dependencyCard.identity.core', icon: 'solid:core', color: '#d89b32' },
+  general: { label: 'dependencyCard.identity.general', icon: 'solid:general', color: '#6b8cff' },
+  extension: { label: 'dependencyCard.identity.extension', icon: 'solid:extension', color: '#5c9ded' },
+  manage: { label: 'dependencyCard.identity.manage', icon: 'solid:manage', color: '#26a0a7' },
+  preset: { label: 'dependencyCard.identity.preset', icon: 'solid:preset', color: '#9b74df' },
+  image: { label: 'dependencyCard.identity.image', icon: 'solid:image', color: '#d66aa8' },
+  media: { label: 'dependencyCard.identity.media', icon: 'solid:media', color: '#3e9fbb' },
+  tool: { label: 'dependencyCard.identity.tool', icon: 'solid:tool', color: '#54966f' },
+  life: { label: 'dependencyCard.identity.life', icon: 'solid:life', color: '#8da44b' },
+  ai: { label: 'dependencyCard.identity.ai', icon: 'solid:ai', color: '#b66be8' },
+  meme: { label: 'dependencyCard.identity.meme', icon: 'solid:meme', color: '#d98445' },
+  game: { label: 'dependencyCard.identity.game', icon: 'solid:game', color: '#df6b5f' },
+  gametool: { label: 'dependencyCard.identity.gametool', icon: 'solid:gametool', color: '#c77745' },
+  bundle: { label: 'dependencyCard.identity.bundle', icon: 'file-archive', color: '#9b74df' },
+  other: { label: 'dependencyCard.identity.other', icon: 'solid:other', color: '#778294' },
 }
 
 function formatEndpoint(endpoint: string) {
@@ -1531,7 +1540,7 @@ async function configure() {
       padding: 0;
 
       &::before {
-        content: '当前 ';
+        content: attr(data-label) ' ';
         color: var(--fg3);
         font-weight: 500;
       }
@@ -1542,7 +1551,7 @@ async function configure() {
       padding: 0;
 
       &::before {
-        content: '目标 ';
+        content: attr(data-label) ' ';
         color: var(--fg3);
         font-weight: 500;
       }

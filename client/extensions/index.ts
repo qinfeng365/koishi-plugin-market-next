@@ -10,6 +10,7 @@ import Select from './select.vue'
 import Version from './version.vue'
 import { resolveBundlePackageFromGroup } from '../components/utils'
 import { getBundleRecords } from '../utils'
+import { translate } from '../i18n'
 
 function isBundleGroup(tree: any) {
   if (!tree?.children) return false
@@ -19,8 +20,8 @@ function isBundleGroup(tree: any) {
 function patchConfigRemoveLabel(ctx: Context) {
   const patched = new Map<MenuItem, MenuItem['label']>()
   const label: MenuItem['label'] = ({ config }: any) => {
-    if (isBundleGroup(config.tree)) return '卸载插件包'
-    return config.tree?.children ? '删除分组' : '删除配置'
+    if (isBundleGroup(config.tree)) return translate('extensions.menu.uninstallBundle')
+    return config.tree?.children ? translate('extensions.menu.removeGroup') : translate('extensions.menu.removeConfig')
   }
   const apply = () => {
     const list = ctx.internal.menus['config.tree']

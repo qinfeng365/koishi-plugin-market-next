@@ -7,7 +7,7 @@
 
 `koishi-plugin-market-next` 是 Koishi Console 的插件市场增强版。它保留原始 market 的安装、卸载、更新和依赖管理能力，但把弱网加载、刷新反馈、缓存回退、无限滚动、安装后配置补齐、调试日志和 ChatLuna 查询工具重新做成更适合日常使用的版本。
 
-`3.5.5` 是本项目的第一个正式 release。`3.6.0` 是当前推荐的稳定版本，整合了依赖管理页重做、插件包、安全卸载、后台空闲探测、独立数据存储、永久市场过滤、头像缓存、缓存拆分和前端显示模式等一整轮 alpha 验证内容。
+`3.5.5` 是本项目的第一个正式 release。`3.6.1` 是当前推荐的稳定版本，整合了依赖管理页重做、插件包、安全卸载、环境版本管理、后台空闲探测、独立数据存储、永久市场过滤、头像缓存、缓存拆分和前端显示模式等一整轮 alpha 验证内容。
 
 > 注意：自动路由的备用市场源中包含 GitHub 官方地址、jsDelivr 以及少量第三方 GitHub 代理。第三方代理只用于市场索引读取和弱网回退，不会修改 npm/yarn 配置；如果你对供应链来源有严格要求，请关闭 `search.autoRoute`，或手动把 `search.endpoint` 配置为你信任的市场源。
 
@@ -39,6 +39,7 @@ market-next 的目标不是破坏 Koishi 原有管理链路，而是在兼容原
 - 安装后自动补配置：新安装插件会自动创建默认停用配置项，例如 `~schedule:xxxxxx: {}`。
 - 插件包：支持 `koishi-plugin-pa-*` / `@scope/koishi-plugin-pa-*` 插件包，安装、成员配置和卸载都走专用确认流程。
 - 空闲后台探测：Console 无人在线时自动刷新市场和依赖元数据，浏览器 F5 不再隐式触发依赖探测。
+- 环境版本管理：按整个 Koishi 直接依赖环境保存快照，支持预览差异并恢复到指定环境版本。
 - 独立数据存储：待应用变更、忽略更新和插件包归属写入 `data/market-next.json`，插件配置项仍保存在 Koishi 配置树。
 - 永久市场过滤：可在配置页添加预览版、不安全、插件包、创建/更新时间等静默规则。
 - 头像缓存：维护者头像经后端代理和本地缓存，避免重复请求，并阻止头像 URL 访问内网地址。
@@ -137,7 +138,7 @@ market-next 区分两类源：
 
 依赖管理页显示“可更新版本”时，请求的不是 4MB 左右的市场索引，而是每个依赖包自己的 npm 元数据，例如 `https://registry.npmjs.org/koishi-plugin-xxx`。如果弱网环境下每个包都分别尝试多个 npm 源，132 个依赖就可能放大成大量超时等待。
 
-`3.6.0` 中，依赖版本刷新会先进行一次 npm registry route probe：
+`3.6.1` 中，依赖版本刷新会先进行一次 npm registry route probe：
 
 - 代表包选择顺序：`koishi`、`@koishijs/plugin-console`、第一个 Koishi 插件包、第一个普通依赖。
 - 当前 `registry.endpoint` 始终作为主源先请求。
@@ -158,7 +159,7 @@ market-next 区分两类源：
 
 ## 依赖更新提示策略
 
-`3.6.0` 保留并扩展了依赖更新提示控制，用来减少不需要处理的更新噪音：
+`3.6.1` 保留并扩展了依赖更新提示控制，用来减少不需要处理的更新噪音：
 
 - 可以在插件市场设置里填写“不检测更新的依赖名”，每行或用逗号分隔一个包名；这些依赖不会进入可更新或已忽略分组。
 - 依赖卡片上的“忽略此次更新”会先询问忽略多久，可选不限时、1 天、7 天、30 天或自定义天数。
@@ -198,6 +199,7 @@ market-next 区分“插件配置”和“运行数据”：
 
 - Koishi 配置树：保存 `frontendMode`、布局、空闲探测、永久过滤、更新策略等用户配置。
 - `data/market-next.json`：保存待应用依赖变更、单次忽略更新记录、插件包归属记录和依赖分组折叠状态。
+- `data/market-next-environment-snapshots.json`：保存整个 Koishi 直接依赖环境的版本快照，用于预览和恢复依赖环境；不保存插件配置、数据库或插件生成的文件。
 - `data/market-next-install-logs/`：保存每次依赖安装、更新、卸载操作的包管理器日志，默认保留 72 小时，可通过 `registry.installLogRetentionHours` 调整。
 - `cache/`：保存市场索引、路由统计和头像缓存。
 
@@ -443,6 +445,9 @@ market-next 不移除原有 Console 事件：
 
 - `market/refresh-dependencies`
 - `market/ensure-config`
+- `market/environment-snapshots`
+- `market/environment-snapshot-preview`
+- `market/environment-snapshot-apply`
 
 配置兼容原 market 的 `bulkMode`、`removeConfig`、`gravatar` 等前端配置。`override`、`updateIgnored` 和 `bundleRecords` 等运行数据会迁移并保存在 `data/market-next.json`。
 

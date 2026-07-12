@@ -2,7 +2,8 @@ import { defineComponent, h, ref, watch } from 'vue'
 import { Context, Dict, global, message, receive, router, send, store, useConfig } from '@koishijs/client'
 import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
 import { getPendingOverrides, patchMarketNextData, type IgnoredUpdates } from './utils'
-import { showConfirm, showInstallHistory, showManual } from './components/utils'
+import { registerMarketNextI18n, translate } from './i18n'
+import { showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
 import extensions from './extensions'
 import Dependencies from './components/dependencies.vue'
 import Install from './components/install.vue'
@@ -10,10 +11,12 @@ import BundleInstall from './components/bundle-install.vue'
 import Confirm from './components/confirm.vue'
 import InstallProgress from './components/install-progress.vue'
 import InstallHistory from './components/install-history.vue'
+import EnvironmentVersions from './components/environment-versions.vue'
 import Market from './components/market.vue'
 import Progress from './components/progress.vue'
 import './icons'
 import './styles/scrollbars.scss'
+import './styles/version-select.scss'
 
 import 'virtual:uno.css'
 
@@ -53,7 +56,6 @@ type MarketStore = typeof store & {
 
 const REGISTRY_STATUS_TIMEOUT = 120000
 const REGISTRY_STATUS_SWEEP_INTERVAL = 15000
-const REGISTRY_STATUS_TIMEOUT_TEXT = 'npm 元数据请求长时间未完成，请刷新依赖版本后重试。'
 
 function sweepRegistryStatus(target: MarketStore = store as MarketStore) {
   const now = Date.now()
@@ -66,7 +68,7 @@ function sweepRegistryStatus(target: MarketStore = store as MarketStore) {
       ...status,
       loading: false,
       reason: 'timeout',
-      error: REGISTRY_STATUS_TIMEOUT_TEXT,
+      error: translate('common.messages.metadataTimeout'),
     }
     changed = true
   }
@@ -110,6 +112,8 @@ receive('market/registry-status/clear', () => {
 })
 
 export default (ctx: Context) => {
+  registerMarketNextI18n(ctx)
+
   ctx.effect(() => {
     const timer = window.setInterval(() => sweepRegistryStatus(), REGISTRY_STATUS_SWEEP_INTERVAL)
     return () => window.clearInterval(timer)
@@ -121,8 +125,8 @@ export default (ctx: Context) => {
       class: 'choice',
       onClick: () => router.push('/market'),
     }, [
-      h('h2', '浏览插件'),
-      h('p', '浏览插件市场中的插件，并根据自己的需要安装和配置。'),
+      h('h2', translate('common.welcome.marketTitle')),
+      h('p', translate('common.welcome.marketDescription')),
     ])),
   })
 
@@ -151,10 +155,15 @@ export default (ctx: Context) => {
     component: InstallHistory,
   })
 
+  ctx.slot({
+    type: 'global',
+    component: EnvironmentVersions,
+  })
+
   ctx.page({
     id: 'market',
     path: '/market',
-    name: '插件市场',
+    name: () => translate('common.pages.market'),
     icon: 'activity:market',
     order: 750,
     authority: 4,
@@ -176,9 +185,9 @@ export default (ctx: Context) => {
     if (!pendingMarketRefreshFeedback.value) return
     pendingMarketRefreshFeedback.value = false
     if (store.market?.stale || store.market?.error) {
-      message.error('插件市场刷新失败，已保留可用数据。')
+      message.error(translate('common.messages.refreshMarketFailed'))
     } else {
-      message.success('插件市场刷新成功。')
+      message.success(translate('common.messages.refreshMarketSuccess'))
     }
   }
 
@@ -192,11 +201,11 @@ export default (ctx: Context) => {
     ctx.page({
       id: 'dependencies',
       path: '/dependencies',
-      name: '依赖管理',
+      name: () => translate('common.pages.dependencies'),
       icon: 'activity:deps',
       order: 700,
       authority: 4,
-      fields: ['dependencies', 'registry'],
+      fields: ['dependencies', 'registry', 'registryStatus'],
       component: Dependencies,
     })
   }
@@ -214,9 +223,9 @@ export default (ctx: Context) => {
       try {
         await send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
         if (dependencies) {
-          message.success('依赖版本刷新已开始。')
+          message.success(translate('common.messages.refreshDependenciesStarted'))
         } else {
-          message.success('插件市场刷新请求已提交。')
+          message.success(translate('common.messages.refreshMarketSubmitted'))
           setTimeout(() => {
             if (!store.market?.refreshing) finishMarketRefreshFeedback()
           }, 300)
@@ -224,7 +233,7 @@ export default (ctx: Context) => {
       } catch (error) {
         if (!dependencies) pendingMarketRefreshFeedback.value = false
         console.error(error)
-        message.error('刷新失败，请检查网络或日志。')
+        message.error(translate('common.messages.refreshFailed'))
       } finally {
         refreshing.value = false
       }
@@ -250,14 +259,20 @@ export default (ctx: Context) => {
     },
   })
 
+  ctx.action('dependencies.versions', {
+    action() {
+      showEnvironmentVersions.value = true
+    },
+  })
+
   ctx.menu('market', [{
     id: '.install',
     icon: 'check',
-    label: '应用更改',
+    label: () => translate('common.actions.apply'),
   }, {
     id: '.refresh',
     icon: 'refresh',
-    label: '刷新',
+    label: () => translate('common.actions.refresh'),
     type: () => refreshingMarket.value || !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
   }])
 
@@ -269,23 +284,27 @@ export default (ctx: Context) => {
   ctx.menu('dependencies', [{
     id: '.upgrade',
     icon: 'rocket',
-    label: '全部更新',
+    label: () => translate('common.actions.upgradeAll'),
   }, {
     id: 'market.install',
     icon: 'check',
-    label: '应用更改',
+    label: () => translate('common.actions.apply'),
   }, {
     id: '.manual',
     icon: 'add',
-    label: '手动添加',
+    label: () => translate('common.actions.manual'),
   }, {
     id: '.history',
     icon: 'info-full',
-    label: '最近操作',
+    label: () => translate('common.actions.history'),
+  }, {
+    id: '.versions',
+    icon: 'file-archive',
+    label: () => translate('common.actions.versionManagement'),
   }, {
     id: 'market.refresh',
     icon: 'refresh',
-    label: '刷新',
+    label: () => translate('common.actions.refresh'),
     type: () => refreshingDependencies.value || registryRefreshing() ? 'spin disabled' : '',
   }])
 

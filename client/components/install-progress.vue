@@ -22,7 +22,7 @@
       <!-- Log Terminal -->
       <div class="terminal-container">
         <div class="terminal-header">
-          <span class="term-title">安装日志 / Package Manager Output</span>
+          <span class="term-title">{{ t('operations.progress.logTitle') }}</span>
         </div>
         <div class="terminal-viewport" ref="viewport">
           <div class="terminal-content">
@@ -38,7 +38,7 @@
             </template>
             <div v-else class="empty-logs">
               <span class="loading-spinner"></span>
-              正在初始化安装进程并挂载输出……
+              {{ t('operations.progress.initializing') }}
             </div>
           </div>
         </div>
@@ -48,9 +48,9 @@
     <template #footer>
       <div class="dialog-footer">
         <div v-if="installProgressState.fallbackCandidate" class="fallback-prompt">
-          当前源安装失败，是否使用备用源
+          {{ t('operations.progress.fallbackPrefix') }}
           <strong>{{ installProgressState.fallbackCandidate.label }}</strong>
-          重试一次？不会修改你的配置。
+          {{ t('operations.progress.fallbackSuffix') }}
         </div>
         <el-button
           v-if="installProgressState.fallbackCandidate && installProgressState.retryFallback"
@@ -59,14 +59,14 @@
           :disabled="installProgressState.fallbackRunning"
           @click="retryFallback"
         >
-          使用备用源重试
+          {{ t('operations.progress.retryFallback') }}
         </el-button>
         <el-button
           :type="installProgressState.status === 'error' ? 'danger' : 'primary'"
           :disabled="installProgressState.status === 'running'"
           @click="close"
         >
-          {{ installProgressState.status === 'running' ? '正在执行...' : '关闭' }}
+          {{ installProgressState.status === 'running' ? t('operations.progress.executing') : t('operations.progress.close') }}
         </el-button>
       </div>
     </template>
@@ -77,28 +77,38 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useConfig } from '@koishijs/client'
 import { getFrontendMode } from '../utils'
+import { useMarketNextI18n } from '../i18n'
 import { installProgressState } from './utils'
 import MarketIcon from '../market/icons'
 
 const config = useConfig()
+const { t } = useMarketNextI18n()
 const frontendMode = computed(() => getFrontendMode(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const viewport = ref<HTMLElement>()
 
 const statusText = computed(() => {
+  if (installProgressState.environmentRestore) {
+    switch (installProgressState.status) {
+      case 'running': return t('operations.progress.runningEnvironment')
+      case 'success': return t('operations.progress.successEnvironment')
+      case 'error': return t('operations.progress.errorEnvironment')
+      default: return t('operations.progress.ready')
+    }
+  }
   const selfUpdateText = installProgressState.selfUpdate
   switch (installProgressState.status) {
     case 'running': return selfUpdateText
-      ? '正在更新 market-next，请勿关闭页面……'
-      : '正在应用依赖变更，请勿关闭页面……'
+      ? t('operations.progress.runningSelf')
+      : t('operations.progress.runningDependencies')
     case 'success': return selfUpdateText
-      ? 'market-next 更新成功，控制台正在重载。'
-      : '依赖安装成功！控制台正在重载服务。'
+      ? t('operations.progress.successSelf')
+      : t('operations.progress.successDependencies')
     case 'error': return selfUpdateText
-      ? 'market-next 更新失败，请检查控制台输出。'
-      : '依赖安装失败，请检查控制台输出。'
-    default: return '准备就绪'
+      ? t('operations.progress.errorSelf')
+      : t('operations.progress.errorDependencies')
+    default: return t('operations.progress.ready')
   }
 })
 

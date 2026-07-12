@@ -1,13 +1,19 @@
 <template>
-  <el-dialog :model-value="!!active" @update:model-value="active = ''" :class="['install-panel', modeClass]" destroy-on-close>
+  <el-dialog :model-value="!!active" @update:model-value="closePanel" :class="['install-panel', modeClass]" destroy-on-close>
     <template v-if="active" #header="{ titleId, titleClass }">
       <span :id="titleId" :class="titleClass">
-        {{ active + (workspace ? ' (工作区)' : '') }}
+        {{ active + (workspace ? ` (${t('dependencyCard.current.workspace')})` : '') }}
       </span>
-      <el-select v-if="data" :disabled="!!workspace" v-model="selectVersion">
+      <el-select
+        v-if="data"
+        v-model="selectVersion"
+        class="market-version-select"
+        :disabled="!!workspace"
+        :popper-class="versionPopperClass"
+      >
         <el-option v-for="({ result }, version) in data" :key="version" :value="version">
           {{ version }}
-          <template v-if="version === current">(当前)</template>
+          <template v-if="version === current">{{ t('dependencyCard.actions.current') }}</template>
           <span :class="[result, 'theme-color', 'dot-hint']"></span>
         </el-option>
       </el-select>
@@ -21,7 +27,7 @@
     </div>
 
     <k-comment v-if="store.dependencies?.[active] && !current" type="danger">
-      该依赖的安装发生了错误，你可以尝试修复或移除它。
+      {{ t('operations.install.installErrorHint') }}
     </k-comment>
 
     <el-scrollbar v-if="data?.[version] && Object.keys(data[version].peers).length" class="peer-table-scroll">
@@ -34,10 +40,10 @@
         </colgroup>
         <thead>
           <tr>
-            <th>依赖名称</th>
-            <th>版本区间</th>
-            <th>当前版本</th>
-            <th>可用性</th>
+            <th>{{ t('operations.install.peerName') }}</th>
+            <th>{{ t('operations.install.peerRange') }}</th>
+            <th>{{ t('operations.install.peerCurrent') }}</th>
+            <th>{{ t('operations.install.peerAvailability') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -46,23 +52,24 @@
             <td>{{ peer.request }}</td>
             <td>
               <span class="wrapper" v-if="shouldShowPeerVersionSelect(peer, name)">
-                <span class="shadow">{{ getVersion(name) || 'Select' }}</span>
+                <span class="shadow">{{ getVersion(name) || t('operations.install.select') }}</span>
                 <el-select
-                  class="frameless"
+                  class="frameless market-version-select"
                   :model-value="getVersion(name)"
+                  :popper-class="versionPopperClass"
                   @update:model-value="setVersion(name, $event)"
                 >
-                  <el-option value="">移除依赖</el-option>
+                    <el-option value="">{{ t('dependencyCard.actions.remove') }}</el-option>
                   <el-option v-for="(_, version) in store.registry[name]" :key="version" :value="version">
                     {{ version }}
-                    <template v-if="version === current">(当前)</template>
+                    <template v-if="version === current">{{ t('dependencyCard.actions.current') }}</template>
                     <!-- <span :class="[result, 'theme-color', 'dot-hint']"></span> -->
                   </el-option>
                 </el-select>
               </span>
               <span v-else class="peer-version" :class="{ workspace: !!getWorkspaceVersion(name), missing: !getPeerResolvedVersion(peer, name) }">
-                {{ getPeerResolvedVersion(peer, name) || '未安装' }}
-                <template v-if="getWorkspaceVersion(name)">工作区</template>
+                {{ getPeerResolvedVersion(peer, name) || t('operations.confirm.notInstalled') }}
+                <template v-if="getWorkspaceVersion(name)">{{ t('dependencyCard.current.workspace') }}</template>
               </span>
             </td>
             <td :class="['theme-color', peer.result]">
@@ -79,22 +86,22 @@
     <template v-if="active && !global.static" #footer>
       <div class="left">
         <el-checkbox v-model="bulkMode">
-          批量操作模式
+          {{ t('operations.install.bulkMode') }}
           <k-hint>
-            批量操作模式下，你可以同时安装、更新或移除多个插件。勾选此选项后，你的所有操作会被暂存，直到你点击右上角的“应用更改”按钮。
+            {{ t('operations.install.bulkModeHint') }}
           </k-hint>
         </el-checkbox>
       </div>
       <div class="right">
-        <el-button v-if="local" type="primary" @click="configure()">配置</el-button>
+        <el-button v-if="local" type="primary" @click="configure()">{{ t('dependencyCard.actions.configure') }}</el-button>
         <template v-if="workspace">
-          <el-button v-if="showRemoveButton" @click="installDep('', true)" type="danger">移除</el-button>
-          <el-button v-else @click="installDep(workspace)" type="success">添加</el-button>
+          <el-button v-if="showRemoveButton" @click="installDep('', true)" type="danger">{{ t('operations.install.remove') }}</el-button>
+          <el-button v-else @click="installDep(workspace)" type="success">{{ t('operations.install.add') }}</el-button>
         </template>
         <template v-else-if="data">
-          <el-button v-if="showRemoveButton" @click="requestRemove()" type="danger">卸载</el-button>
+          <el-button v-if="showRemoveButton" @click="requestRemove()" type="danger">{{ t('operations.install.uninstall') }}</el-button>
           <el-button :type="result" @click="installDep(version)" :disabled="unchanged">
-            {{ current ? '更新' : store.dependencies?.[active] ? '修复' : '安装' }}
+            {{ current ? t('operations.install.update') : store.dependencies?.[active] ? t('operations.install.repair') : t('operations.install.install') }}
           </el-button>
         </template>
       </div>
@@ -102,19 +109,19 @@
   </el-dialog>
 
   <el-dialog v-model="showRemoveDialog" class="market-remove-dialog" destroy-on-close>
-    检测到你正在卸载一个已配置的插件，是否同时删除其配置？
+    {{ t('operations.install.removeConfigQuestion') }}
     <template #footer>
       <div class="left">
         <el-checkbox v-model="saveChoice">
-          记住我的选择
+          {{ t('operations.install.rememberChoice') }}
           <k-hint>
-            未来将不再弹出此对话框。你仍然可以在用户设置中更改此行为。
+            {{ t('operations.install.rememberChoiceHint') }}
           </k-hint>
         </el-checkbox>
       </div>
       <div class="right">
-        <el-button type="danger" @click="installDep('', false, true)">删除</el-button>
-        <el-button type="primary" @click="installDep('', false, false)">保留</el-button>
+        <el-button type="danger" @click="installDep('', false, true)">{{ t('operations.install.delete') }}</el-button>
+        <el-button type="primary" @click="installDep('', false, false)">{{ t('operations.install.keep') }}</el-button>
       </div>
     </template>
   </el-dialog>
@@ -135,11 +142,14 @@ import { active, getBulkMode, getBundleRecords, getFrontendMode, getPendingOverr
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import BundleUninstall from './bundle-uninstall.vue'
+import { useMarketNextI18n } from '../i18n'
 
 const ctx = useContext()
 const config = useConfig()
+const { t } = useMarketNextI18n()
 const frontendMode = computed(() => getFrontendMode(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
+const versionPopperClass = computed(() => `market-version-popper ${modeClass.value}`)
 
 const saveChoice = ref(false)
 const showRemoveDialog = ref(false)
@@ -205,7 +215,7 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
       const records = getWritableBundleRecords(config.value)
       delete records[target]
       const saved = await patchMarketNextData({ bundleRecords: records })
-      if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
+      if (!saved) message.warning(t('operations.confirm.saveBundleFailed'))
     }
   })
 }
@@ -216,13 +226,7 @@ const version = computed({
 })
 
 const selectVersion = computed({
-  get() {
-    if (store.dependencies?.[active.value]?.request === version.value) {
-      return version.value + ' (当前)'
-    } else {
-      return version.value
-    }
-  },
+  get: () => version.value,
   set(value) {
     version.value = value
   },
@@ -317,9 +321,9 @@ const registryStatusText = computed(() => getRegistryStatusText(active.value))
 const danger = computed(() => {
   if (workspace.value) return
   const deprecated = store.registry?.[active.value]?.[version.value]?.deprecated
-  if (deprecated) return '此版本已废弃：' + deprecated
+  if (deprecated) return t('operations.install.deprecated', { reason: deprecated })
   if (store.market?.data[active.value]?.insecure) {
-    return '警告：从此插件的最新版本中检测出安全性问题。安装或升级此插件可能导致严重问题。'
+    return t('operations.install.insecure')
   }
 })
 
@@ -329,13 +333,13 @@ const warning = computed(() => {
     const source = parse(current.value)
     const target = parse(version.value)
     if (source.major !== target.major || !source.major && source.minor !== target.minor) {
-      return '提示：你正在更改依赖的主版本号。这可能导致不兼容的行为。'
+      return t('operations.install.majorWarning')
     }
   } catch {}
 })
 
 const result = computed(() => {
-  if (!version.value) return
+  if (!version.value || !data.value?.[version.value]) return
   const { result } = data.value[version.value]
   if (result === 'danger' || danger.value) return 'danger'
   if (result === 'warning' || warning.value) return 'warning'
@@ -394,7 +398,11 @@ watch(active, async (name) => {
 
 function configure() {
   ctx.configWriter?.ensure(active.value)
-  active.value = null
+  closePanel()
+}
+
+function closePanel() {
+  active.value = ''
 }
 
 function getResultIcon(type: ResultType) {
@@ -410,9 +418,9 @@ function getResultText(peer: PeerInfo, name: string) {
   const isOverriden = name in getOverride()
   const isInstalled = store.packages ? !!store.packages[name] : !!store.dependencies?.[name]
   switch (peer.result) {
-    case 'primary': return isOverriden ? '等待移除' : '可选'
-    case 'danger': return peer.resolved ? '不兼容' : isOverriden ? '等待移除' : '未下载'
-    case 'success': return isOverriden ? isInstalled ? '等待更新' : '等待安装' : '已下载'
+    case 'primary': return isOverriden ? t('operations.install.waitingRemove') : t('operations.install.optional')
+    case 'danger': return peer.resolved ? t('operations.install.incompatible') : isOverriden ? t('operations.install.waitingRemove') : t('operations.install.notDownloaded')
+    case 'success': return isOverriden ? isInstalled ? t('operations.install.waitingUpdate') : t('operations.install.waitingInstall') : t('operations.install.downloaded')
   }
 }
 

@@ -1,0 +1,141 @@
+confirm:
+  title: Confirm dependency changes
+  dependency: Dependency
+  oldVersion: Previous version
+  newVersion: New version
+  notInstalled: Not installed
+  removeDependency: Remove dependency
+  removeConfig: Remove plugin config for uninstalled plugins
+  discard: Discard changes
+  apply: Apply changes
+  saveBundleFailed: Failed to save plugin bundle ownership. Refresh and check again.
+install:
+  installErrorHint: This dependency failed to install. You can try repairing or removing it.
+  peerName: Dependency
+  peerRange: Version range
+  peerCurrent: Current version
+  peerAvailability: Availability
+  bulkMode: Batch operation mode
+  bulkModeHint: In batch mode, installs, updates, and removals are staged until you click “Apply changes”.
+  remove: Remove
+  add: Add
+  uninstall: Uninstall
+  update: Update
+  repair: Repair
+  install: Install
+  removeConfigQuestion: This plugin has configuration. Remove its configuration too?
+  rememberChoice: Remember my choice
+  rememberChoiceHint: This dialog will not appear again. You can change this later in user settings.
+  delete: Delete
+  keep: Keep
+  deprecated: 'This version is deprecated: {reason}'
+  insecure: 'Warning: a security issue was reported for the latest version of this plugin. Installing or upgrading it may cause serious problems.'
+  majorWarning: Changing the dependency major version may cause incompatible behavior.
+  waitingRemove: Waiting to remove
+  optional: Optional
+  incompatible: Incompatible
+  notDownloaded: Not downloaded
+  waitingUpdate: Waiting to update
+  waitingInstall: Waiting to install
+  downloaded: Downloaded
+  select: Select
+  added: Dependency added.
+  addFailed: Failed to add dependency!
+  addTimeout: Adding dependency timed out!
+  uninstalling: Uninstalling plugin…
+  uninstalled: Uninstalled successfully!
+  uninstallFailed: Uninstall failed!
+  uninstallTimeout: Uninstall timed out!
+manual:
+  title: 'Advanced: Add dependency manually'
+  hint: 'Tip: to install a plugin, open the '
+  market: plugin market
+  hintAfter: .
+  placeholder: Enter a package name
+  latest: Latest version
+  description: Description
+  cancel: Cancel
+  confirm: Confirm
+progress:
+  logTitle: Installation log / Package Manager Output
+  initializing: Initializing the installation process and attaching output…
+  fallbackPrefix: The current source failed. Retry once with
+  fallbackSuffix: '? Your configuration will not be changed.'
+  retryFallback: Retry with fallback source
+  executing: Executing…
+  close: Close
+  runningSelf: Updating market-next. Keep this page open…
+  runningDependencies: Applying dependency changes. Keep this page open…
+  successSelf: market-next updated successfully. The console is reloading.
+  successDependencies: Dependencies installed successfully. The console is reloading.
+  errorSelf: market-next update failed. Check the console output.
+  errorDependencies: Dependency installation failed. Check the console output.
+  ready: Ready
+  applyTitle: Applying dependency changes
+  selfUpdateTitle: Updating market-next…
+  dependencyTitle: Updating dependencies…
+  submitted: Dependency changes submitted. Waiting for the package manager…
+  selfSubmitted: Updating the current plugin. The Console may briefly disconnect and reload after installation.
+  waitingSelf: Still waiting for package manager output. A disconnect afterward is expected during the market-next reload.
+  waitingDependencies: Still waiting for package manager output. Large changes or a slow network may take longer.
+  disconnected: The Console connection was lost, so the installation result is unknown. Refresh the dependencies page to confirm.
+  disconnectedShort: The connection was lost, so the result is unknown. Refresh and check again.
+  selfSubmittedSuccess: market-next update submitted. The Console is reloading.
+  dependenciesSubmittedSuccess: Dependency changes submitted. The Console is reloading.
+  selfSuccessToast: market-next updated. The Console will reload shortly.
+  successToast: Installation successful!
+  runningEnvironment: Restoring the complete dependency environment. Keep this page open…
+  successEnvironment: The dependency environment was restored. The Console is synchronizing state.
+  errorEnvironment: Failed to restore the dependency environment. Check the console output.
+  requestFailed: 'Installation request failed: {detail}'
+  installError: Installation failed!
+  installTimeout: Installation timed out!
+  environmentTitle: Restoring dependency environment…
+  environmentPreparing: Reading the current environment again and validating the target version…
+  environmentWaiting: Still waiting for package manager output. Restoring multiple dependencies may take longer.
+  environmentDisconnected: The Console connection was lost, so the restore result is unknown. Refresh Dependencies and Version Management to confirm.
+  environmentDisconnectedShort: The connection was lost, so the environment restore result is unknown.
+  environmentError: Failed to restore the dependency environment.
+  environmentSubmitted: Environment restore submitted. The Console is reloading.
+  environmentSuccess: Dependency environment restored successfully.
+  environmentErrorTitle: Failed to restore the dependency environment!
+  environmentTimeout: The dependency environment restore request timed out!
+  fallbackLog: 'You can retry once with fallback npm source {endpoint}; your configuration will not be changed.'
+  fallbackConfirmed: 'User confirmed retry with fallback npm source: {endpoint}'
+  fallbackFailed: 'Fallback npm source retry failed. Package manager exit code: {code}'
+history:
+  title: Recent operations
+  syncing: Synchronizing records…
+  count: '{count} record(s)'
+  refresh: Refresh
+  records: Operation records
+  reading: Reading operation records…
+  empty: No dependency operation records
+  readingLog: Reading log…
+  copyLog: Copy log
+  copied: Log copied.
+  copyFailed: Copy failed. Select the log text manually.
+  close: Close
+  dependencyCount: Dependencies
+  source: Install source
+  logSize: Log size
+  unknown: Unknown
+  versionChanges: Version changes
+  items: '{count} item(s)'
+  truncated: The log is large; copied content keeps only the beginning and end.
+  selectRecord: Select a record to view its log
+  loadFailed: Failed to read recent operations. Check the backend log.
+  detailFailed: Failed to read the log detail. The file may have been cleaned up.
+  statusRunning: Running
+  statusSuccess: Succeeded
+  statusError: Failed
+  statusUnknown: Unknown status
+  operation: Dependency operation
+  install: Install {count}
+  update: Update {count}
+  uninstall: Uninstall {count}
+  changed: Change {count} dependencies
+  notInstalled: Not installed
+  uninstalled: Uninstalled
+  unknownTime: Unknown time
+  defaultSource: Project default

@@ -1,0 +1,95 @@
+label: Plugin bundle
+loading: Reading plugin bundle manifest…
+stats:
+  selected: '{count} of {total} members selected'
+  presets: Presets to apply
+  moved: Configs to move
+bulk:
+  label: 'Batch operations:'
+  createAll: Create all configs
+  skipAll: Skip all configs
+  enablePresets: Enable all presets
+  disablePresets: Disable all presets
+  removeDependency: Uninstall all dependencies and clean configs
+  cleanConfig: Clean configs only
+  keepAll: Keep all
+members:
+  required: Required members
+  optional: Optional members
+  requiredPill: Required
+  optionalToggleAll: Select all
+  optionalToggleNone: Deselect all
+  createConfig: Create config
+  moveConfig: Move existing config
+  usePreset: Use preset
+  notDeclared: Version not declared
+  installed: 'Installed: {version}'
+  loaded: 'Loaded: {version}'
+  notInstalled: Not installed
+  dependencyInstalled: Dependency installed
+  dependencyNotInstalled: Dependency not installed
+  groupConfig: Bundle config
+  externalConfig: External config exists
+  workspace: Workspace dependency
+  cleanGroupConfig: Clean bundle config only
+  removeDependency: Uninstall dependency and clean config
+  keep: Keep
+  marketMissing: Not in market index
+  verified: Market verified
+  insecure: Security risk
+  deprecated: Deprecated
+  preview: In development
+  portable: Portable
+  hasPreset: Includes preset config
+conflict:
+  version: 'Version conflict: the installed version is {current}, which does not satisfy the bundle range {range}. Installation will replace this dependency!'
+  config: 'Config conflict: this plugin has an external config. A disabled config will be created inside the bundle by default; enable “Move” to migrate it into the bundle.'
+  sameGroup: 'Config exists: this plugin already has a config in the bundle group. Config creation is skipped while the dependency is ensured.'
+  externalNote: 'A root-level or other-group config exists. Only the copy in this bundle group will be cleaned; the member dependency will not be uninstalled.'
+editor:
+  sensitive: 'Edit sensitive preset config:'
+  placeholder: 'Enter {field}'
+  viewPreset: View / edit preset
+  jsonError: 'Invalid JSON: {error}'
+diff:
+  title: About to execute
+  install: Install dependencies
+  config: Create configs
+  preset: Preset
+  move: Move configs
+  skip: Skip configs
+actions:
+  cancel: Cancel
+  install: Install plugin bundle
+  uninstall: Uninstall plugin bundle
+  uninstallOnly: Uninstall bundle only
+messages:
+  isBundle: This is a plugin bundle. The bundle itself will be uninstalled; choose how to handle its members below.
+  fallbackRecord: NEXT ownership records were not found. This bundle was identified by its name or remote manifest; only the bundle group config is cleaned by default and member dependencies are kept.
+  noMetadata: No npm version metadata was found for this plugin bundle.
+  noManifest: This package is identified as a plugin bundle but has no koishi.bundle manifest, so it cannot be expanded.
+  loadFailed: Failed to read the plugin bundle manifest.
+  recordFailed: Could not read the plugin bundle members; only the bundle itself will be uninstalled.
+  noMembers: No manageable members were found. Only the plugin bundle itself will be uninstalled.
+  noDependency: No plugin bundle dependency was found for this group.
+  outsideConfig: Config outside the bundle group is never deleted; a member with external config is not uninstalled by default.
+  submitted: Plugin bundle installation submitted. Waiting for dependency and config processing…
+  installing: Installing plugin bundle…
+  waiting: Still waiting for package manager output. A bundle processes multiple members and may take longer on a slow network.
+  disconnected: The Console connection was lost, so the bundle installation result is unknown. Refresh the dependencies page to confirm.
+  exitCode: 'Package manager exit code: {code}'
+  completed: 'Plugin bundle installed{moved}{skipped}.'
+  moved: ', moved {count} config(s)'
+  skipped: ', skipped {count} config(s)'
+  installFailed: 'Plugin bundle installation failed: {detail}'
+  unknownError: Unknown error
+  stagedUninstall: 'Plugin bundle uninstall staged: {members} member(s) removed, {configs} config(s) cleaned. It will take effect after applying changes.'
+  recordSaveFailed: Failed to save plugin bundle ownership. Refresh and check again.
+  uninstalling: Uninstalling plugin bundle…
+  uninstalled: Plugin bundle uninstalled successfully!
+  uninstallFailed: Plugin bundle uninstall failed!
+  uninstallTimeout: Plugin bundle uninstall timed out!
+summary:
+  remove: 'Member dependencies to uninstall: {count}'
+  clean: 'Bundle configs to clean: {count}'
+  keep: 'Members to keep: {count}'

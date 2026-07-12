@@ -15,19 +15,54 @@ search:
   autoRoute: 当前市场源失败时自动尝试备用市场源。
   logLevel: 插件市场调试日志级别。silent 关闭日志，debug 输出最详细。
 
-frontendMode: 前端显示模式。性能模式保持低动效；精致模式启用更细腻的动效和高级样式。
-depsLayout: 依赖管理页布局。网格模式多列展示；列表模式单列宽卡片，信息更密集。
-marketLayout: 插件市场页布局。网格模式多列卡片；列表模式单列紧凑行。
-marketSilentRules: 插件市场永久静默过滤。添加后命中的插件会直接隐藏，不会显示在搜索框中。状态类不需要填写值；日期类填写 YYYY-MM-DD；最近 N 天填写数字。
 marketSilentFilters: 旧版永久静默过滤。
 idleProbe: Console 空闲时自动探测依赖版本和插件市场数据。仅在没有浏览器控制台连接时运行，不会因为刷新页面触发。
 idleProbeDelay: Console 无人在线多久后开始后台探测。
 idleProbeBootDelay: Koishi 启动或重载后，至少等待多久才允许空闲探测。
 idleProbeInterval: 两次空闲后台探测之间的最小间隔。
 bulkMode: 批量操作模式。开启后安装、更新、卸载会先暂存，点击“应用更改”后执行。
-removeConfig: 卸载插件时是否同时删除已有插件配置。未设置时每次询问。
+removeConfig:
+  $description: 卸载插件时是否同时删除已有插件配置。未设置时每次询问。
+  $inner:
+    - 每次询问
+    - 始终删除插件配置
+    - 永不删除插件配置
 updateIgnoredPackages: 不检测更新的依赖名。每行一个包名，也可以使用逗号、分号或空格分隔。
 updateIgnoreDuration: 点击“忽略此次更新”后的默认忽略时长。0 表示不按时间过期。
 updateIgnoreVersions: 点击“忽略此次更新”后连续忽略几个新版本。1 表示只忽略当前最新版本。
 updateIgnorePrerelease: 手动开启后，alpha / beta / rc 等预发布版本不会被视为可更新版本。
 chatlunaTool: 启用 ChatLuna 插件市场查询工具。启用后，若当前 Koishi 同时安装了 ChatLuna，会注册只读工具 koishi_plugin_market_search。
+
+frontendMode:
+  $description: 前端显示模式。性能模式保持低动效；精致模式启用更细腻的动效和高级样式。
+  $inner:
+    - 性能模式
+    - 精致模式
+depsLayout:
+  $description: 依赖管理页布局。网格模式多列展示；列表模式单列宽卡片，信息更密集。
+  $inner:
+    - 网格
+    - 列表
+marketLayout:
+  $description: 插件市场页布局。网格模式多列卡片；列表模式单列紧凑行。
+  $inner:
+    - 网格
+    - 列表
+marketSilentRules:
+  $description: 插件市场永久静默过滤。添加后命中的插件会直接隐藏，不会显示在搜索框中。
+  type:
+    $description: 规则类型
+    $inner:
+      - 状态：预览版插件
+      - 状态：不安全插件
+      - 状态：插件包
+      - 创建时间：早于指定日期
+      - 创建时间：晚于指定日期
+      - 更新时间：早于指定日期
+      - 更新时间：晚于指定日期
+      - 创建时间：最近 N 天内
+      - 更新时间：最近 N 天内
+      - 自定义高级条件
+  value: 规则值。状态类留空；日期类填写 YYYY-MM-DD；最近 N 天填写数字；自定义规则填写搜索条件。
+  note: 备注
+  enabled: 是否启用

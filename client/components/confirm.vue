@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-if="store.market?.registry" v-model="showConfirm" :class="['confirm-panel', modeClass]" destroy-on-close>
-    <template #header>确认依赖更改</template>
+    <template #header>{{ t('operations.confirm.title') }}</template>
     <table>
       <colgroup>
         <col width="auto">
@@ -10,30 +10,30 @@
       </colgroup>
       <thead>
         <tr>
-          <th>依赖</th>
-          <th>旧版本</th>
+          <th>{{ t('operations.confirm.dependency') }}</th>
+          <th>{{ t('operations.confirm.oldVersion') }}</th>
           <th></th>
-          <th>新版本</th>
+          <th>{{ t('operations.confirm.newVersion') }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="(version, name) in overrides" :key="name">
           <td>{{ name }}</td>
-          <td>{{ store.dependencies?.[name]?.resolved || '未安装' }}</td>
+          <td>{{ store.dependencies?.[name]?.resolved || t('operations.confirm.notInstalled') }}</td>
           <td class="arrow"><span><k-icon name="arrow-right"></k-icon></span></td>
-          <td>{{ version || '移除依赖' }}</td>
+          <td>{{ version || t('operations.confirm.removeDependency') }}</td>
         </tr>
       </tbody>
     </table>
     <template #footer>
       <div class="left">
         <el-checkbox :disabled="!hasRemove" v-model="removeConfig">
-          为卸载的插件删除配置
+          {{ t('operations.confirm.removeConfig') }}
         </el-checkbox>
       </div>
       <div class="right">
-        <el-button type="danger" @click="clear">丢弃改动</el-button>
-        <el-button type="primary" @click="confirm">应用更改</el-button>
+        <el-button type="danger" @click="clear">{{ t('operations.confirm.discard') }}</el-button>
+        <el-button type="primary" @click="confirm">{{ t('operations.confirm.apply') }}</el-button>
       </div>
     </template>
   </el-dialog>
@@ -45,9 +45,11 @@ import { computed, ref } from 'vue'
 import { message, send, store, useContext, useConfig } from '@koishijs/client'
 import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from './utils'
 import { getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
+import { useMarketNextI18n } from '../i18n'
 
 const ctx = useContext()
 const config = useConfig()
+const { t } = useMarketNextI18n()
 const overrides = computed(() => getPendingOverrides())
 const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 
@@ -106,12 +108,12 @@ function confirm() {
       override: {},
       bundleRecords: getWritableBundleRecords(config.value),
     })
-    if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
+    if (!saved) message.warning(t('operations.confirm.saveBundleFailed'))
   }, undefined, selfUpdate ? {
-    loadingText: '正在更新 market-next……',
-    successText: 'market-next 更新已提交，Console 正在重载。',
-    errorText: 'market-next 更新失败！',
-    timeoutText: 'market-next 更新超时！',
+    loadingText: t('operations.progress.selfUpdateTitle'),
+    successText: t('operations.progress.selfSubmittedSuccess'),
+    errorText: t('operations.progress.errorSelf'),
+    timeoutText: t('operations.progress.installTimeout'),
     selfUpdate: true,
   } : undefined)
 }

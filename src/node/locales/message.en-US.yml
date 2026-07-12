@@ -3,28 +3,28 @@ commands.plugin:
 commands.plugin.install:
   description: Install Plugins
   messages:
-    expect-name: 请输入插件名。
-    already-installed: 该插件已安装。
-    not-found: 未找到该插件。
+    expect-name: Please enter a plugin name.
+    already-installed: This plugin is already installed.
+    not-found: Plugin not found.
     success: Installation Successful!
 commands.plugin.uninstall:
   description: Uninstall plugin
   messages:
-    expect-name: 请输入插件名。
-    not-installed: 该插件未安装。
-    success: 卸载成功！
+    expect-name: Please enter a plugin name.
+    not-installed: This plugin is not installed.
+    success: Uninstalled successfully!
 commands.plugin.upgrade:
   description: Upgrade Plugin
   options:
     self: Upgrade Koishi core
   messages:
-    all-updated: 所有插件已是最新版本。
-    available: 有可用的依赖更新：
-    prompt: 输入「Y」升级全部依赖，输入「N」取消操作。
+    all-updated: All plugins are already up to date.
+    available: 'Available dependency updates:'
+    prompt: 'Enter Y to upgrade all dependencies, or N to cancel.'
     cancelled: Operation canceled.
     success: Upgrade Successful!
 
 commands.plugin.clear-avatar-cache:
   description: Clear market-next avatar cache
   messages:
-    success: Cleared avatar cache: {0} memory entries, {1} disk files.
+    success: 'Cleared avatar cache: {0} memory entries, {1} disk files.'

@@ -1,10 +1,9 @@
 <template>
   <k-comment type="danger">
     <p>
-      <span>此插件尚未安装，</span>
-      <span v-if="fullname" class="k-link" @click="active = fullname">点击快速安装</span>
-      <span v-else class="k-link" @click="gotoMarket">点击前往插件市场</span>
-      <span>。</span>
+      <span>{{ t('extensions.missing.notInstalled') }}</span>
+      <span v-if="fullname" class="k-link" @click="active = fullname">{{ t('extensions.missing.quickInstall') }}</span>
+      <span v-else class="k-link" @click="gotoMarket">{{ t('extensions.missing.goMarket') }}</span>
     </p>
   </k-comment>
 </template>
@@ -15,8 +14,10 @@ import { computed, inject, WritableComputedRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { store } from '@koishijs/client'
 import { active } from '../utils'
+import { useMarketNextI18n } from '../i18n'
 
 const router = useRouter()
+const { t } = useMarketNextI18n()
 
 const current = inject<WritableComputedRef<any>>('manager.settings.current')
 

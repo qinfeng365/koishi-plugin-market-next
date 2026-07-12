@@ -1,7 +1,7 @@
 <template>
   <k-status v-if="isLoading">
     <el-progress :indeterminate="!store.market" :percentage="percentage">
-      正在加载插件市场
+      {{ t('marketPage.progress.loading') }}
     </el-progress>
   </k-status>
 </template>
@@ -10,8 +10,10 @@
 
 import { store, useContext } from '@koishijs/client'
 import { computed } from 'vue'
+import { useMarketNextI18n } from '../i18n'
 
 const ctx = useContext()
+const { t } = useMarketNextI18n()
 
 const isLoading = computed(() => {
   if (ctx.bail('activity', ctx.$router.pages['market'])) return false

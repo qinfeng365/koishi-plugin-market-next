@@ -3,7 +3,7 @@
     v-model="visible"
     append-to-body
     :class="['bundle-uninstall-dialog', modeClass]"
-    :title="title || '卸载插件包'"
+    :title="title || t('bundle.actions.uninstall')"
     width="min(760px, calc(100vw - 24px))"
     destroy-on-close
   >
@@ -11,26 +11,26 @@
       <div class="bundle-uninstall-body">
         <p>
           <strong>{{ recordView?.label || packageName }}</strong>
-          是一个插件包。将卸载插件包自身；成员插件按下方选择处理。
+          {{ t('bundle.messages.isBundle') }}
         </p>
 
         <p class="bundle-package-name">{{ packageName }}</p>
 
         <k-comment v-if="recordView?.fallback" type="warning">
-          <p>未找到 NEXT 写入的安装归属记录；当前是根据包名或远端清单识别的插件包。默认更保守：只清理包分组配置，不主动卸载成员依赖。</p>
+          <p>{{ t('bundle.messages.fallbackRecord') }}</p>
         </k-comment>
 
-        <div v-if="loadingRecord" class="bundle-loading">正在读取插件包成员清单……</div>
+        <div v-if="loadingRecord" class="bundle-loading">{{ t('bundle.loading') }}</div>
 
         <template v-else-if="memberRows.length">
           <!-- Bulk Operations Bar -->
           <div class="bundle-bulk-row">
-            <span class="bulk-label">批量操作:</span>
-            <button class="bundle-section-action" @click="setAllActions('dependency')">全部卸载依赖并清配置</button>
+            <span class="bulk-label">{{ t('bundle.bulk.label') }}</span>
+            <button class="bundle-section-action" @click="setAllActions('dependency')">{{ t('bundle.bulk.removeDependency') }}</button>
             <span class="bundle-section-spacer">|</span>
-            <button class="bundle-section-action" @click="setAllActions('config')">全部只清配置</button>
+            <button class="bundle-section-action" @click="setAllActions('config')">{{ t('bundle.bulk.cleanConfig') }}</button>
             <span class="bundle-section-spacer">|</span>
-            <button class="bundle-section-action" @click="setAllActions('keep')">全部保留</button>
+            <button class="bundle-section-action" @click="setAllActions('keep')">{{ t('bundle.bulk.keepAll') }}</button>
           </div>
 
           <div class="bundle-member-list">
@@ -38,54 +38,54 @@
               <div class="member-main">
                 <span class="member-title">{{ row.package }}</span>
                 <span class="member-meta">
-                  {{ row.required ? '核心成员' : '可选成员' }} · {{ row.version || '未声明版本' }}
+                  {{ row.required ? t('bundle.members.required') : t('bundle.members.optional') }} · {{ row.version || t('bundle.members.notDeclared') }}
                 </span>
               </div>
               <div class="member-state">
-                <span>{{ row.installed ? '依赖已安装' : '依赖未安装' }}</span>
-                <span v-if="row.hasGroupConfig">包内配置</span>
-                <span v-if="row.hasExternalConfig" class="warning">存在包外配置</span>
-                <span v-if="row.workspace">工作区依赖</span>
+                <span>{{ row.installed ? t('bundle.members.dependencyInstalled') : t('bundle.members.dependencyNotInstalled') }}</span>
+                <span v-if="row.hasGroupConfig">{{ t('bundle.members.groupConfig') }}</span>
+                <span v-if="row.hasExternalConfig" class="warning">{{ t('bundle.members.externalConfig') }}</span>
+                <span v-if="row.workspace">{{ t('bundle.members.workspace') }}</span>
               </div>
               <el-radio-group v-model="memberActions[row.package]" size="small">
-                <el-radio-button value="config" :disabled="!row.hasGroupConfig">只清包内配置</el-radio-button>
+                <el-radio-button value="config" :disabled="!row.hasGroupConfig">{{ t('bundle.members.cleanGroupConfig') }}</el-radio-button>
                 <el-radio-button value="dependency" :disabled="!row.canRemoveDependency">
-                  卸载依赖并清配置
+                  {{ t('bundle.members.removeDependency') }}
                 </el-radio-button>
-                <el-radio-button value="keep">保留</el-radio-button>
+                <el-radio-button value="keep">{{ t('bundle.members.keep') }}</el-radio-button>
               </el-radio-group>
               <p v-if="row.hasExternalConfig" class="member-note">
-                检测到根层级或其他分组仍有配置，默认只清理插件包分组下的副本，不卸载成员依赖。
+                {{ t('bundle.conflict.externalNote') }}
               </p>
             </section>
           </div>
         </template>
 
         <k-comment v-else>
-          <p>没有读取到可处理的成员清单。将只卸载插件包自身。</p>
+          <p>{{ t('bundle.messages.noMembers') }}</p>
         </k-comment>
 
         <div class="bundle-summary">
-          <span>卸载成员依赖：{{ dependencyRemovalCount }}</span>
-          <span>清理包内配置：{{ configCleanupCount }}</span>
-          <span>保留成员：{{ keepCount }}</span>
+          <span>{{ t('bundle.summary.remove', { count: dependencyRemovalCount }) }}</span>
+          <span>{{ t('bundle.summary.clean', { count: configCleanupCount }) }}</span>
+          <span>{{ t('bundle.summary.keep', { count: keepCount }) }}</span>
         </div>
 
         <p class="bundle-uninstall-note">
-          包分组外的配置永远不会被删除；只要某个成员存在包外配置，NEXT 默认不会卸载它的依赖。
+          {{ t('bundle.messages.outsideConfig') }}
         </p>
       </div>
     </template>
     <template v-else>
       <k-comment type="warning">
-        <p>没有找到这个分组对应的插件包依赖。</p>
+        <p>{{ t('bundle.messages.noDependency') }}</p>
       </k-comment>
     </template>
 
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
+      <el-button @click="visible = false">{{ t('bundle.actions.cancel') }}</el-button>
       <el-button type="danger" :loading="loadingRecord || uninstalling" :disabled="!packageName" @click="uninstallBundle">
-        卸载插件包
+        {{ t('bundle.actions.uninstall') }}
       </el-button>
     </template>
   </el-dialog>
@@ -105,6 +105,7 @@ import {
   type BundleMemberCleanupTarget,
 } from './utils'
 import { getBulkMode, getFrontendMode, getPendingOverrides, getWritableBundleRecords, patchMarketNextData } from '../utils'
+import { useMarketNextI18n } from '../i18n'
 
 type MemberAction = 'config' | 'dependency' | 'keep'
 
@@ -124,6 +125,7 @@ const emit = defineEmits<{
 }>()
 
 const config = useConfig()
+const { t } = useMarketNextI18n()
 const frontendMode = computed(() => getFrontendMode(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
@@ -207,7 +209,7 @@ async function loadRecord() {
     if (record) remoteRecord.value = record
   } catch (error) {
     console.warn(error)
-    message.warning('未能读取插件包成员清单，将只卸载插件包自身。')
+    message.warning(t('bundle.messages.recordFailed'))
   } finally {
     loadingRecord.value = false
   }
@@ -263,7 +265,7 @@ async function uninstallBundle() {
       configs,
     }
     visible.value = false
-    message.success(`插件包卸载已暂存，卸载成员 ${members.length} 项，清理配置 ${configs.length} 项，应用更改后生效。`)
+    message.success(t('bundle.messages.stagedUninstall', { members: members.length, configs: configs.length }))
     return
   }
 
@@ -281,14 +283,14 @@ async function uninstallBundle() {
       const records = getWritableBundleRecords(config.value)
       delete records[name]
       const saved = await patchMarketNextData({ bundleRecords: records })
-      if (!saved) message.warning('插件包归属记录保存失败，请刷新后确认。')
+      if (!saved) message.warning(t('bundle.messages.recordSaveFailed'))
       if (props.redirectToPlugins) await router.replace('/plugins')
       emit('done')
     }, undefined, {
-      loadingText: '正在卸载插件包……',
-      successText: '插件包卸载成功！',
-      errorText: '插件包卸载失败！',
-      timeoutText: '插件包卸载超时！',
+      loadingText: t('bundle.messages.uninstalling'),
+      successText: t('bundle.messages.uninstalled'),
+      errorText: t('bundle.messages.uninstallFailed'),
+      timeoutText: t('bundle.messages.uninstallTimeout'),
     })
   } finally {
     uninstalling.value = false
