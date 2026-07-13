@@ -56,6 +56,15 @@ type MarketStore = typeof store & {
 
 const REGISTRY_STATUS_TIMEOUT = 120000
 const REGISTRY_STATUS_SWEEP_INTERVAL = 15000
+const APRIL_FOOLS_SHORTCUT_TIMEOUT = 1500
+
+function isAprilFoolsDay(date = new Date()) {
+  return date.getMonth() === 3 && date.getDate() === 1
+}
+
+function isKoishiDay(date = new Date()) {
+  return date.getMonth() === 4 && date.getDate() === 14
+}
 
 function sweepRegistryStatus(target: MarketStore = store as MarketStore) {
   const now = Date.now()
@@ -113,6 +122,45 @@ receive('market/registry-status/clear', () => {
 
 export default (ctx: Context) => {
   registerMarketNextI18n(ctx)
+
+  const aprilFoolsIcon = ref(isAprilFoolsDay())
+  const koishiDayIcon = ref(isKoishiDay())
+  const forcedAprilFoolsIcon = ref(false)
+  let aprilFoolsShortcutAt = 0
+
+  ctx.effect(() => {
+    const updateSeasonalIcon = () => {
+      aprilFoolsIcon.value = isAprilFoolsDay()
+      koishiDayIcon.value = isKoishiDay()
+    }
+    const onAprilFoolsShortcut = (event: KeyboardEvent) => {
+      if (router.currentRoute.value?.path !== '/dependencies') return
+      if (event.repeat || event.isComposing) return
+      const key = event.key.toLowerCase()
+      if (!event.altKey || event.ctrlKey || event.metaKey) {
+        if (key !== 'alt') aprilFoolsShortcutAt = 0
+        return
+      }
+      if (key === 'g') {
+        aprilFoolsShortcutAt = Date.now()
+        event.preventDefault()
+        return
+      }
+      if (key === 'b' && aprilFoolsShortcutAt && Date.now() - aprilFoolsShortcutAt <= APRIL_FOOLS_SHORTCUT_TIMEOUT) {
+        forcedAprilFoolsIcon.value = true
+        aprilFoolsShortcutAt = 0
+        event.preventDefault()
+        return
+      }
+      aprilFoolsShortcutAt = 0
+    }
+    const timer = window.setInterval(updateSeasonalIcon, 60_000)
+    window.addEventListener('keydown', onAprilFoolsShortcut)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('keydown', onAprilFoolsShortcut)
+    }
+  })
 
   ctx.effect(() => {
     const timer = window.setInterval(() => sweepRegistryStatus(), REGISTRY_STATUS_SWEEP_INTERVAL)
@@ -283,7 +331,11 @@ export default (ctx: Context) => {
 
   ctx.menu('dependencies', [{
     id: '.upgrade',
-    icon: 'rocket',
+    icon: () => {
+      if (aprilFoolsIcon.value || forcedAprilFoolsIcon.value) return 'bomb'
+      if (koishiDayIcon.value) return 'koishi'
+      return 'rocket'
+    },
     label: () => translate('common.actions.upgradeAll'),
   }, {
     id: 'market.install',

@@ -126,7 +126,6 @@ export interface Config {
   chatlunaTool?: boolean
   frontendMode?: 'performance' | 'polished'
   depsLayout?: 'grid' | 'list'
-  marketLayout?: 'grid' | 'list'
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]
@@ -625,10 +624,6 @@ export const Config: Schema<Config> = Schema.object({
     Schema.const('grid').description('网格'),
     Schema.const('list').description('列表'),
   ]).role('radio').default('grid').description('Dependencies page layout.'),
-  marketLayout: Schema.union([
-    Schema.const('grid').description('网格'),
-    Schema.const('list').description('列表'),
-  ]).role('radio').default('grid').description('Market page layout.'),
   idleProbe: Schema.boolean().default(true).description('Run dependency and market metadata probes while Console is idle.'),
   idleProbeDelay: Schema.number().role('time').default(Time.minute * 5).description('How long Console must stay idle before the background probe starts.'),
   idleProbeBootDelay: Schema.number().role('time').default(Time.minute).description('Minimum delay after startup before idle probing is allowed.'),
@@ -720,7 +715,6 @@ function isPluginBundleDependency(name: string) {
 const configPatchKeys: Array<keyof Config> = [
   'frontendMode',
   'depsLayout',
-  'marketLayout',
   'marketSilentStatusRules',
   'marketSilentDateRules',
   'marketSilentRecentRules',
@@ -779,11 +773,18 @@ function ensureMarketNextConfigDefaults(ctx: Context, currentConfig: Config) {
     target.value.depsLayout = 'grid'
     changed = true
   }
-  if (target.value.marketLayout !== 'grid' && target.value.marketLayout !== 'list') {
-    target.value.marketLayout = 'grid'
+  if (Object.prototype.hasOwnProperty.call(target.value, 'marketLayout')) {
+    delete target.value.marketLayout
     changed = true
   }
   return changed
+}
+
+function removeLegacyCollapsedGroupsConfig(ctx: Context, currentConfig: Config) {
+  const target = findMarketNextConfigNode(ctx.loader.config?.plugins, currentConfig)
+  if (!target || !Object.prototype.hasOwnProperty.call(target.value, 'collapsedGroups')) return false
+  delete target.value.collapsedGroups
+  return true
 }
 
 async function updateMarketNextConfig(ctx: Context, currentConfig: Config, patch: Partial<Config>) {
@@ -1258,7 +1259,7 @@ export function apply(ctx: Context, config: Config = {}) {
   }
 
   if (ensureMarketNextConfigDefaults(ctx, config)) {
-    ctx.logger('market').info('created missing market-next display defaults in Koishi config')
+    ctx.logger('market').info('normalized market-next display config in Koishi config')
     void ctx.loader.writeConfig(true)
       .then(() => ctx.get('console')?.refresh('config'))
       .catch(error => ctx.logger('market').warn(error))
@@ -1488,6 +1489,12 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.on('ready', () => {
       void dataStore.migrateFromConfig(config)
+        .then(() => {
+          if (!removeLegacyCollapsedGroupsConfig(ctx, config)) return
+          return ctx.loader.writeConfig(true)
+            .then(() => ctx.get('console')?.refresh('config'))
+        })
+        .catch(error => ctx.logger('market').warn(`failed to migrate market-next data: ${error instanceof Error ? error.message : error}`))
       const timer = setTimeout(() => {
         if (!ctx.scope.isActive) return
         ctx.logger('market').debug('schedule installed plugin config repair after market-next ready')

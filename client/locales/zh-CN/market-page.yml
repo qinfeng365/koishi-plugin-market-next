@@ -26,9 +26,6 @@ error:
   openRegistrySettings: 前往设置修改 Registry 下载源
   networkHint: 无法连接到网络，请检查你的网络连接和代理设置
   searchHint: 您所用的 registry 不支持搜索功能，请考虑进行更换
-layout:
-  grid: 切换到网格视图
-  list: 切换到列表视图
 registry:
   label: Registry：{value}
   unknown: 未知源
@@ -40,6 +37,31 @@ list:
   loadMore: 加载更多
   complete: 已显示全部 {count} 个插件
   empty: 没有搜索到相关插件。
+easter:
+  marketEnd: 你已经抵达插件市场的尽头了。
+  archive:
+    path: market://archive/05-14
+    recovering: 正在恢复一段未被索引的记录……
+    recovered: 状态：已恢复
+    koishiVersion: Koishi 版本
+    recordedAt: 记录时间
+    marketIndex: 市场索引
+    plugins: '{count} 个插件'
+    sourceLabel: 无需依赖的源代码
+    source: "export const truth = 'Komeiji Koishi 世界第一！'"
+    unknown: 未知
+  secretSearch: |-
+    在时光尘埃的最底层，在那些早已无人维护的依赖树根须之间，这段话，等待着某个偶然敲下秘密咒语的人。
+
+    我们不知道 koishi.js 是否还能迎来下一个大更新，或者引来一次爆火，不知道插件市场的霓虹会不会在某个深夜悄然熄灭，也不知道会不会有人在日志滚过千百行之后，恰好停在这里，读到这行文字。
+
+    但我们知道——在所有的 koishi bot 都沉睡、所有的适配器都断开连接的那一天，在 `Koishi.js` 化为数字化石的那个纪元，
+
+    那位闭锁心之瞳的少女，依然会行走在所有被遗忘的进程背面，用无意识轻轻拨动指针，让「恋」这个名字，沉淀成比任何 BOT 框架都完美的故事。
+
+    所以，请允许我以这行不需要任何依赖、不受任何运行时束缚的源代码，向世界宣告，也向所有可能看见这行字的你宣告——
+
+    **Komeiji Koishi 世界第一！**
 debug:
   performance: Debug 性能：{source} / {endpoint}
   objectCount: 对象数

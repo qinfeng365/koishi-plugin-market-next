@@ -1,5 +1,5 @@
 <template>
-  <k-layout main="darker" :class="['page-market', modeClass, `market-layout-${marketLayout}`]" menu="market">
+  <k-layout main="darker" :class="['page-market', modeClass]" menu="market">
     <template #left>
       <el-scrollbar>
         <market-filter v-model="words" :data="visibleData"></market-filter>
@@ -28,7 +28,17 @@
     </div>
 
     <el-scrollbar ref="root" v-else-if="store.market.total">
+      <div class="market-search-row">
+        <market-search ref="searchBox" v-model="words"></market-search>
+      </div>
+      <market-secret-archive
+        v-if="secretSearchMatched"
+        :koishi-version="secretArchiveKoishiVersion"
+        :market-count="secretArchiveMarketCount"
+        :recorded-at="secretArchiveRecordedAt"
+      ></market-secret-archive>
       <market-list
+        v-else
         v-model="words"
         :data="silentData"
         :gravatar="marketGravatar"
@@ -36,17 +46,6 @@
         @debug="updateClientDebug"
         @update:page="scrollToTop">
         <template #header="{ hasFilter, all, packages }">
-          <div class="market-search-row">
-            <market-search ref="searchBox" v-model="words"></market-search>
-            <button class="layout-toggle-btn" @click="toggleLayout" :title="marketLayout === 'grid' ? t('marketPage.layout.list') : t('marketPage.layout.grid')">
-              <svg v-if="marketLayout === 'grid'" viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="currentColor">
-                <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/>
-              </svg>
-              <svg v-else viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="currentColor">
-                <path d="M4 4h4v4H4V4zm6 0h4v4h-4V4zm6 0h4v4h-4V4zM4 10h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4zM4 16h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z"/>
-              </svg>
-            </button>
-          </div>
           <div class="market-hint text-center">
             {{ hasFilter ? t('marketPage.results.filtered', { filtered: packages.length, total: all.length }) : t('marketPage.results.all', { total: all.length }) }}
           </div>
@@ -125,10 +124,11 @@
 
 import { router, store, global, useConfig } from '@koishijs/client'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
-import { active, getFrontendMode, getMarketLayout, getMarketSilentFilters, getMarketSilentRules, getPendingOverrides, patchMarketNextConfig } from '../utils'
+import { active, getFrontendMode, getMarketSilentFilters, getMarketSilentRules, getPendingOverrides } from '../utils'
 import { getSilentFiltered, getVisible, kConfig, MarketFilter, MarketList, MarketSearch, parseSilentFilters } from '../market'
 import { SearchObject } from '@koishijs/registry'
 import { activeBundle } from './utils'
+import MarketSecretArchive from './market-secret-archive.vue'
 import { canInstallBundleSearchObject } from '../market/utils'
 import { useMarketNextI18n } from '../i18n'
 
@@ -145,7 +145,6 @@ const searchBox = ref<{ focus?: () => void }>()
 const config = useConfig()
 const { t, locale } = useMarketNextI18n()
 const frontendMode = computed(() => getFrontendMode(config.value))
-const marketLayout = computed(() => getMarketLayout(config.value))
 const marketGravatar = computed(() => config.value.market?.gravatar || store.market?.gravatar)
 const silentFilters = computed(() => {
   const rules = getMarketSilentRules(config.value)
@@ -156,14 +155,36 @@ const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 provide(kConfig, {
   installed: global.static ? undefined : installed,
-  get layout() { return marketLayout.value },
 })
 
 const words = ref<string[]>([''])
 
 const prompt = computed(() => words.value.filter(w => w).join(' '))
 
+const secretSearchMatched = computed(() => {
+  const source = words.value.join('').normalize('NFKC')
+  const prefixIndex = source.indexOf('恋恋')
+  return prefixIndex >= 0 && source.indexOf('世界第一', prefixIndex + 2) >= 0
+})
+
+const secretArchiveRecordedAt = ref('')
+
+const secretArchiveKoishiVersion = computed(() => {
+  return store.dependencies?.koishi?.resolved
+    || store.packages?.koishi?.package.version
+    || store.dependencies?.['@koishijs/core']?.resolved
+    || store.packages?.['@koishijs/core']?.package.version
+})
+
+watch(secretSearchMatched, (matched) => {
+  if (!matched) return
+  secretArchiveRecordedAt.value = new Date().toLocaleString(locale.value)
+  requestAnimationFrame(() => root.value?.scrollTo(0, 0))
+})
+
 const data = computed(() => Object.values(store.market?.data || {}))
+
+const secretArchiveMarketCount = computed(() => store.market?.total || data.value.length)
 
 const silentData = computed(() => getSilentFiltered(data.value, silentFilters.value, {
   installed: global.static ? undefined : installed,
@@ -275,13 +296,6 @@ watch(marketLoading, (loading) => {
   if (loading) scheduleLoadingWarning()
 }, { immediate: true })
 
-function toggleLayout() {
-  if (!config.value.market) config.value.market = {}
-  const next = marketLayout.value === 'grid' ? 'list' : 'grid'
-  config.value.market.marketLayout = next
-  patchMarketNextConfig({ marketLayout: next })
-}
-
 onMounted(() => {
   scheduleLoadingWarning()
   window.addEventListener('keydown', onSearchShortcut)
@@ -295,6 +309,12 @@ onUnmounted(() => {
 
 function onSearchShortcut(event: KeyboardEvent) {
   if (router.currentRoute.value?.path !== '/market') return
+  if (event.key === 'Escape' && secretSearchMatched.value) {
+    event.preventDefault()
+    words.value = ['']
+    searchBox.value?.focus?.()
+    return
+  }
   if (event.key.toLowerCase() !== 'k') return
   if (!event.ctrlKey && !event.metaKey) return
   event.preventDefault()
@@ -886,7 +906,7 @@ function formatNumber(value?: number) {
       color: color-mix(in srgb, var(--c, var(--k-color-primary)) 62%, var(--k-text-light));
 
       .market-icon {
-        filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--c, var(--k-color-primary)) 26%, transparent));
+        filter: drop-shadow(0 1px var(--update-heart-glow-size, 0) var(--update-heart-glow-color, transparent));
       }
     }
 
@@ -909,35 +929,6 @@ function formatNumber(value?: number) {
       }
     }
 
-    &.list-mode {
-      min-height: 4.2rem;
-      border-radius: 10px;
-      padding: 0.58rem 0.9rem;
-
-      &::before {
-        inset: -8px;
-        border-radius: 20px;
-      }
-
-      &:hover {
-        transform: translateY(-2px) scale(1.004);
-      }
-
-      .header .left {
-        width: 2.7rem;
-        height: 2.7rem;
-
-        svg {
-          height: 1.35rem;
-        }
-      }
-
-      .footer {
-        height: auto;
-        padding-top: 0;
-        border-top: 0;
-      }
-    }
   }
 }
 
@@ -1032,55 +1023,6 @@ function formatNumber(value?: number) {
     flex: 1 1 auto;
     max-width: none;
     margin: 0;
-  }
-}
-
-.layout-toggle-btn {
-  flex: 0 0 auto;
-  width: 2.2rem;
-  height: 2.2rem;
-  border-radius: 8px;
-  border: 1px solid var(--k-color-border);
-  background: var(--k-card-bg);
-  color: var(--fg2);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    color: var(--k-color-primary);
-    border-color: var(--k-color-primary);
-    background: color-mix(in srgb, var(--k-color-primary) 8%, var(--k-card-bg));
-  }
-
-  svg {
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-}
-
-.page-market.market-mode-polished {
-  .layout-toggle-btn {
-    border-radius: 12px;
-    border-color: var(--market-polished-line);
-    background: var(--market-polished-glass);
-    box-shadow: var(--market-polished-shadow);
-    backdrop-filter: blur(12px) saturate(120%);
-    transition:
-      color 0.3s var(--market-polished-ease),
-      border-color 0.3s var(--market-polished-ease),
-      box-shadow 0.3s var(--market-polished-ease),
-      transform 0.4s var(--market-polished-ease-spring);
-
-    &:hover {
-      color: var(--k-color-primary);
-      border-color: color-mix(in srgb, var(--k-color-primary) 46%, var(--k-color-border));
-      background: var(--market-polished-glass-hover);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-    }
   }
 }
 

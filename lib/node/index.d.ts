@@ -52,7 +52,6 @@ export interface Config {
     chatlunaTool?: boolean;
     frontendMode?: 'performance' | 'polished';
     depsLayout?: 'grid' | 'list';
-    marketLayout?: 'grid' | 'list';
     marketSilentStatusRules?: MarketSilentStatusRule[];
     marketSilentDateRules?: MarketSilentDateRule[];
     marketSilentRecentRules?: MarketSilentRecentRule[];

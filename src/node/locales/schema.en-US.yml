@@ -42,11 +42,6 @@ depsLayout:
   $inner:
     - Grid
     - List
-marketLayout:
-  $description: Market page layout. Grid shows multi-column cards; list shows compact rows.
-  $inner:
-    - Grid
-    - List
 marketSilentRules:
   $description: Permanent silent market filters. Matched plugins are hidden from the market page.
   type:

@@ -36,10 +36,6 @@
           </svg>
           <span>{{ depsLayout === 'grid' ? t('dependencies.toolbar.listView') : t('dependencies.toolbar.gridView') }}</span>
         </button>
-        <button class="deps-filter deps-version-manager" @click="showEnvironmentVersions = true">
-          <market-icon name="file-archive"></market-icon>
-          <span>{{ t('common.actions.versionManagement') }}</span>
-        </button>
         <div class="deps-search">
           <el-input ref="searchInput" v-model="keyword" clearable :placeholder="t('dependencies.toolbar.searchPlaceholder')"></el-input>
         </div>
@@ -433,8 +429,7 @@ ctx.action('dependencies.upgrade', {
   min-width: 0;
 }
 
-.deps-prerelease-toggle,
-.deps-version-manager {
+.deps-prerelease-toggle {
   flex: 0 0 auto;
   height: 2rem;
   display: inline-flex;
@@ -823,7 +818,6 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-prerelease-toggle,
-  .deps-version-manager,
   .deps-layout-toggle,
   .deps-summary span {
     border-color: color-mix(in srgb, var(--k-color-border) 64%, transparent);
@@ -835,7 +829,6 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-prerelease-toggle:hover,
-  .deps-version-manager:hover,
   .deps-layout-toggle:hover {
     border-color: color-mix(in srgb, var(--k-color-primary) 40%, var(--k-color-border));
     background: var(--deps-polished-glass-strong);
@@ -1112,16 +1105,10 @@ ctx.action('dependencies.upgrade', {
   }
 
   .deps-prerelease-toggle,
-  .deps-version-manager,
   .deps-layout-toggle {
     flex: 1 1 auto;
     justify-content: center;
     min-width: 0;
-  }
-
-  .deps-version-manager {
-    flex: 1 1 100%;
-    order: 3;
   }
 
   .deps-search {

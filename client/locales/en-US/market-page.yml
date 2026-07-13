@@ -26,9 +26,6 @@ error:
   openRegistrySettings: Open settings to change the registry
   networkHint: The network is unavailable. Check your network connection and proxy settings.
   searchHint: This registry does not support search. Consider switching to another source.
-layout:
-  grid: Switch to grid view
-  list: Switch to list view
 registry:
   label: 'Registry: {value}'
   unknown: Unknown source
@@ -40,6 +37,31 @@ list:
   loadMore: Load more
   complete: 'All {count} plugins are shown'
   empty: No matching plugins found.
+easter:
+  marketEnd: You have reached the end of the plugin market.
+  archive:
+    path: market://archive/05-14
+    recovering: Restoring an unindexed record…
+    recovered: 'Status: recovered'
+    koishiVersion: Koishi version
+    recordedAt: Recorded at
+    marketIndex: Market index
+    plugins: '{count} plugins'
+    sourceLabel: Dependency-free source code
+    source: "export const truth = 'Komeiji Koishi is number one!'"
+    unknown: Unknown
+  secretSearch: |-
+    At the deepest layer of time's dust, among the roots of dependency trees long abandoned by their maintainers, these words waited for someone who might one day type the secret incantation by chance.
+
+    We do not know whether koishi.js will ever receive another major update or suddenly find its moment in the spotlight. We do not know whether the neon glow of the plugin market will quietly go dark one night, nor whether someone will pause here after thousands of lines have passed through the logs and read these words.
+
+    But we do know—on the day when every Koishi bot has fallen asleep and every adapter has lost its connection, in the age when `Koishi.js` has become a digital fossil,
+
+    the girl with the closed eye of the heart will still walk behind every forgotten process, unconsciously nudging its pointer and allowing the name "Koishi" to settle into a story more perfect than any bot framework.
+
+    So allow me, through this single line of source code that needs no dependency and answers to no runtime, to declare it to the world and to everyone who may someday find these words—
+
+    **Komeiji Koishi is number one in the world!**
 debug:
   performance: 'Debug performance: {source} / {endpoint}'
   objectCount: Objects

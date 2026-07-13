@@ -4,6 +4,8 @@ import { dirname, resolve } from 'path'
 import { promises as fsp } from 'fs'
 import type { PluginBundleRecord } from '../shared/bundle'
 
+const COLLAPSED_GROUPS_VERSION = 1
+
 export interface UpdateIgnoreRule {
   version?: string
   count?: number
@@ -33,6 +35,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   private writeTimer?: NodeJS.Timeout
   private writePending = false
   private hasCollapsedGroupsState = false
+  private collapsedGroupsVersion = 0
 
   constructor(public ctx: Context) {
     super(ctx, 'marketData', { immediate: true, authority: 4 })
@@ -81,6 +84,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   }) {
     await this.ready
     const patch: Partial<MarketDataStorePayload> = {}
+    const migrateCollapsedGroups = this.collapsedGroupsVersion < COLLAPSED_GROUPS_VERSION
     if (!Object.keys(this.data.updateIgnored).length && Object.keys(config.updateIgnored ?? {}).length) {
       patch.updateIgnored = config.updateIgnored
     }
@@ -90,7 +94,14 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     if (!this.hasCollapsedGroupsState) {
       patch.collapsedGroups = config.collapsedGroups ?? {}
     }
+    if (migrateCollapsedGroups) {
+      const collapsedGroups = normalizeDict<boolean>(patch.collapsedGroups ?? this.data.collapsedGroups)
+      delete collapsedGroups.installed
+      patch.collapsedGroups = collapsedGroups
+      this.collapsedGroupsVersion = COLLAPSED_GROUPS_VERSION
+    }
     if (Object.keys(patch).length) await this.patch(patch)
+    if (migrateCollapsedGroups) await this.flushWriteNow()
   }
 
   private snapshot(): MarketDataStorePayload {
@@ -107,12 +118,16 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       const content = await fsp.readFile(this.file, 'utf8')
       const value = JSON.parse(content)
       this.hasCollapsedGroupsState = Object.prototype.hasOwnProperty.call(value, 'collapsedGroups')
+      this.collapsedGroupsVersion = Number.isInteger(value?.collapsedGroupsVersion)
+        ? Math.max(0, value.collapsedGroupsVersion)
+        : 0
       this.data = normalizeStore(value)
     } catch (error) {
       if ((error as any)?.code !== 'ENOENT') {
         this.ctx.logger('market').warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
       }
       this.hasCollapsedGroupsState = false
+      this.collapsedGroupsVersion = 0
       this.data = emptyStore()
     }
   }
@@ -152,7 +167,10 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     try {
       await fsp.mkdir(dirname(this.file), { recursive: true })
       const tempFile = `${this.file}.${process.pid}.${Date.now()}.tmp`
-      await fsp.writeFile(tempFile, JSON.stringify(this.data, null, 2))
+      await fsp.writeFile(tempFile, JSON.stringify({
+        ...this.data,
+        collapsedGroupsVersion: this.collapsedGroupsVersion,
+      }, null, 2))
       await fsp.rename(tempFile, this.file)
     } catch (error) {
       this.ctx.logger('market').warn(`failed to write market-next data store: ${error instanceof Error ? error.message : error}`)

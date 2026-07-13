@@ -94,7 +94,6 @@ plugins:
 | `registry.concurrency` | `4` | 批量获取依赖版本时的最大并发数。 |
 | `frontendMode` | `performance` | 前端显示模式：`performance` 为低动效高密度，`polished` 为精致动效和高级样式。 |
 | `depsLayout` | `grid` | 依赖管理页布局：`grid` 或 `list`。 |
-| `marketLayout` | `grid` | 插件市场页布局：`grid` 或 `list`。 |
 | `idleProbe` | `true` | Console 空闲时是否自动探测市场索引和依赖 npm 元数据。 |
 | `idleProbeDelay` | `5m` | Console 无客户端后等待多久启动空闲探测。 |
 | `idleProbeBootDelay` | `1m` | Koishi 启动后至少等待多久才允许空闲探测。 |

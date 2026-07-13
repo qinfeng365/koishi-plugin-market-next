@@ -613,7 +613,6 @@ export const categories = [
 export interface MarketConfig {
   installed?(data: SearchObject): boolean
   portable?: boolean
-  layout?: 'grid' | 'list'
 }
 
 interface ValidateConfig extends MarketConfig {

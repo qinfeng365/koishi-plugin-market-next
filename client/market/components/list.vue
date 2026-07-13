@@ -3,7 +3,7 @@
     <slot name="header" v-bind="{ all, packages, hasFilter: hasFilter(modelValue) }"></slot>
   </div>
   <template v-if="packages.length">
-    <div ref="list" :class="['package-list', { settled }, config.layout === 'list' ? 'list-layout' : '']">
+    <div ref="list" :class="['package-list', { settled }]">
       <div v-if="topSpacer" class="virtual-spacer" :style="{ height: topSpacer + 'px' }"></div>
       <market-package
         v-for="data in renderedPackages"
@@ -21,8 +21,14 @@
     <div v-if="hasMore" ref="sentinel" class="load-more">
       <el-button text @click="loadMore">{{ t('marketPage.list.loadMore') }}</el-button>
     </div>
-    <div v-else class="load-complete">
-      {{ t('marketPage.list.complete', { count: packages.length }) }}
+    <div v-else :class="['load-complete', { 'market-end-easter': !hasFilter(modelValue) }]">
+      <template v-if="!hasFilter(modelValue)">
+        <k-icon name="koishi" class="market-end-easter__icon" aria-hidden="true"></k-icon>
+        <span>{{ t('marketPage.easter.marketEnd') }}</span>
+      </template>
+      <template v-else>
+        {{ t('marketPage.list.complete', { count: packages.length }) }}
+      </template>
     </div>
   </template>
   <k-empty v-else>
@@ -227,9 +233,7 @@ function measureLayout() {
   const style = getComputedStyle(list.value)
   const gap = parseFloat(style.columnGap) || parseFloat(style.gap) || 16
   const width = list.value.clientWidth
-  const nextColumns = config.layout === 'list'
-    ? 1
-    : Math.max(1, Math.floor((width + gap) / (336 + gap)))
+  const nextColumns = Math.max(1, Math.floor((width + gap) / (336 + gap)))
   const card = list.value.querySelector<HTMLElement>('.market-package')
   const nextRowHeight = (card?.offsetHeight || 202) + gap
   const nextListTop = getListTop()
@@ -321,11 +325,6 @@ function onQuery(word: string) {
   gap: var(--card-margin);
   justify-items: center;
   flex: 1 0 auto;
-
-  &.list-layout {
-    grid-template-columns: 1fr;
-    justify-items: stretch;
-  }
 }
 
 @media (max-width: 420px) {
@@ -354,6 +353,21 @@ function onQuery(word: string) {
   justify-content: center;
   color: var(--el-text-color-secondary);
   font-size: 14px;
+}
+
+.market-end-easter {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 4rem;
+  padding: 0.75rem 1rem;
+  text-align: center;
+}
+
+.market-end-easter__icon {
+  width: 2rem;
+  height: 2rem;
+  color: color-mix(in srgb, var(--k-color-primary) 76%, var(--el-text-color-primary));
 }
 
 </style>

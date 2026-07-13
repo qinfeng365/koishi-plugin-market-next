@@ -22,6 +22,7 @@ export declare class MarketDataStore extends DataService<MarketDataStorePayload>
     private writeTimer?;
     private writePending;
     private hasCollapsedGroupsState;
+    private collapsedGroupsVersion;
     constructor(ctx: Context);
     get(): Promise<MarketDataStorePayload>;
     patch(patch: Partial<MarketDataStorePayload>): Promise<MarketDataStorePayload>;

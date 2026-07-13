@@ -43,11 +43,6 @@ depsLayout:
   $inner:
     - 网格
     - 列表
-marketLayout:
-  $description: 插件市场页布局。网格模式多列卡片；列表模式单列紧凑行。
-  $inner:
-    - 网格
-    - 列表
 marketSilentRules:
   $description: 插件市场永久静默过滤。添加后命中的插件会直接隐藏，不会显示在搜索框中。
   type:

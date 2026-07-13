@@ -20,7 +20,6 @@ export type IgnoredUpdates = Record<string, string | UpdateIgnoreRule | undefine
 export interface MarketNextConfigPatch extends UpdatePolicy {
   frontendMode?: FrontendMode
   depsLayout?: LayoutMode
-  marketLayout?: LayoutMode
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]
@@ -129,12 +128,6 @@ export function getFrontendMode(config?: { market?: { frontendMode?: FrontendMod
 export function getDepsLayout(config?: { market?: { depsLayout?: LayoutMode } }): LayoutMode {
   const pluginConfig = getMarketNextConfig()
   if (pluginConfig) return pluginConfig.depsLayout === 'list' ? 'list' : 'grid'
-  return 'grid'
-}
-
-export function getMarketLayout(config?: { market?: { marketLayout?: LayoutMode } }): LayoutMode {
-  const pluginConfig = getMarketNextConfig()
-  if (pluginConfig) return pluginConfig.marketLayout === 'list' ? 'list' : 'grid'
   return 'grid'
 }
 

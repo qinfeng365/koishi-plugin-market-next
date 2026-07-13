@@ -1,5 +1,5 @@
 <template>
-  <a :class="['market-package flex gap-3', 'cat-' + resolveCategory(data.category), config.layout === 'list' ? 'list-mode flex-row' : 'flex-col', { 'bundle-card': bundlePackage }]" target="_blank" :href="homepage">
+  <a :class="['market-package flex flex-col gap-3', 'cat-' + resolveCategory(data.category), { 'bundle-card': bundlePackage }]" target="_blank" :href="homepage">
     <div class="header flex flex-row gap-4">
       <div :class="['left', 'shrink-0', 'flex', 'flex-row', 'justify-center', 'items-center', 'cat-' + resolveCategory(data.category)]">
         <market-icon :name="'outline:' + resolveCategory(data.category)"></market-icon>
@@ -14,7 +14,7 @@
           </el-tooltip>
         </h2>
         <div class="bottom">
-          <span class="updated-meta">
+          <span class="updated-meta" :style="updatedMetaStyle">
             <market-icon name="heart-pulse"></market-icon>{{ updatedAgo(data.updatedAt) }}
           </span>
         </div>
@@ -299,6 +299,31 @@ function updatedAgo(time?: string) {
   return t('time.updated-ago', [timeAgo(time)])
 }
 
+const updatedMetaStyle = computed<Record<string, string>>(() => {
+  const timestamp = Date.parse(props.data.updatedAt || '')
+  if (!Number.isFinite(timestamp)) {
+    return {
+      '--update-heart-color': 'var(--fg3, var(--k-text-light, #888))',
+      '--update-heart-opacity': '0.44',
+      '--update-heart-glow-color': 'transparent',
+      '--update-heart-glow-size': '0px',
+    }
+  }
+
+  const age = Math.max(0, getReferenceNow() - timestamp)
+  const freshness = Math.exp(-age / (75 * DAY))
+  const redMix = Math.round(82 * freshness)
+  const opacity = (0.44 + freshness * 0.46).toFixed(2)
+  const glow = Math.max(0, 0.12 * (1 - age / (14 * DAY)))
+  const glowSize = glow ? (0.8 + glow / 0.1).toFixed(1) : '0'
+  return {
+    '--update-heart-color': `color-mix(in srgb, #eb4d55 ${redMix}%, var(--fg3, var(--k-text-light, #888)))`,
+    '--update-heart-opacity': opacity,
+    '--update-heart-glow-color': glow ? `rgb(223 93 98 / ${glow.toFixed(2)})` : 'transparent',
+    '--update-heart-glow-size': `${glowSize}px`,
+  }
+})
+
 watch(() => [props.data.package.name, props.gravatar], () => {
   cancelAvatarHydration()
   avatarCursor.value = {}
@@ -475,10 +500,11 @@ onUnmounted(() => {
       white-space: nowrap;
 
       .market-icon {
-        color: var(--c, var(--k-color-primary));
+        color: var(--update-heart-color, var(--k-text-light, #888));
+        opacity: var(--update-heart-opacity, 0.7);
         height: 0.875rem;
         width: 0.875rem;
-        transition: color 0.3s ease;
+        transition: color 0.3s ease, opacity 0.3s ease;
       }
     }
   }
@@ -621,93 +647,6 @@ onUnmounted(() => {
   }
 }
 
-.market-package.list-mode {
-  max-width: 100%;
-  height: auto;
-  min-height: 4rem;
-  align-items: center;
-  padding: 0.6rem 1rem;
-  contain-intrinsic-size: 4rem;
-
-  .header {
-    flex: 0 0 23rem;
-    gap: 0.75rem;
-    min-width: 0;
-    align-items: center;
-
-    .main {
-      display: flex;
-      flex: 1 1 auto;
-      min-width: 0;
-      justify-content: center;
-    }
-
-    h2 {
-      min-width: 0;
-      font-size: 0.95rem;
-
-      .title {
-        min-width: 0;
-      }
-    }
-
-    .bottom {
-      display: none;
-    }
-
-    .text-right {
-      flex: 0 0 auto;
-    }
-  }
-
-  &::before {
-    height: 2px;
-  }
-
-  .desc {
-    min-width: 0;
-    flex: 1 1 auto;
-    -webkit-line-clamp: 1;
-    margin: 0;
-    font-size: 0.8rem;
-  }
-
-  .footer {
-    flex: 0 0 auto;
-    height: auto;
-    margin-bottom: 0;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-}
-
-@media (max-width: 768px) {
-  .market-package.list-mode {
-    align-items: stretch;
-    min-height: 0;
-    padding: 0.72rem 0.82rem;
-
-    .header {
-      flex: 0 1 auto;
-      width: 100%;
-      gap: 0.6rem;
-    }
-
-    .desc {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      margin-top: 0.38rem;
-      white-space: normal;
-    }
-
-    .footer {
-      flex-wrap: wrap;
-      gap: 0.3rem 0.55rem;
-      white-space: normal;
-      margin-top: 0.4rem;
-    }
-  }
-}
 
 @media (max-width: 420px) {
   .market-package {
