@@ -46,27 +46,60 @@ const localeMessages = {
 }
 
 type Composer = ReturnType<typeof useI18n>['t']
+
+interface GlobalComposer {
+  t: Composer
+  getLocaleMessage(locale: string): unknown
+  mergeLocaleMessage(locale: string, messages: Record<string, unknown>): void
+  setLocaleMessage(locale: string, messages: Record<string, unknown>): void
+}
+
+interface LocaleRegistrationState {
+  references: number
+  previous: Record<string, unknown>
+}
+
+const registrationRegistryKey = Symbol.for('koishi-plugin-market-next/i18n-registrations')
+const registrationRegistry = ((globalThis as any)[registrationRegistryKey] ||= new WeakMap<object, LocaleRegistrationState>()) as WeakMap<object, LocaleRegistrationState>
+
 let globalTranslate: Composer | undefined
+let localRegistrations = 0
 
 export function registerMarketNextI18n(ctx: Context) {
-  const composer = ctx.$i18n.i18n.global
-  const previous: Record<string, unknown> = {}
+  const composer = ctx.$i18n.i18n.global as unknown as GlobalComposer
+  let state = registrationRegistry.get(composer)
 
+  if (!state) {
+    const previous: Record<string, unknown> = {}
+    for (const locale of Object.keys(localeMessages)) {
+      const current = composer.getLocaleMessage(locale) as Record<string, unknown>
+      previous[locale] = current[namespace]
+    }
+    state = { references: 0, previous }
+    registrationRegistry.set(composer, state)
+  }
+
+  state.references++
+  localRegistrations++
   for (const [locale, messages] of Object.entries(localeMessages)) {
-    const current = composer.getLocaleMessage(locale) as Record<string, unknown>
-    previous[locale] = current[namespace]
     composer.mergeLocaleMessage(locale, { [namespace]: messages })
   }
-  globalTranslate = composer.t
+  globalTranslate = composer.t as Composer
 
   ctx.effect(() => () => {
-    for (const [locale, value] of Object.entries(previous)) {
+    localRegistrations = Math.max(0, localRegistrations - 1)
+    if (!localRegistrations) globalTranslate = undefined
+
+    state.references = Math.max(0, state.references - 1)
+    if (state.references) return
+
+    for (const [locale, value] of Object.entries(state.previous)) {
       const current = { ...composer.getLocaleMessage(locale) as Record<string, unknown> }
       if (value === undefined) delete current[namespace]
       else current[namespace] = value
       composer.setLocaleMessage(locale, current)
     }
-    globalTranslate = undefined
+    registrationRegistry.delete(composer)
   })
 }
 
