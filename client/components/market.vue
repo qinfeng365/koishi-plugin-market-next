@@ -27,7 +27,7 @@
       </k-comment>
     </div>
 
-    <el-scrollbar ref="root" v-else-if="store.market.total">
+    <el-scrollbar ref="root" v-else-if="data.length">
       <div class="market-search-row">
         <market-search ref="searchBox" v-model="words"></market-search>
       </div>
@@ -40,7 +40,8 @@
       <market-list
         v-else
         v-model="words"
-        :data="silentData"
+        :data="visibleData"
+        visibility-prepared
         :gravatar="marketGravatar"
         :debug="!!store.market.debug"
         @debug="updateClientDebug"
@@ -130,6 +131,12 @@ import { SearchObject } from '@koishijs/registry'
 import { activeBundle } from './utils'
 import MarketSecretArchive from './market-secret-archive.vue'
 import { canInstallBundleSearchObject } from '../market/utils'
+import {
+  getMarketSnapshotData,
+  loadMarketSnapshot,
+  marketSnapshotError,
+  marketSnapshotLoading,
+} from '../market/state'
 import { useMarketNextI18n } from '../i18n'
 
 function installed(data: SearchObject) {
@@ -182,7 +189,7 @@ watch(secretSearchMatched, (matched) => {
   requestAnimationFrame(() => root.value?.scrollTo(0, 0))
 })
 
-const data = computed(() => Object.values(store.market?.data || {}))
+const data = computed(() => Object.values(getMarketSnapshotData()))
 
 const secretArchiveMarketCount = computed(() => store.market?.total || data.value.length)
 
@@ -190,9 +197,18 @@ const silentData = computed(() => getSilentFiltered(data.value, silentFilters.va
   installed: global.static ? undefined : installed,
 }))
 
-const visibilityWords = computed(() => words.value.filter(word => word === 'show:hidden' || word === 'show:deprecated'))
+const visibilityMode = computed(() => {
+  return `${words.value.includes('show:hidden') ? 1 : 0}:${words.value.includes('show:deprecated') ? 1 : 0}`
+})
 
-const visibleData = computed(() => getVisible(silentData.value, visibilityWords.value))
+const visibleData = computed(() => {
+  const [hidden, deprecated] = visibilityMode.value.split(':')
+  const visibilityWords = [
+    hidden === '1' ? 'show:hidden' : '',
+    deprecated === '1' ? 'show:deprecated' : '',
+  ].filter(Boolean)
+  return getVisible(silentData.value, visibilityWords)
+})
 
 const clientDebug = ref<{
   timings?: Record<string, number>
@@ -202,7 +218,10 @@ const clientDebug = ref<{
   rendered?: number
 }>({})
 
-const marketLoading = computed(() => !store.market || store.market.loading)
+const marketLoading = computed(() => {
+  if (!store.market || store.market.loading || marketSnapshotLoading.value) return true
+  return store.market.total > 0 && !data.value.length && !marketSnapshotError.value
+})
 const loadingSlow = ref(false)
 let loadingTimer: ReturnType<typeof setTimeout>
 
@@ -296,9 +315,15 @@ watch(marketLoading, (loading) => {
   if (loading) scheduleLoadingWarning()
 }, { immediate: true })
 
+watch(() => store.market?.dataVersion, (version, previous) => {
+  if (version == null || version === previous) return
+  void loadMarketSnapshot().catch(error => console.error('[market-next] failed to refresh market index', error))
+})
+
 onMounted(() => {
   scheduleLoadingWarning()
   window.addEventListener('keydown', onSearchShortcut)
+  void loadMarketSnapshot().catch(error => console.error('[market-next] failed to load market index', error))
 })
 
 onUnmounted(() => {

@@ -137,12 +137,13 @@
 
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, message, send, store, useContext, useConfig } from '@koishijs/client'
-import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
+import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getConfigWriter, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
 import { active, getBulkMode, getBundleRecords, getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import BundleUninstall from './bundle-uninstall.vue'
 import { useMarketNextI18n } from '../i18n'
+import { getMarketObject } from '../market/state'
 
 const ctx = useContext()
 const config = useConfig()
@@ -184,7 +185,7 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
   // 1. The plugin is to be removed.
   // 2. The plugin has config entries.
   // 3. `removeConfig` is not set.
-  if (checkConfig && ctx.configWriter?.get(target)?.length) {
+  if (checkConfig && getConfigWriter(ctx)?.get(target)?.length) {
     const savedRemoveConfig = getRemoveConfig(config.value)
     if (typeof savedRemoveConfig !== 'boolean') {
       showRemoveDialog.value = true
@@ -209,7 +210,7 @@ function installDep(version: string, checkConfig = false, removeConfig = false) 
         await ensureInstalledConfig(ctx, key, key !== target)
       }
     } else if (removeConfig) {
-      ctx.configWriter?.remove(target)
+      getConfigWriter(ctx)?.remove(target)
     }
     if (!version) {
       const records = getWritableBundleRecords(config.value)
@@ -322,7 +323,7 @@ const danger = computed(() => {
   if (workspace.value) return
   const deprecated = store.registry?.[active.value]?.[version.value]?.deprecated
   if (deprecated) return t('operations.install.deprecated', { reason: deprecated })
-  if (store.market?.data[active.value]?.insecure) {
+  if (getMarketObject(active.value)?.insecure) {
     return t('operations.install.insecure')
   }
 })
@@ -397,7 +398,7 @@ watch(active, async (name) => {
 }, { immediate: true })
 
 function configure() {
-  ctx.configWriter?.ensure(active.value)
+  getConfigWriter(ctx)?.ensure(active.value)
   closePanel()
 }
 

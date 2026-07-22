@@ -61,7 +61,7 @@
 <script lang="ts" setup>
 
 import { global, message, send, store, useConfig, useContext } from '@koishijs/client'
-import { computed, inject, ComputedRef, ref } from 'vue'
+import { computed, inject, ComputedRef, ref, watch } from 'vue'
 import { getBulkMode, getBundleRecords, getMarketNextPolicy, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, hasUpdate, patchMarketNextData } from '../utils'
 import type {} from '@koishijs/plugin-config'
 import type { PluginBundleRecord } from '../../src/shared/bundle'
@@ -69,12 +69,14 @@ import {
   createLocalBundleRecord,
   ensureInstalledConfig,
   fetchBundleRecord,
+  getConfigWriter,
   install,
   pendingBundleUninstalls,
   type BundleRecordView,
 } from '../components/utils'
 import BundleUninstall from '../components/bundle-uninstall.vue'
 import { useMarketNextI18n } from '../i18n'
+import { getMarketObject, loadMarketObjects } from '../market/state'
 
 const ctx = useContext()
 const config = useConfig()
@@ -83,7 +85,7 @@ const name = inject<ComputedRef<string>>('plugin:name')
 const protectedDeps = new Set(['@koishijs/plugin-console', '@koishijs/plugin-config', '@koishijs/plugin-server'])
 
 const local = computed(() => store.packages?.[name.value])
-const object = computed(() => store.market?.data?.[name.value])
+const object = computed(() => getMarketObject(name.value))
 const dep = computed(() => store.dependencies?.[name.value])
 const versions = computed(() => store.registry?.[name.value])
 const updateAvailable = computed(() => hasUpdate(name.value, getMarketNextPolicy(config.value)))
@@ -93,13 +95,20 @@ const showUninstallDialog = ref(false)
 const showBundleUninstallDialog = ref(false)
 const remoteBundleRecord = ref<BundleRecordView>()
 
+watch(name, (value) => {
+  if (!value) return
+  void loadMarketObjects([value]).catch(error => {
+    console.error('[market-next] failed to load plugin market metadata', error)
+  })
+}, { immediate: true })
+
 const pendingRemove = computed(() => {
   const override = getPendingOverrides()
   return Object.prototype.hasOwnProperty.call(override, name.value) && !override[name.value]
 })
 
 const hasConfigEntries = computed(() => {
-  return !!ctx.configWriter?.get(name.value)?.length
+  return !!getConfigWriter(ctx)?.get(name.value)?.length
 })
 
 const bundleRecord = computed<BundleRecordView | PluginBundleRecord | undefined>(() => {
@@ -188,7 +197,7 @@ async function uninstallDependency(removeConfig: boolean) {
   uninstalling.value = true
   try {
     await install({ [name.value]: '' }, async () => {
-      if (removeConfig) ctx.configWriter?.remove(name.value)
+      if (removeConfig) getConfigWriter(ctx)?.remove(name.value)
       const records = getWritableBundleRecords(config.value)
       delete records[name.value]
       const saved = await patchMarketNextData({ bundleRecords: records })

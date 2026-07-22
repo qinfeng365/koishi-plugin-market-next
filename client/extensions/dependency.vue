@@ -26,28 +26,25 @@
 <script lang="ts" setup>
 
 import { Dict, store } from '@koishijs/client'
-import { computed, inject, ComputedRef } from 'vue'
+import { computed, inject, ComputedRef, watch } from 'vue'
 import { EnvInfo } from '@koishijs/plugin-config/client'
 import KDepLink from './dep-link.vue'
 import { useMarketNextI18n } from '../i18n'
+import { getMarketServiceProviders, loadMarketServiceProviders } from '../market/state'
 
 const env = inject<ComputedRef<EnvInfo>>('plugin:env')
 const { t } = useMarketNextI18n()
 
-const getImplements = (name: string) => ({
-  ...(store.market?.data?.[name] ?? {}),
-  ...(store.packages?.[name] ?? {}),
-}.manifest?.service.implements ?? [])
-
-const getAvailable = (name: string) => Object
-  .values(store.market?.data ?? {})
-  .filter(data => getImplements(data.package.name).includes(name))
-  .map(data => data.package.name)
+watch(() => Object.keys(env.value?.using ?? {}), (services) => {
+  void loadMarketServiceProviders(services).catch(error => {
+    console.error('[market-next] failed to load service providers', error)
+  })
+}, { immediate: true })
 
 const available = computed(() => {
   const available: Dict<string[]> = {}
   for (const name in env.value.using) {
-    available[name] = getAvailable(name)
+    available[name] = getMarketServiceProviders(name)
   }
   return available
 })

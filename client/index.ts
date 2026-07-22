@@ -1,10 +1,11 @@
-import { defineComponent, h, ref, watch } from 'vue'
+import { defineComponent, h, isReactive, markRaw, ref, toRaw, watch } from 'vue'
 import { Context, Dict, global, message, receive, router, send, store, useConfig } from '@koishijs/client'
 import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
 import { getPendingOverrides, patchMarketNextData, type IgnoredUpdates } from './utils'
 import { registerMarketNextI18n, translate } from './i18n'
 import { showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
 import extensions from './extensions'
+import { refreshMarketLookups, restoreMarketSnapshot } from './market/state'
 import Dependencies from './components/dependencies.vue'
 import Install from './components/install.vue'
 import BundleInstall from './components/bundle-install.vue'
@@ -14,6 +15,7 @@ import InstallHistory from './components/install-history.vue'
 import EnvironmentVersions from './components/environment-versions.vue'
 import Market from './components/market.vue'
 import Progress from './components/progress.vue'
+import { createPageBoundary } from './components/page-boundary'
 import './icons'
 import './styles/scrollbars.scss'
 import './styles/version-select.scss'
@@ -54,6 +56,9 @@ type MarketStore = typeof store & {
   registryStatus?: Dict<RegistryStatus>
 }
 
+const GuardedMarket = createPageBoundary('Market', Market)
+const GuardedDependencies = createPageBoundary('Dependencies', Dependencies)
+
 const REGISTRY_STATUS_TIMEOUT = 120000
 const REGISTRY_STATUS_SWEEP_INTERVAL = 15000
 const APRIL_FOOLS_SHORTCUT_TIMEOUT = 1500
@@ -85,16 +90,6 @@ function sweepRegistryStatus(target: MarketStore = store as MarketStore) {
   return changed
 }
 
-receive('market/patch', (data) => {
-  store.market = {
-    ...data,
-    data: {
-      ...store.market?.data,
-      ...data.data,
-    },
-  }
-})
-
 receive('market/registry', (data) => {
   store.registry = {
     ...store.registry,
@@ -122,6 +117,33 @@ receive('market/registry-status/clear', () => {
 
 export default (ctx: Context) => {
   registerMarketNextI18n(ctx)
+
+  if (global.devMode) {
+    const registeredAt = performance.now()
+    console.info('[market-next] console entry registered')
+    ctx.effect(() => () => {
+      console.info(`[market-next] console entry disposed after ${Math.round(performance.now() - registeredAt)}ms`)
+    })
+  }
+
+  // Market indexes contain thousands of nested objects. Keep the index raw so
+  // opening market-next does not turn the entire Console store into deep Vue proxies.
+  ctx.effect(() => watch(() => store.market?.data, (data) => {
+    if (!data || !isReactive(data)) return
+    const raw = markRaw(toRaw(data))
+    if (store.market) store.market.data = raw
+  }, { immediate: true, flush: 'sync' }))
+
+  ctx.effect(() => watch(() => store.market, () => {
+    restoreMarketSnapshot()
+  }, { immediate: true, flush: 'sync' }))
+
+  ctx.effect(() => watch(() => store.market?.dataVersion, (version, previous) => {
+    if (version == null || previous == null || version === previous) return
+    void refreshMarketLookups().catch(error => {
+      console.error('[market-next] failed to refresh market lookups', error)
+    })
+  }))
 
   const aprilFoolsIcon = ref(isAprilFoolsDay())
   const koishiDayIcon = ref(isKoishiDay())
@@ -215,7 +237,7 @@ export default (ctx: Context) => {
     icon: 'activity:market',
     order: 750,
     authority: 4,
-    component: Market,
+    component: GuardedMarket,
   })
 
   try {
@@ -254,7 +276,7 @@ export default (ctx: Context) => {
       order: 700,
       authority: 4,
       fields: ['dependencies', 'registry', 'registryStatus'],
-      component: Dependencies,
+      component: GuardedDependencies,
     })
   }
 

@@ -32,6 +32,7 @@ messages:
   unknownError: Unknown error
   timeUnknown: Unknown time
   metadataTimeout: The npm metadata request is taking too long. Refresh dependency versions and try again.
+  pageRenderFailed: The page encountered an error. Retry, or check the browser console if it continues.
 ignore:
   version: Ignored {version}
   count: '{count} consecutive versions'

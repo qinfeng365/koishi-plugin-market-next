@@ -21,7 +21,8 @@
 import { store } from '@koishijs/client'
 import { categories, MarketIcon, useMarketI18n, resolveCategory } from '../market'
 import { PackageProvider } from '@koishijs/plugin-config'
-import { provide, ref } from 'vue'
+import { provide, ref, watch } from 'vue'
+import { getMarketObject, loadMarketObjects } from '../market/state'
 
 const extended = ['all', 'other', ...categories]
 
@@ -29,8 +30,14 @@ const { t } = useMarketI18n()
 
 const active = ref('all')
 
+watch(() => Object.keys(store.packages ?? {}), (names) => {
+  void loadMarketObjects(names).catch(error => {
+    console.error('[market-next] failed to load plugin category metadata', error)
+  })
+}, { immediate: true })
+
 provide('plugin-select-filter', ({ name, manifest }: PackageProvider.Data) => {
-  const category = store.market?.data?.[name]?.category || manifest?.category
+  const category = getMarketObject(name)?.category || manifest?.category
   return active.value === 'all' || resolveCategory(category) === active.value
 })
 

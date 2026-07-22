@@ -692,6 +692,10 @@ export function getSorted(market: SearchObject[], words: string[], config?: Mark
   return sortMarket(getVisible(market, words), words, config)
 }
 
+export function getSortedPrepared(market: SearchObject[], words: string[], config?: MarketConfig) {
+  return sortMarket(market, words, config)
+}
+
 export function getSortedFiltered(market: SearchObject[], words: string[], config?: MarketConfig) {
   const visible = getVisible(market, words)
   const filtered = getFiltered(visible, words, config)

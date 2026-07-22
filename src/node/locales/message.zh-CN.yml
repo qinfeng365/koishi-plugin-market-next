@@ -20,11 +20,13 @@ commands.plugin.upgrade:
   description: 升级插件
   options:
     self: 升级 Koishi 本体
+    force: 忽略更新屏蔽规则并强制检查
   messages:
     all-updated: 所有插件已是最新版本。
     available: 有可用的依赖更新：
     prompt: 输入「Y」升级全部依赖，输入「N」取消操作。
     cancelled: 已取消操作。
+    failed: 升级失败，包管理器退出码为 {0}。
     success: 升级成功！
 
 commands.plugin.clear-avatar-cache:

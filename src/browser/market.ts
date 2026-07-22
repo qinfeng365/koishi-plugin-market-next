@@ -16,4 +16,8 @@ export default class MarketProvider extends BaseMarketProvider {
       progress: market.objects.length,
     }
   }
+
+  async getSnapshot() {
+    return this.get()
+  }
 }

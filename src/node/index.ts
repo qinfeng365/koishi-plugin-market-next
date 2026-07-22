@@ -1,6 +1,6 @@
 import { Context, Dict, HTTP, pick, Schema, Time } from 'koishi'
 import Scanner, { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
-import { gt, maxSatisfying } from 'semver'
+import { maxSatisfying } from 'semver'
 import { resolve } from 'path'
 import pMap from 'p-map'
 import { lookup } from 'dns/promises'
@@ -8,7 +8,7 @@ import { isIP } from 'net'
 import { promises as fsp } from 'fs'
 import { createHash } from 'crypto'
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
-import { MarketDataStore, MarketDataStorePayload } from './data'
+import { MarketDataStore, MarketDataStorePayload, readMarketDataStore } from './data'
 import Installer, {
   InstallFallbackCandidate,
   InstallHistoryEntry,
@@ -38,6 +38,16 @@ import {
   parseBundleManifest,
   validateBundleManifest,
 } from '../shared/bundle'
+import {
+  getLatestAllowedUpdate,
+  getUpdateCandidates,
+  type UpdateIgnorePolicy,
+} from '../shared/update'
+import type {
+  MarketLookupRequest,
+  MarketLookupResult,
+  MarketProvider as BaseMarketProvider,
+} from '../shared'
 
 export * from '../shared'
 
@@ -53,6 +63,46 @@ export type {
 } from './environment'
 
 const SELF_PACKAGE = 'koishi-plugin-market-next'
+
+function normalizeMarketLookupValues(values: unknown, limit: number) {
+  if (!Array.isArray(values)) return []
+  return Array.from(new Set(values
+    .filter((value): value is string => typeof value === 'string')
+    .map(value => value.trim())
+    .filter(value => value && value.length <= 214)))
+    .slice(0, limit)
+}
+
+async function lookupMarket(provider: BaseMarketProvider | undefined, request: MarketLookupRequest = {}): Promise<MarketLookupResult> {
+  if (!request || typeof request !== 'object') request = {}
+  const names = normalizeMarketLookupValues(request.names, 512)
+  const services = normalizeMarketLookupValues(request.services, 128)
+  const result: MarketLookupResult = {
+    data: {},
+    services: Object.fromEntries(services.map(name => [name, []])),
+  }
+  if (!provider || !names.length && !services.length) return result
+
+  const snapshot = await provider.getSnapshot()
+  const data = snapshot?.data ?? {}
+  result.dataVersion = snapshot?.dataVersion
+  for (const name of names) {
+    if (data[name]) result.data[name] = data[name]
+  }
+  if (!services.length) return result
+
+  const requestedServices = new Set(services)
+  for (const object of Object.values(data)) {
+    const implemented = object?.manifest?.service?.implements
+    if (!Array.isArray(implemented)) continue
+    for (const service of implemented) {
+      if (!requestedServices.has(service)) continue
+      result.services[service].push(object.package.name)
+    }
+  }
+  for (const service of services) result.services[service].sort()
+  return result
+}
 
 declare module 'koishi' {
   interface Context {
@@ -1267,6 +1317,7 @@ export function apply(ctx: Context, config: Config = {}) {
 
   applyChatLunaTool(ctx, config)
 
+  let activeDataStore: MarketDataStore | undefined
   ctx.plugin(Installer, config.registry ?? {})
 
   ctx.inject(['installer'], (ctx) => {
@@ -1317,32 +1368,43 @@ export function apply(ctx: Context, config: Config = {}) {
     ctx.command('plugin.upgrade [name...]', { authority: 4 })
       .alias('.update', '.up')
       .option('self', '-s, --koishi')
+      .option('force', '-f, --force')
       .action(async ({ session, options }, ...names) => {
-        async function getPackages(names: string[]) {
-          if (!names.length) return Object.keys(deps)
-          names = names.map((name) => {
-            const names = ctx.installer.resolveName(name)
-            return names.find((name) => deps[name])
-          }).filter(Boolean)
-          if (options.self) names.push('koishi')
-          return names
-        }
-
         // refresh dependencies
         await ctx.installer.refresh(true, true)
         const deps = await ctx.installer.getDeps({ background: false })
-        names = await getPackages(names)
-        names = names.filter((name) => {
-          const { latest, resolved, invalid } = deps[name]
-          try {
-            return !invalid && gt(latest, resolved)
-          } catch {}
-        })
-        if (!names.length) return session.text('.all-updated')
+        const requested = names.length
+          ? names.map((name) => {
+            const candidates = ctx.installer.resolveName(name)
+            return candidates.find(candidate => deps[candidate])
+          }).filter(Boolean)
+          : Object.keys(deps)
+        if (options.self && !requested.includes('koishi')) requested.push('koishi')
 
-        const output = names.map((name) => {
-          const { latest, resolved } = deps[name]
-          return `${name}: ${resolved} -> ${latest}`
+        const runtimeData = activeDataStore
+          ? await activeDataStore.get()
+          : await readMarketDataStore(ctx)
+        const policy: UpdateIgnorePolicy = {
+          updateIgnoredPackages: config.updateIgnoredPackages,
+          updateIgnoreVersions: config.updateIgnoreVersions,
+          updateIgnorePrerelease: config.updateIgnorePrerelease,
+          updateIgnored: runtimeData.updateIgnored,
+        }
+        const now = Date.now()
+        const updates = Array.from(new Set(requested)).flatMap((name) => {
+          const dep = deps[name]
+          if (!dep?.resolved || dep.workspace || dep.invalid) return []
+          const versions = Object.keys(ctx.installer.fullCache[name] ?? {})
+          if (!versions.length && dep.latest) versions.push(dep.latest)
+          const target = options.force
+            ? getUpdateCandidates(versions, dep.resolved)[0]
+            : getLatestAllowedUpdate(name, versions, dep.resolved, policy, now)
+          return target ? [{ name, resolved: dep.resolved, target }] : []
+        })
+        if (!updates.length) return session.text('.all-updated')
+
+        const output = updates.map(({ name, resolved, target }) => {
+          return `${name}: ${resolved} -> ${target}`
         })
         output.unshift(session.text('.available'))
         output.push(session.text('.prompt'))
@@ -1356,12 +1418,18 @@ export function apply(ctx: Context, config: Config = {}) {
           ...pick(session, ['sid', 'channelId', 'guildId', 'isDirect']),
           content: session.text('.success'),
         }
-        await ctx.installer.install(names.reduce((result, name) => {
-          result[name] = deps[name].latest
+        const installNames = updates.map(update => update.name)
+        const installDeps = updates.reduce<Dict<string>>((result, update) => {
+          result[update.name] = update.target
           return result
-        }, {}), undefined, () => ensurePluginConfigs(ctx, names))
-        await ensurePluginConfigs(ctx, names)
-        ctx.loader.envData.message = null
+        }, {})
+        try {
+          const code = await ctx.installer.install(installDeps, undefined, () => ensurePluginConfigs(ctx, installNames))
+          if (code) return session.text('.failed', [code])
+          await ensurePluginConfigs(ctx, installNames)
+        } finally {
+          ctx.loader.envData.message = null
+        }
         return session.text('.success')
       })
 
@@ -1377,6 +1445,10 @@ export function apply(ctx: Context, config: Config = {}) {
     ctx.plugin(RegistryProvider)
     ctx.plugin(RegistryStatusProvider)
     const dataStore = new MarketDataStore(ctx)
+    activeDataStore = dataStore
+    ctx.effect(() => () => {
+      if (activeDataStore === dataStore) activeDataStore = undefined
+    })
     ctx.plugin(MarketProvider, config.search ?? {})
     setupIdleProbe(ctx, config)
 
@@ -1460,6 +1532,14 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.console.addListener('market/package', async (name) => {
       return ctx.installer.getRegistry(name)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/index', async () => {
+      return ctx.console.services.market?.getSnapshot?.()
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/lookup', async (request) => {
+      return lookupMarket(ctx.console.services.market, request)
     }, { authority: 4 })
 
     ctx.console.addListener('market/registry', async (names) => {

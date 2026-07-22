@@ -40,7 +40,7 @@
 
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { SearchObject } from '@koishijs/registry'
-import { getSortedFiltered, getVisible, hasFilter, kConfig } from '../utils'
+import { getFiltered, getSortedPrepared, getVisible, hasFilter, kConfig } from '../utils'
 import MarketPackage from './package.vue'
 import { useMarketNextI18n } from '../../i18n'
 
@@ -50,6 +50,7 @@ const props = defineProps<{
   installed?: (data: SearchObject) => boolean,
   gravatar?: string,
   debug?: boolean,
+  visibilityPrepared?: boolean,
 }>()
 
 const { t } = useMarketNextI18n()
@@ -185,15 +186,16 @@ function schedulePackageUpdate() {
   cancelAnimationFrame(filterFrame)
   filterFrame = requestAnimationFrame(() => {
     const start = props.debug ? performance.now() : 0
-    const visible = getVisible(props.data, props.modelValue)
+    const visible = props.visibilityPrepared ? props.data : getVisible(props.data, props.modelValue)
+    const filtered = getFiltered(visible, props.modelValue, config)
     const sortedAt = props.debug ? performance.now() : 0
     all.value = visible
-    packages.value = getSortedFiltered(props.data, props.modelValue, config)
+    packages.value = getSortedPrepared(filtered, props.modelValue, config)
     if (props.debug) {
       emitDebug({
         timings: {
-          frontendSort: sortedAt - start,
-          frontendFilter: performance.now() - sortedAt,
+          frontendFilter: sortedAt - start,
+          frontendSort: performance.now() - sortedAt,
         },
         total: visible.length,
         matched: packages.value.length,

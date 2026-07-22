@@ -45,7 +45,7 @@
 
 import { computed, ref } from 'vue'
 import { message, send, store, useContext, useConfig } from '@koishijs/client'
-import { ensureInstalledConfigs, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from './utils'
+import { ensureInstalledConfigs, getConfigWriter, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from './utils'
 import { getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 
@@ -98,7 +98,7 @@ function confirm() {
     if (removeConfig.value) {
       for (const name of removed) {
         if (bundlePackages.has(name) || bundleMembers.has(name)) continue
-        ctx.configWriter?.remove(name)
+        getConfigWriter(ctx)?.remove(name)
       }
     }
     for (const name of removed) {

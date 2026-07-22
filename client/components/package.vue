@@ -241,11 +241,12 @@ import { message, store, useConfig, useContext } from '@koishijs/client'
 import type { SearchObject } from '@koishijs/registry'
 import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
 import { createUpdateIgnoreRule, getBundleRecords, getFrontendMode, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
-import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
+import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getConfigWriter, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import BundleUninstall from './bundle-uninstall.vue'
 import { useMarketNextI18n } from '../i18n'
+import { getMarketObject } from '../market/state'
 
 type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
 
@@ -278,7 +279,7 @@ const ignoreSaving = ref(false)
 
 const dep = computed(() => store.dependencies?.[props.name])
 const local = computed(() => store.packages?.[props.name])
-const marketData = computed(() => store.market?.data?.[props.name])
+const marketData = computed(() => getMarketObject(props.name))
 const bundleRecord = computed(() => getBundleRecords(config.value)[props.name] || createLocalBundleRecord(props.name))
 const bundleOrigin = computed(() => findBundleOrigin(props.name))
 
@@ -323,7 +324,8 @@ const updatable = computed(() => !!hasUpdate(props.name, getUpdatePolicy()))
 const bundlePackage = computed(() => !!bundleRecord.value)
 const unconfigured = computed(() => {
   if (bundlePackage.value) return false
-  return !!ctx.configWriter && !!local.value && isPluginPackage(props.name) && !ctx.configWriter.get(props.name)?.length
+  const configWriter = getConfigWriter(ctx)
+  return !!configWriter && !!local.value && isPluginPackage(props.name) && !configWriter.get(props.name)?.length
 })
 
 const selectedVersion = computed({
@@ -449,7 +451,7 @@ const compactStatusText = computed(() => {
 const configText = computed(() => {
   if (bundlePackage.value) return t('dependencyCard.config.notNeeded')
   if (!isPluginPackage(props.name)) return t('dependencyCard.config.notPlugin')
-  if (!ctx.configWriter) return t('dependencyCard.config.unknown')
+  if (!getConfigWriter(ctx)) return t('dependencyCard.config.unknown')
   if (!local.value) return pending.value ? t('dependencyCard.config.pending') : t('dependencyCard.config.notLoaded')
   return unconfigured.value ? t('dependencyCard.config.unconfigured') : t('dependencyCard.config.configured')
 })
@@ -749,7 +751,7 @@ function isPluginPackage(name: string) {
 }
 
 function formatPackageDisplayName(name: string) {
-  const shortname = store.market?.data?.[name]?.shortname
+  const shortname = getMarketObject(name)?.shortname
   if (shortname && shortname !== name) return shortname
   if (name.startsWith('@koishijs/plugin-')) return name.slice('@koishijs/plugin-'.length)
   if (name.startsWith('koishi-plugin-')) return name.slice('koishi-plugin-'.length)
@@ -775,7 +777,7 @@ function pickDescription(value: unknown) {
 
 function resolveIdentity(name: string) {
   if (isBundlePackageName(name)) return identityMap.bundle
-  const data = store.market?.data?.[name]
+  const data = getMarketObject(name)
   const category = resolveCategory(data?.category)
   const normalized = name.toLowerCase()
   if (/adapter[-/]/.test(normalized) || normalized.includes('adapter-')) return identityMap.adapter

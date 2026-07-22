@@ -355,6 +355,7 @@ import MarketIcon from '../market/icons'
 import { satisfies } from 'semver'
 import { getFrontendMode } from '../utils'
 import { useMarketNextI18n } from '../i18n'
+import { getMarketObject, loadMarketObjects } from '../market/state'
 
 const loading = ref(false)
 const installing = ref(false)
@@ -392,12 +393,12 @@ function toggleAllOptional() {
 }
 
 function memberCategory(name: string) {
-  const data = store.market?.data?.[name]
+  const data = getMarketObject(name)
   return resolveCategory(data?.category)
 }
 
 function formatShortname(name: string) {
-  const shortname = store.market?.data?.[name]?.shortname
+  const shortname = getMarketObject(name)?.shortname
   if (shortname && shortname !== name) return shortname
   if (name.startsWith('@koishijs/plugin-')) return name.slice('@koishijs/plugin-'.length)
   if (name.startsWith('koishi-plugin-')) return name.slice('koishi-plugin-'.length)
@@ -482,6 +483,9 @@ watch(activeBundle, async (value) => {
     }
     resolvedBundleVersion.value = remoteVersion
     bundle.value = parsed
+    void loadMarketObjects(parsed.members.map(member => member.package)).catch(error => {
+      console.error('[market-next] failed to load bundle member metadata', error)
+    })
     const groupKey = `group:${getBundleGroupIdent(value.package.name)}`
     for (const member of parsed.members) {
       const state = getBundleMemberConfigState(ctx, member, groupKey)
@@ -514,7 +518,7 @@ watch(activeBundle, async (value) => {
 }, { immediate: true })
 
 function memberInfo(name: string) {
-  return store.market?.data?.[name]
+  return getMarketObject(name)
 }
 
 function getPackageDescription(name: string) {

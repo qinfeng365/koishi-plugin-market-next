@@ -106,6 +106,8 @@ class MarketProvider extends BaseMarketProvider {
   private endpoint: string
   private disposed = false
   private serial = 0
+  private dataVersion = 0
+  private contentHash?: string
   private forceRefresh = false
   private indexMode: 'modern' | 'legacy' = 'modern'
   private cacheFile: string
@@ -192,6 +194,8 @@ class MarketProvider extends BaseMarketProvider {
     }
     try {
       await super.start(false)
+      await this.getSnapshot()
+      await this.refresh()
     } finally {
       this.forceRefresh = false
     }
@@ -223,7 +227,7 @@ class MarketProvider extends BaseMarketProvider {
         return null
       }
       const applyStart = Date.now()
-      this.applyIndex(result.result, result.endpoint)
+      this.applyIndex(result.result, result.endpoint, result.hash)
       result.timings.apply = Date.now() - applyStart
       result.timings.total = Date.now() - start
       this.updateCacheState(result)
@@ -299,6 +303,7 @@ class MarketProvider extends BaseMarketProvider {
     }
 
     if (this.indexMode === 'legacy') {
+      this.dataVersion++
       this.updateDebugInfo({
         source: 'legacy',
         endpoint: registry?.config.endpoint,
@@ -783,6 +788,31 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   async get() {
+    const current = this.payload
+    const total = this.scanner?.total ?? current?.total ?? 0
+    const progress = this.indexMode === 'modern'
+      ? total
+      : this.scanner?.progress ?? current?.progress ?? 0
+    return {
+      registry: current?.registry || this.endpoint || this.config.endpoint,
+      failed: current?.failed ?? (this.indexMode === 'modern' ? 0 : this.failed.length),
+      total,
+      progress,
+      gravatar: process.env.GRAVATAR_MIRROR,
+      stale: current?.stale ?? false,
+      error: current?.error ?? (this._error ? formatError(this._error) : undefined),
+      cached: current?.cached ?? !!this.cacheMeta,
+      cachedAt: current?.cachedAt ?? this.cacheMeta?.fetchedAt,
+      validatedAt: current?.validatedAt ?? this.cacheMeta?.validatedAt,
+      serverNow: Date.now(),
+      refreshing: !!this.backgroundTask,
+      loading: !this.hasCurrentMarketData() && !this._error,
+      dataVersion: this.dataVersion,
+      debug: this.getDebugInfo(),
+    }
+  }
+
+  async getSnapshot() {
     const start = Date.now()
     if (this.backgroundTask && this.hasCurrentMarketData()) {
       this.log('debug', `return current market payload while background refresh is running, hasScanner=${!!this.scanner}, hasPayload=${!!this.payload}, elapsed=${Date.now() - start}ms`)
@@ -793,6 +823,15 @@ class MarketProvider extends BaseMarketProvider {
         error: undefined,
         refreshing: true,
         loading: false,
+        dataVersion: this.dataVersion,
+        serverNow: Date.now(),
+        debug: this.getDebugInfo(),
+      }
+    }
+    if (this.payload && !this._error) {
+      return {
+        ...this.payload,
+        dataVersion: this.dataVersion,
         serverNow: Date.now(),
         debug: this.getDebugInfo(),
       }
@@ -835,6 +874,7 @@ class MarketProvider extends BaseMarketProvider {
           cached: false,
           refreshing: true,
           loading: true,
+          dataVersion: this.dataVersion,
           serverNow: Date.now(),
           debug: this.getDebugInfo({ total: Date.now() - start }),
         }
@@ -846,7 +886,7 @@ class MarketProvider extends BaseMarketProvider {
       this.log('debug', `get market payload without scanner, cached=${!!this.payload}, elapsed=${Date.now() - start}ms`)
       return this.payload
         ? { ...this.payload, serverNow: Date.now(), debug: this.getDebugInfo() }
-        : { data: {}, failed: 0, total: 0, progress: 0, serverNow: Date.now(), debug: this.getDebugInfo() }
+        : { data: {}, dataVersion: this.dataVersion, failed: 0, total: 0, progress: 0, serverNow: Date.now(), debug: this.getDebugInfo() }
     }
     if (this._error) {
       if (!this.payload && this.hasCurrentMarketData() && this.scanner) {
@@ -862,6 +902,7 @@ class MarketProvider extends BaseMarketProvider {
           error,
           refreshing: false,
           loading: false,
+          dataVersion: this.dataVersion,
           serverNow: Date.now(),
           debug: this.getDebugInfo(),
         }
@@ -878,6 +919,7 @@ class MarketProvider extends BaseMarketProvider {
         cached: false,
         refreshing: false,
         loading: false,
+        dataVersion: this.dataVersion,
         serverNow: Date.now(),
         debug: this.getDebugInfo(),
       }
@@ -900,6 +942,7 @@ class MarketProvider extends BaseMarketProvider {
     const payload = {
       registry: this.endpoint || this.ctx.installer.endpoint,
       data,
+      dataVersion: this.dataVersion,
       failed: this.indexMode === 'modern' ? 0 : this.failed.length,
       total: this.scanner.total,
       progress: this.indexMode === 'modern' ? this.scanner.total : this.scanner.progress,
@@ -933,7 +976,7 @@ class MarketProvider extends BaseMarketProvider {
     })
   }
 
-  private applyIndex(result: SearchResult, endpoint: string) {
+  private applyIndex(result: SearchResult, endpoint: string, contentHash?: string) {
     if (!Array.isArray(result?.objects)) {
       throw new Error(`invalid market index from ${endpoint}`)
     }
@@ -943,6 +986,8 @@ class MarketProvider extends BaseMarketProvider {
     this.scanner.objects = result.objects.filter(object => !object.ignored)
     this.scanner.total = this.scanner.objects.length
     this.scanner.version = result.version
+    if (!contentHash || contentHash !== this.contentHash) this.dataVersion++
+    this.contentHash = contentHash
     this.log('debug', `market index applied: endpoint=${endpoint}, version=${result.version ?? 'legacy'}, rawObjects=${result.objects.length}, ignored=${ignored}, visible=${this.scanner.total}`)
   }
 
@@ -1030,7 +1075,7 @@ class MarketProvider extends BaseMarketProvider {
       }
       if (this.isStale(serial)) return false
       const applyStart = Date.now()
-      this.applyIndex(cache.result, cache.endpoint)
+      this.applyIndex(cache.result, cache.endpoint, cache.hash)
       const applyElapsed = Date.now() - applyStart
       const meta: CacheMeta = {
         endpoint: cache.endpoint,
@@ -1330,7 +1375,7 @@ class MarketProvider extends BaseMarketProvider {
       const result = await this.fetchIndex(serial)
       if (this.isStale(serial)) return
       const applyStart = Date.now()
-      this.applyIndex(result.result, result.endpoint)
+      this.applyIndex(result.result, result.endpoint, result.hash)
       result.timings.apply = Date.now() - applyStart
       result.timings.total = Date.now() - start
       this.updateCacheState(result)
@@ -1393,7 +1438,7 @@ class MarketProvider extends BaseMarketProvider {
       const result = await this.fetchIndex(serial)
       if (this.isStale(serial)) return false
       const applyStart = Date.now()
-      this.applyIndex(result.result, result.endpoint)
+      this.applyIndex(result.result, result.endpoint, result.hash)
       result.timings.apply = Date.now() - applyStart
       result.timings.total = Date.now() - start
       this.updateCacheState(result)

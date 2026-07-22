@@ -60,3 +60,14 @@
     background: color-mix(in srgb, var(--k-color-primary, #7c3aed) 54%, var(--el-scrollbar-hover-bg-color, rgba(144, 147, 153, 0.5)));
   }
 }
+
+.market-page-error {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1rem;
+  min-height: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+  color: var(--fg1);
+}

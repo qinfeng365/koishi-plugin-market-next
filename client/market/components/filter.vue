@@ -149,7 +149,7 @@
 <script lang="ts" setup>
 
 import { computed, inject, ref, watch } from 'vue'
-import { Badge, badges, kConfig, validate, comparators, categories, resolveCategory, useMarketI18n } from '../utils'
+import { Badge, badges, kConfig, comparators, categories, isBundleSearchObject, resolveCategory, useMarketI18n } from '../utils'
 import { SearchObject } from '@koishijs/registry'
 import MarketIcon from '../icons'
 
@@ -173,11 +173,6 @@ const dateDrafts = ref<Record<DateFilterKey, string>>({
   updatedAfter: '',
   updatedBefore: '',
 })
-
-watch(() => props.modelValue, (value) => {
-  words.value = normalizeWords(value.slice())
-  syncDateDrafts()
-}, { immediate: true, deep: true })
 
 const activeSort = computed<string[]>(() => {
   let word = words.value.find(w => w.startsWith('sort:'))
@@ -230,14 +225,23 @@ const relativeDateFilterDefs = {
 
 type RelativeDateFilterKey = keyof typeof relativeDateFilterDefs
 
+watch(() => props.modelValue, (value) => {
+  words.value = normalizeWords(value.slice())
+  syncDateDrafts()
+}, { immediate: true, deep: true })
+
 const badgeCounts = computed(() => {
-  const result: Record<string, number> = {}
+  const result: Record<string, number> = Object.fromEntries(Object.keys(badges).map(key => [key, 0]))
   if (!props.data) return result
-  for (const key in badges) result[key] = 0
+  const newbornAfter = Date.now() - 7 * 86400000
   for (const item of props.data) {
-    for (const key in badges) {
-      if (validate(item, badges[key].query, config)) result[key]++
-    }
+    if (config.installed?.(item)) result.installed++
+    if (item.verified) result.verified++
+    if (item.insecure) result.insecure++
+    if (item.manifest?.preview) result.preview++
+    if (item.portable) result.portable++
+    if (isBundleSearchObject(item)) result.bundle++
+    if (Date.parse(item.createdAt) >= newbornAfter) result.newborn++
   }
   return result
 })

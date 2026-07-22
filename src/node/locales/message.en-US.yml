@@ -17,11 +17,13 @@ commands.plugin.upgrade:
   description: Upgrade Plugin
   options:
     self: Upgrade Koishi core
+    force: Ignore update rules and force an update check
   messages:
     all-updated: All plugins are already up to date.
     available: 'Available dependency updates:'
     prompt: 'Enter Y to upgrade all dependencies, or N to cancel.'
     cancelled: Operation canceled.
+    failed: 'Upgrade failed with package manager exit code {0}.'
     success: Upgrade Successful!
 
 commands.plugin.clear-avatar-cache:

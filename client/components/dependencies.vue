@@ -124,10 +124,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } fro
 import { message, router, store, useConfig, useContext } from '@koishijs/client'
 import { useMarketNextI18n } from '../i18n'
 import { getBundleRecords, getCollapsedGroups, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
-import { addManual, createLocalBundleRecord, getRegistryStatus, showConfirm, showEnvironmentVersions } from './utils'
+import { addManual, createLocalBundleRecord, getConfigWriter, getRegistryStatus, showConfirm, showEnvironmentVersions, type ClientConfigWriter } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
 import { isBundlePackageName } from '../../src/shared/bundle'
+import { loadMarketObjects } from '../market/state'
 
 type FilterKey = 'all' | 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual'
 type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
@@ -173,18 +174,25 @@ function isManageableBundle(name: string) {
 }
 
 const names = computed(() => {
+  const configWriter = getConfigWriter(ctx)
   const explicit: Record<string, unknown> = {
     ...(store.dependencies ?? {}),
     ...getOverride(),
   }
   for (const name of Object.keys(store.packages ?? {})) {
-    if (isUnconfigured(name) || isManageableBundle(name)) explicit[name] = true
+    if (isUnconfigured(name, configWriter) || isManageableBundle(name)) explicit[name] = true
   }
   return Object
     .keys(explicit)
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b))
 })
+
+watch(names, (value) => {
+  void loadMarketObjects(value).catch(error => {
+    console.error('[market-next] failed to load dependency market metadata', error)
+  })
+}, { immediate: true })
 
 let dispose: WatchStopHandle
 watch(() => store.market?.registry, (registry) => {
@@ -216,16 +224,16 @@ function onSearchShortcut(event: KeyboardEvent) {
   searchInput.value?.focus?.()
 }
 
-function classify(name: string): ItemKind {
+function classify(name: string, configWriter?: ClientConfigWriter): ItemKind {
   const dep = store.dependencies?.[name]
   const override = getOverride()
   const pending = Object.prototype.hasOwnProperty.call(override, name)
   if (pending) return 'pending'
-  if (!dep) return isManageableBundle(name) && store.packages?.[name] ? 'bundle' : isUnconfigured(name) ? 'unconfigured' : 'manual'
+  if (!dep) return isManageableBundle(name) && store.packages?.[name] ? 'bundle' : isUnconfigured(name, configWriter) ? 'unconfigured' : 'manual'
   if (dep.workspace) return 'workspace'
   if (dep.invalid) return 'invalid'
   if (isManageableBundle(name)) return 'bundle'
-  if (isUnconfigured(name)) return 'unconfigured'
+  if (isUnconfigured(name, configWriter)) return 'unconfigured'
   const status = getRegistryStatus(name)
   if (status?.error) return 'error'
   if (isUpdateCheckDisabled(name, getUpdatePolicy())) return 'check-disabled'
@@ -238,17 +246,20 @@ function isPluginPackage(name: string) {
   return /^@koishijs\/plugin-[0-9a-z-]+$/.test(name) || /(^|\/)koishi-plugin-[0-9a-z-]+$/.test(name)
 }
 
-function isUnconfigured(name: string) {
+function isUnconfigured(name: string, configWriter = getConfigWriter(ctx)) {
   if (isManageableBundle(name)) return false
-  return !!ctx.configWriter && !!store.packages?.[name] && isPluginPackage(name) && !ctx.configWriter.get(name)?.length
+  return !!configWriter && !!store.packages?.[name] && isPluginPackage(name) && !configWriter.get(name)?.length
 }
 
-const items = computed<DependencyItem[]>(() => names.value.map(name => ({
-  name,
-  kind: classify(name),
-  pending: Object.prototype.hasOwnProperty.call(getOverride(), name),
-  manual: !store.dependencies?.[name] && !store.packages?.[name],
-})))
+const items = computed<DependencyItem[]>(() => {
+  const configWriter = getConfigWriter(ctx)
+  return names.value.map(name => ({
+    name,
+    kind: classify(name, configWriter),
+    pending: Object.prototype.hasOwnProperty.call(getOverride(), name),
+    manual: !store.dependencies?.[name] && !store.packages?.[name],
+  }))
+})
 
 const updates = computed(() => items.value.filter(item => item.kind === 'updatable').map(item => item.name))
 

@@ -32,6 +32,7 @@ messages:
   unknownError: 未知错误
   timeUnknown: 时间未知
   metadataTimeout: npm 元数据请求长时间未完成，请刷新依赖版本后重试。
+  pageRenderFailed: 页面组件运行异常，请重试；若问题持续，请查看浏览器控制台。
 ignore:
   version: 已忽略 {version}
   count: 连续 {count} 个版本

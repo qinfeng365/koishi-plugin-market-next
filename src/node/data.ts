@@ -3,15 +3,11 @@ import { DataService } from '@koishijs/console'
 import { dirname, resolve } from 'path'
 import { promises as fsp } from 'fs'
 import type { PluginBundleRecord } from '../shared/bundle'
+import type { UpdateIgnoreRule } from '../shared/update'
+
+export type { UpdateIgnoreRule } from '../shared/update'
 
 const COLLAPSED_GROUPS_VERSION = 1
-
-export interface UpdateIgnoreRule {
-  version?: string
-  count?: number
-  until?: number
-  ignoredAt?: number
-}
 
 export interface MarketDataStorePayload {
   override: Dict<string>
@@ -26,6 +22,18 @@ const emptyStore = (): MarketDataStorePayload => ({
   bundleRecords: {},
   collapsedGroups: {},
 })
+
+export async function readMarketDataStore(ctx: Context): Promise<MarketDataStorePayload> {
+  const file = resolve(ctx.baseDir, 'data', 'market-next.json')
+  try {
+    return normalizeStore(JSON.parse(await fsp.readFile(file, 'utf8')))
+  } catch (error) {
+    if ((error as any)?.code !== 'ENOENT') {
+      ctx.logger('market').warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
+    }
+    return emptyStore()
+  }
+}
 
 export class MarketDataStore extends DataService<MarketDataStorePayload> {
   private file: string

@@ -9,4 +9,12 @@ export default class MarketProvider extends BaseMarketProvider {
         total: number;
         progress: number;
     }>;
+    getSnapshot(): Promise<{
+        data: {
+            [k: string]: import("@koishijs/registry").SearchObject;
+        };
+        failed: number;
+        total: number;
+        progress: number;
+    }>;
 }

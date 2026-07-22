@@ -15,6 +15,8 @@ declare class MarketProvider extends BaseMarketProvider {
     private endpoint;
     private disposed;
     private serial;
+    private dataVersion;
+    private contentHash?;
     private forceRefresh;
     private indexMode;
     private cacheFile;
@@ -57,7 +59,25 @@ declare class MarketProvider extends BaseMarketProvider {
     private fetchEndpoint;
     get(): Promise<{
         registry: string;
+        failed: number;
+        total: number;
+        progress: number;
+        gravatar: string;
+        stale: boolean;
+        error: string;
+        cached: boolean;
+        cachedAt: number;
+        validatedAt: number;
+        serverNow: number;
+        refreshing: boolean;
+        loading: boolean;
+        dataVersion: number;
+        debug: MarketPerformance;
+    }>;
+    getSnapshot(): Promise<{
+        registry: string;
         data: Dict<SearchObject>;
+        dataVersion: number;
         failed: number;
         total: number;
         progress: number;
@@ -75,7 +95,8 @@ declare class MarketProvider extends BaseMarketProvider {
         serverNow: number;
         debug: MarketPerformance;
         registry?: string;
-        data: Dict<SearchObject>;
+        data?: Dict<SearchObject>;
+        dataVersion?: number;
         total: number;
         failed: number;
         progress: number;

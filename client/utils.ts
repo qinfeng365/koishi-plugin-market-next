@@ -1,21 +1,23 @@
 import { reactive, ref } from 'vue'
 import { send, store } from '@koishijs/client'
-import { gt, prerelease, valid } from 'semver'
+import { gt } from 'semver'
 import { translate } from './i18n'
+import {
+  getUpdateCandidates as getSharedUpdateCandidates,
+  isUpdateCheckDisabled as isSharedUpdateCheckDisabled,
+  isUpdateVersionIgnored,
+  normalizeUpdateIgnoreCount,
+  normalizeUpdateIgnoreRule,
+  type IgnoredUpdates,
+  type UpdateIgnoreRule,
+} from '../src/shared/update'
+
+export type { IgnoredUpdates, UpdateIgnoreRule } from '../src/shared/update'
 
 export const active = ref('')
 
 export type FrontendMode = 'performance' | 'polished'
 export type LayoutMode = 'grid' | 'list'
-
-export interface UpdateIgnoreRule {
-  version?: string
-  count?: number
-  until?: number
-  ignoredAt?: number
-}
-
-export type IgnoredUpdates = Record<string, string | UpdateIgnoreRule | undefined>
 
 export interface MarketNextConfigPatch extends UpdatePolicy {
   frontendMode?: FrontendMode
@@ -327,7 +329,7 @@ export function createUpdateIgnoreRule(name: string, policy?: UpdatePolicy, opti
   const version = getLatestVersion(name, policy)
   if (!version) return
   const duration = Math.max(0, options.duration ?? policy?.updateIgnoreDuration ?? 0)
-  const count = normalizeIgnoreCount(options.count ?? policy?.updateIgnoreVersions)
+  const count = normalizeUpdateIgnoreCount(options.count ?? policy?.updateIgnoreVersions)
   const now = Date.now()
   return {
     version,
@@ -338,8 +340,8 @@ export function createUpdateIgnoreRule(name: string, policy?: UpdatePolicy, opti
 }
 
 export function getLatestVersion(name: string, policy?: UpdatePolicy) {
-  return getUpdateCandidates(name, policy)
-    .find(version => !isVersionIgnored(name, version, policy))
+  const candidates = getUpdateCandidates(name, policy)
+  return candidates.find(version => !isUpdateVersionIgnored(name, version, candidates, policy))
 }
 
 export function getIgnoredUpdateVersion(name: string, policy?: UpdatePolicy) {
@@ -350,7 +352,7 @@ export function getIgnoredUpdateVersion(name: string, policy?: UpdatePolicy) {
 }
 
 export function getUpdateIgnoreText(name: string, policy?: UpdatePolicy) {
-  const rule = normalizeIgnoreRule(policy?.updateIgnored?.[name])
+  const rule = normalizeUpdateIgnoreRule(policy?.updateIgnored?.[name])
   if (!rule?.version) return ''
   const parts = [translate('common.ignore.version', { version: rule.version })]
   if (rule.count && rule.count > 1) parts.push(translate('common.ignore.count', { count: rule.count }))
@@ -372,60 +374,18 @@ export function hasUpdate(name: string, policy?: UpdatePolicy) {
 }
 
 export function isUpdateCheckDisabled(name: string, policy?: UpdatePolicy) {
-  const names = parsePackageList(policy?.updateIgnoredPackages)
-  return names.has(normalizeName(name))
+  return isSharedUpdateCheckDisabled(name, policy)
 }
 
 function getUpdateCandidates(name: string, policy?: UpdatePolicy) {
-  const versions = Object.keys(store.registry?.[name] ?? {})
   const local = store.dependencies?.[name]
-  if (!versions.length || !local?.resolved || local.workspace) return []
-  return versions.filter((version) => {
-    if (!valid(version)) return false
-    if (policy?.updateIgnorePrerelease && prerelease(version)?.length) return false
-    try {
-      return gt(version, local.resolved)
-    } catch {
-      return false
-    }
-  })
+  if (local?.workspace) return []
+  return getSharedUpdateCandidates(Object.keys(store.registry?.[name] ?? {}), local?.resolved, policy)
 }
 
 function isVersionIgnored(name: string, version: string, policy?: UpdatePolicy) {
-  if (isUpdateCheckDisabled(name, policy)) return true
-  const rule = normalizeIgnoreRule(policy?.updateIgnored?.[name])
-  if (!rule?.version) return false
-  if (rule.until && Date.now() > rule.until) return false
-  if (rule.version === version) return true
-
   const candidates = getUpdateCandidates(name, policy)
-  const ignoredIndex = candidates.indexOf(rule.version)
-  const targetIndex = candidates.indexOf(version)
-  if (ignoredIndex < 0 || targetIndex < 0) return false
-  if (targetIndex > ignoredIndex) return true
-  return ignoredIndex - targetIndex < normalizeIgnoreCount(rule.count)
-}
-
-function normalizeIgnoreRule(value?: string | UpdateIgnoreRule) {
-  if (!value) return
-  if (typeof value === 'string') return { version: value, count: 1 } as UpdateIgnoreRule
-  return value
-}
-
-function normalizeIgnoreCount(value?: number) {
-  if (!Number.isFinite(value)) return 1
-  return Math.max(1, Math.min(20, Math.floor(value)))
-}
-
-function parsePackageList(value?: string) {
-  return new Set((value ?? '')
-    .split(/[\s,，;；]+/g)
-    .map(normalizeName)
-    .filter(Boolean))
-}
-
-function normalizeName(name?: string) {
-  return (name ?? '').trim().toLowerCase()
+  return isUpdateVersionIgnored(name, version, candidates, policy)
 }
 
 function findMarketNextConfig(plugins: any): any {

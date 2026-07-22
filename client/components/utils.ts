@@ -16,6 +16,16 @@ import {
 
 export type ResultType = 'success' | 'warning' | 'danger' | 'primary'
 
+export interface ClientConfigWriter {
+  get(name: string): any[] | undefined
+  ensure(name: string, silent?: boolean): void
+  remove(name: string): void
+}
+
+export function getConfigWriter(ctx: Context) {
+  return ctx.get('configWriter') as ClientConfigWriter | undefined
+}
+
 interface AnalyzeResult {
   peers: Dict<PeerInfo>
   result: ResultType
@@ -184,9 +194,10 @@ export function isBundleGroupPath(path: string | undefined, groupKey: string | u
 }
 
 export function getBundleMemberConfigState(ctx: Context, member: BundleMemberCleanupTarget, groupKey?: string) {
+  const configWriter = getConfigWriter(ctx)
   const nodes = [
-    ...(ctx.configWriter?.get(member.package) ?? []),
-    ...(member.plugin ? ctx.configWriter?.get(member.plugin) ?? [] : []),
+    ...(configWriter?.get(member.package) ?? []),
+    ...(member.plugin ? configWriter?.get(member.plugin) ?? [] : []),
   ]
   const unique = new Map<string, any>()
   for (const node of nodes) {
@@ -499,19 +510,20 @@ async function waitForInstalledPackage(name: string) {
 
 async function waitForInstalledConfig(ctx: Context, name: string) {
   for (let index = 0; index < 40; index++) {
-    if (ctx.configWriter?.get(name)?.length) return true
+    if (getConfigWriter(ctx)?.get(name)?.length) return true
     await sleep(250)
   }
   return false
 }
 
 export async function ensureInstalledConfig(ctx: Context, name: string, silent = true) {
-  if (!ctx.configWriter || !name) return
+  if (!name || !getConfigWriter(ctx)) return
   await (send('market/ensure-config', name) ?? Promise.resolve(false)).catch(console.error)
   await waitForInstalledPackage(name)
   if (await waitForInstalledConfig(ctx, name)) return
-  if (ctx.configWriter.get(name)?.length) return
-  ctx.configWriter.ensure(name, silent)
+  const configWriter = getConfigWriter(ctx)
+  if (!configWriter || configWriter.get(name)?.length) return
+  configWriter.ensure(name, silent)
 }
 
 export async function ensureInstalledConfigs(ctx: Context, names: string[], silent = true) {
