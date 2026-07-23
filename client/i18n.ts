@@ -18,6 +18,11 @@ import zhEnvironment from './locales/zh-CN/environment.yml'
 import enEnvironment from './locales/en-US/environment.yml'
 import zhMarket from './market/locales/zh-CN.yml'
 import enMarket from './market/locales/en-US.yml'
+import {
+  ensureLocaleNamespace,
+  installLocaleNamespaceGuard,
+  type LocaleMessageComposer,
+} from './i18n-runtime'
 
 const namespace = 'marketNext'
 const localeMessages = {
@@ -49,67 +54,34 @@ type Composer = ReturnType<typeof useI18n>['t']
 
 interface GlobalComposer {
   t: Composer
-  getLocaleMessage(locale: string): unknown
-  mergeLocaleMessage(locale: string, messages: Record<string, unknown>): void
-  setLocaleMessage(locale: string, messages: Record<string, unknown>): void
+  getLocaleMessage: LocaleMessageComposer['getLocaleMessage']
+  mergeLocaleMessage: LocaleMessageComposer['mergeLocaleMessage']
+  setLocaleMessage: LocaleMessageComposer['setLocaleMessage']
 }
 
-interface LocaleRegistrationState {
-  references: number
-  previous: Record<string, unknown>
+let globalComposer: GlobalComposer | undefined
+
+function ensureMarketNextI18n(composer: GlobalComposer) {
+  return ensureLocaleNamespace(composer, namespace, localeMessages)
 }
-
-const registrationRegistryKey = Symbol.for('koishi-plugin-market-next/i18n-registrations')
-const registrationRegistry = ((globalThis as any)[registrationRegistryKey] ||= new WeakMap<object, LocaleRegistrationState>()) as WeakMap<object, LocaleRegistrationState>
-
-let globalTranslate: Composer | undefined
-let localRegistrations = 0
 
 export function registerMarketNextI18n(ctx: Context) {
   const composer = ctx.$i18n.i18n.global as unknown as GlobalComposer
-  let state = registrationRegistry.get(composer)
-
-  if (!state) {
-    const previous: Record<string, unknown> = {}
-    for (const locale of Object.keys(localeMessages)) {
-      const current = composer.getLocaleMessage(locale) as Record<string, unknown>
-      previous[locale] = current[namespace]
-    }
-    state = { references: 0, previous }
-    registrationRegistry.set(composer, state)
-  }
-
-  state.references++
-  localRegistrations++
-  for (const [locale, messages] of Object.entries(localeMessages)) {
-    composer.mergeLocaleMessage(locale, { [namespace]: messages })
-  }
-  globalTranslate = composer.t as Composer
-
-  ctx.effect(() => () => {
-    localRegistrations = Math.max(0, localRegistrations - 1)
-    if (!localRegistrations) globalTranslate = undefined
-
-    state.references = Math.max(0, state.references - 1)
-    if (state.references) return
-
-    for (const [locale, value] of Object.entries(state.previous)) {
-      const current = { ...composer.getLocaleMessage(locale) as Record<string, unknown> }
-      if (value === undefined) delete current[namespace]
-      else current[namespace] = value
-      composer.setLocaleMessage(locale, current)
-    }
-    registrationRegistry.delete(composer)
-  })
+  globalComposer = composer
+  installLocaleNamespaceGuard(composer, namespace, localeMessages)
 }
 
 export function useMarketNextI18n() {
-  const { t: baseT, locale } = useI18n({ useScope: 'global' })
+  const composer = useI18n({ useScope: 'global' }) as unknown as GlobalComposer & ReturnType<typeof useI18n>
+  globalComposer = composer
+  installLocaleNamespaceGuard(composer, namespace, localeMessages)
+  const { t: baseT, locale } = composer
   const t = (key: string, ...args: any[]) => (baseT as any)(`${namespace}.${key}`, ...args)
   return { t, locale }
 }
 
 export function translate(key: string, ...args: any[]) {
-  if (!globalTranslate) return key
-  return (globalTranslate as any)(`${namespace}.${key}`, ...args)
+  if (!globalComposer) return key
+  ensureMarketNextI18n(globalComposer)
+  return (globalComposer.t as any)(`${namespace}.${key}`, ...args)
 }
