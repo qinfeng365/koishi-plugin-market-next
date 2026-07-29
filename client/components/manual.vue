@@ -1,5 +1,12 @@
 <template>
-  <el-dialog v-if="store.market?.registry" v-model="showManual" class="manual-panel" destroy-on-close>
+  <el-dialog
+    v-if="store.market?.registry"
+    v-model="showManual"
+    append-to-body
+    align-center
+    :class="['market-dialog', 'market-dialog--small', 'manual-panel', modeClass]"
+    destroy-on-close
+  >
     <template #header>{{ t('operations.manual.title') }}</template>
     <k-comment type="warning">
       <p>{{ t('operations.manual.hint') }}<router-link to="/market">{{ t('operations.manual.market') }}</router-link>{{ t('operations.manual.hintAfter') }}</p>
@@ -20,13 +27,15 @@
 
 import { computed, ref, watch } from 'vue'
 import type { Registry } from '@koishijs/registry'
-import { store } from '@koishijs/client'
+import { store, useConfig } from '@koishijs/client'
 import { useDebounceFn } from '@vueuse/core'
 import { showManual, addManual } from './utils'
-import { getPendingOverrides, patchMarketNextData } from '../utils'
+import { getFrontendMode, getPendingOverrides, patchMarketNextData } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 
 const { t } = useMarketNextI18n()
+const config = useConfig()
+const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 
 const invalid = computed(() => false)
 const name = ref('')

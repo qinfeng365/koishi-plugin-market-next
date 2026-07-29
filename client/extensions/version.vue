@@ -42,7 +42,14 @@
     <p>{{ t('extensions.messages.externalPrefix') }}<span class="k-link" @click="addDependency">{{ t('extensions.actions.add') }}</span>{{ t('extensions.messages.externalSuffix') }}</p>
   </k-comment>
 
-  <el-dialog v-model="showUninstallDialog" class="market-extension-uninstall-dialog" :title="t('operations.install.uninstall')" destroy-on-close>
+  <el-dialog
+    v-model="showUninstallDialog"
+    append-to-body
+    align-center
+    :class="['market-dialog', 'market-dialog--small', 'market-extension-uninstall-dialog', modeClass]"
+    :title="t('operations.install.uninstall')"
+    destroy-on-close
+  >
     {{ t('extensions.messages.configQuestion') }}
     <template #footer>
       <el-button @click="showUninstallDialog = false">{{ t('extensions.actions.cancel') }}</el-button>
@@ -62,7 +69,7 @@
 
 import { global, message, send, store, useConfig, useContext } from '@koishijs/client'
 import { computed, inject, ComputedRef, ref, watch } from 'vue'
-import { getBulkMode, getBundleRecords, getMarketNextPolicy, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, hasUpdate, patchMarketNextData } from '../utils'
+import { getBulkMode, getBundleRecords, getFrontendMode, getMarketNextPolicy, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, hasUpdate, patchMarketNextData } from '../utils'
 import type {} from '@koishijs/plugin-config'
 import type { PluginBundleRecord } from '../../src/shared/bundle'
 import {
@@ -81,6 +88,7 @@ import { getMarketObject, loadMarketObjects } from '../market/state'
 const ctx = useContext()
 const config = useConfig()
 const { t } = useMarketNextI18n()
+const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 const name = inject<ComputedRef<string>>('plugin:name')
 const protectedDeps = new Set(['@koishijs/plugin-console', '@koishijs/plugin-config', '@koishijs/plugin-server'])
 

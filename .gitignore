@@ -5,6 +5,8 @@ Thumbs.db
 *.log
 tsconfig.tsbuildinfo
 FRONTEND_HANDOFF.md
+FRONTEND_WINDOW_CONSTRUCTION.md
+FRONTEND_WINDOW_STATUS.md
 .history/
 .omo/
 .tmp/

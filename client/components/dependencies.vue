@@ -79,14 +79,17 @@
                 ></market-icon>
               </div>
             </header>
-            <div v-if="!group.collapsed" class="deps-grid">
+            <div
+              v-if="!group.collapsed"
+              :class="['deps-grid', { 'market-data-frame': depsLayout === 'list' }]"
+            >
               <template v-if="depsLayout === 'list'">
                 <div class="deps-list-header">
-                  <span class="col-icon"></span>
-                  <span class="col-name">{{ t('common.labels.name') }}</span>
-                  <span class="col-version">{{ t('common.labels.installed') }}</span>
-                  <span class="col-latest">{{ t('common.labels.latest') }}</span>
-                  <span class="col-actions">{{ t('common.labels.operation') }}</span>
+                  <span class="col-icon market-col-indicator"></span>
+                  <span class="col-name market-col-name">{{ t('common.labels.name') }}</span>
+                  <span class="col-version market-col-version">{{ t('common.labels.installed') }}</span>
+                  <span class="col-latest market-col-version">{{ t('common.labels.latest') }}</span>
+                  <span class="col-actions market-col-actions">{{ t('common.labels.operation') }}</span>
                 </div>
               </template>
               <package-view
@@ -688,8 +691,6 @@ ctx.action('dependencies.upgrade', {
   gap: 0;
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--k-color-border) 70%, transparent);
-  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -705,13 +706,18 @@ ctx.action('dependencies.upgrade', {
   border-bottom: 1px solid color-mix(in srgb, var(--k-color-border) 60%, transparent);
   font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: var(--fg3);
   text-transform: uppercase;
 
   .col-icon { width: 2rem; }
   .col-name  { min-width: 0; }
-  .col-version, .col-latest { min-width: 0; padding: 0 0.25rem; }
+  .col-version, .col-latest {
+    min-width: 0;
+    padding: 0 0.25rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
   .col-actions { min-width: 0; text-align: right; }
 }
 

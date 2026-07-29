@@ -3,8 +3,7 @@
     :model-value="!!activeBundle"
     append-to-body
     align-center
-    :class="['bundle-install-panel', modeClass]"
-    width="min(880px, calc(100vw - 24px))"
+    :class="['market-dialog', 'market-dialog--large', 'bundle-install-panel', modeClass]"
     destroy-on-close
     @update:model-value="close"
   >
@@ -723,7 +722,7 @@ function formatInstallError(error: unknown) {
 
 .bundle-install-panel {
   --bundle-color: #8b5cf6;
-  --bundle-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #ffffff)));
+  --bundle-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color)));
   --bundle-surface-muted: var(--k-side-bg, var(--el-fill-color-lighter, var(--bundle-surface)));
   --bundle-text: var(--fg1, var(--el-text-color-primary, currentColor));
   --bundle-text-muted: var(--fg2, var(--el-text-color-regular, currentColor));
@@ -731,71 +730,6 @@ function formatInstallError(error: unknown) {
   --bundle-border: color-mix(in srgb, var(--bundle-border-base) 82%, var(--bundle-text) 10%);
   --bundle-color-soft: color-mix(in srgb, var(--bundle-color) 12%, transparent);
   --bundle-color-border: color-mix(in srgb, var(--bundle-color) 32%, var(--bundle-border));
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 24px);
-  max-height: calc(100dvh - 24px);
-  overflow: hidden;
-  color: var(--bundle-text);
-  border: 1px solid var(--bundle-border);
-  border-radius: 10px;
-  background: var(--bundle-surface);
-  box-shadow: none;
-
-  .el-dialog__header {
-    flex: 0 0 auto;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--bundle-border) 68%, transparent);
-    background: color-mix(in srgb, var(--bundle-surface-muted) 54%, var(--bundle-surface));
-  }
-
-  .el-dialog__body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    overscroll-behavior: contain;
-    background: var(--bundle-surface);
-  }
-
-  .el-dialog__body,
-  .member-config pre {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--bundle-color) 42%, var(--fg3)) transparent;
-
-    &::-webkit-scrollbar {
-      width: 10px;
-      height: 10px;
-    }
-
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      border: 2px solid transparent;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--bundle-color) 28%, var(--fg3));
-      background-clip: content-box;
-    }
-
-    &::-webkit-scrollbar-thumb:hover {
-      background: color-mix(in srgb, var(--bundle-color) 45%, var(--fg2));
-      background-clip: content-box;
-    }
-
-    &::-webkit-scrollbar-corner {
-      background: transparent;
-    }
-  }
-
-  .el-dialog__footer {
-    flex: 0 0 auto;
-    border-top: 1px solid color-mix(in srgb, var(--bundle-border) 72%, transparent);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--bundle-color) 4%, transparent), transparent),
-      color-mix(in srgb, var(--bundle-surface) 86%, var(--bundle-surface-muted) 14%);
-  }
-
   // Hero
   .bundle-hero {
     display: flex;
@@ -814,7 +748,7 @@ function formatInstallError(error: unknown) {
       color-mix(in srgb, var(--bundle-color) 26%, transparent),
       color-mix(in srgb, var(--bundle-color) 12%, transparent));
     color: var(--bundle-color);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-surface) 82%, white 18%), 0 4px 14px color-mix(in srgb, var(--bundle-color) 16%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-text) 12%, transparent), 0 4px 14px color-mix(in srgb, var(--bundle-color) 16%, transparent);
     .k-icon { width: 1.4rem; height: 1.4rem; }
   }
 
@@ -925,7 +859,7 @@ function formatInstallError(error: unknown) {
     font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0;
     color: var(--fg2);
 
     .k-icon { width: 0.9rem; height: 0.9rem; color: var(--bundle-color); }
@@ -964,7 +898,7 @@ function formatInstallError(error: unknown) {
     border-radius: 8px;
     padding: 0.52rem 0.62rem;
     background: var(--bundle-surface);
-    transition: border-color 0.18s, background 0.18s, box-shadow 0.18s, transform 0.18s;
+    transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
 
     &.optional {
       cursor: pointer;
@@ -1243,7 +1177,7 @@ function formatInstallError(error: unknown) {
     font-weight: 600;
     color: var(--bundle-color);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0;
     margin-bottom: 0.5rem;
   }
 
@@ -1334,36 +1268,39 @@ function formatInstallError(error: unknown) {
   }
 
   &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--bundle-color) 14%, var(--bundle-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 5%, transparent), transparent 42%),
-      var(--bundle-surface);
-    box-shadow: 0 18px 42px color-mix(in srgb, var(--bundle-text) 12%, transparent);
-
     .bundle-member {
-      border-radius: 12px;
       background: color-mix(in srgb, var(--bundle-surface) 90%, var(--bundle-surface-muted) 10%);
-      backdrop-filter: blur(10px);
 
       &.optional:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-color) 10%, transparent);
+        border-color: color-mix(in srgb, var(--bundle-color) 32%, var(--bundle-border));
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--bundle-color) 8%, transparent);
       }
 
       &.selected {
-        box-shadow: inset 4px 0 0 var(--bundle-color), 0 6px 16px color-mix(in srgb, var(--bundle-color) 6%, transparent);
+        box-shadow: inset 3px 0 0 var(--bundle-color), 0 4px 12px color-mix(in srgb, var(--bundle-color) 6%, transparent);
       }
 
       &.required {
-        box-shadow: inset 4px 0 0 var(--k-color-success), 0 6px 16px color-mix(in srgb, var(--k-color-success) 4%, transparent);
+        box-shadow: inset 3px 0 0 var(--k-color-success), 0 4px 12px color-mix(in srgb, var(--k-color-success) 4%, transparent);
       }
     }
 
     .bundle-diff {
       background: linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 12%, transparent), transparent 60%), color-mix(in srgb, var(--bundle-surface-muted) 72%, var(--bundle-surface));
-      backdrop-filter: blur(12px);
-      box-shadow: 0 10px 24px color-mix(in srgb, var(--bundle-text) 6%, transparent);
+      box-shadow: 0 6px 16px color-mix(in srgb, var(--bundle-text) 6%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bundle-stat-fill,
+    .bundle-member,
+    .bundle-section-action,
+    .raw-json-editor {
+      transition: none;
+    }
+
+    .bundle-loading-spinner {
+      animation: none;
     }
   }
 
@@ -1372,10 +1309,6 @@ function formatInstallError(error: unknown) {
   }
 
   @media (max-width: 640px) {
-    .el-dialog__body {
-      padding: 0 12px 12px;
-    }
-
     .bundle-stats { grid-template-columns: 1fr 1fr; }
     .bundle-stat:first-child { grid-column: 1 / -1; }
 

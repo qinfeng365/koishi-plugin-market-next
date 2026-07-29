@@ -1,5 +1,12 @@
 <template>
-  <el-dialog :model-value="!!active" @update:model-value="closePanel" :class="['install-panel', modeClass]" destroy-on-close>
+  <el-dialog
+    :model-value="!!active"
+    append-to-body
+    align-center
+    :class="['market-dialog', 'market-dialog--medium', 'install-panel', modeClass]"
+    destroy-on-close
+    @update:model-value="closePanel"
+  >
     <template v-if="active" #header="{ titleId, titleClass }">
       <span :id="titleId" :class="titleClass">
         {{ active + (workspace ? ` (${t('dependencyCard.current.workspace')})` : '') }}
@@ -30,8 +37,12 @@
       {{ t('operations.install.installErrorHint') }}
     </k-comment>
 
-    <el-scrollbar v-if="data?.[version] && Object.keys(data[version].peers).length" class="peer-table-scroll">
-      <table class="peer-table">
+    <el-scrollbar
+      v-if="data?.[version] && Object.keys(data[version].peers).length"
+      class="peer-table-scroll market-data-frame"
+      max-height="min(52dvh, 420px)"
+    >
+      <table class="peer-table market-data-table">
         <colgroup>
           <col class="peer-name-col">
           <col class="peer-range-col">
@@ -40,17 +51,17 @@
         </colgroup>
         <thead>
           <tr>
-            <th>{{ t('operations.install.peerName') }}</th>
-            <th>{{ t('operations.install.peerRange') }}</th>
-            <th>{{ t('operations.install.peerCurrent') }}</th>
-            <th>{{ t('operations.install.peerAvailability') }}</th>
+            <th class="market-col-name">{{ t('operations.install.peerName') }}</th>
+            <th class="market-col-range">{{ t('operations.install.peerRange') }}</th>
+            <th class="market-col-version">{{ t('operations.install.peerCurrent') }}</th>
+            <th class="market-col-status">{{ t('operations.install.peerAvailability') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(peer, name) in data[version].peers" :key="name">
-            <td class="text-left">{{ name }}</td>
-            <td>{{ peer.request }}</td>
-            <td>
+            <td class="market-col-name" :data-label="t('operations.install.peerName')">{{ name }}</td>
+            <td class="market-col-range" :data-label="t('operations.install.peerRange')">{{ peer.request }}</td>
+            <td class="market-col-version" :data-label="t('operations.install.peerCurrent')">
               <span class="wrapper" v-if="shouldShowPeerVersionSelect(peer, name)">
                 <span class="shadow">{{ getVersion(name) || t('operations.install.select') }}</span>
                 <el-select
@@ -72,7 +83,10 @@
                 <template v-if="getWorkspaceVersion(name)">{{ t('dependencyCard.current.workspace') }}</template>
               </span>
             </td>
-            <td :class="['theme-color', peer.result]">
+            <td
+              :class="['market-col-status', 'theme-color', peer.result]"
+              :data-label="t('operations.install.peerAvailability')"
+            >
               <span class="inline-flex items-center gap-1">
                 <k-icon :name="getResultIcon(peer.result)"></k-icon>
                 {{ getResultText(peer, name) }}
@@ -108,7 +122,13 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="showRemoveDialog" class="market-remove-dialog" destroy-on-close>
+  <el-dialog
+    v-model="showRemoveDialog"
+    append-to-body
+    align-center
+    :class="['market-dialog', 'market-dialog--small', 'market-remove-dialog', modeClass]"
+    destroy-on-close
+  >
     {{ t('operations.install.removeConfigQuestion') }}
     <template #footer>
       <div class="left">
@@ -442,35 +462,18 @@ function getResultText(peer: PeerInfo, name: string) {
   @include apply-color(danger);
 }
 
-.install-panel.el-dialog,
-.el-dialog.install-panel,
-.install-panel .el-dialog {
-  width: min(720px, calc(100vw - 32px)) !important;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--k-color-border) 88%, var(--fg1) 12%);
-  border-radius: 10px;
-  color: var(--fg1);
-  background: var(--k-card-bg);
-  box-shadow: none;
-}
-
 .install-panel {
   .el-dialog__header {
     display: flex;
     gap: 0 0.5em;
     align-items: center;
     min-height: 62px;
-    padding: 14px 44px 12px 20px;
-    border-bottom: 1px solid color-mix(in srgb, var(--k-color-border) 82%, transparent);
-    background: color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
 
     .el-dialog__title {
       min-width: 0;
       overflow: hidden;
-      color: var(--fg1);
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-weight: 700;
       margin-right: 0.5rem;
       flex: 0 0 auto;
     }
@@ -479,21 +482,6 @@ function getResultText(peer: PeerInfo, name: string) {
       flex: 1 1 auto;
       max-width: 12.5rem;
       margin: -2px 0 -4px;
-    }
-  }
-
-  .el-dialog__headerbtn {
-    top: 11px;
-    right: 12px;
-    width: 38px;
-    height: 38px;
-    border-radius: 8px;
-    color: var(--fg2);
-    transition: background 0.15s, color 0.15s;
-
-    &:hover {
-      color: var(--k-color-primary);
-      background: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
     }
   }
 
@@ -511,34 +499,18 @@ function getResultText(peer: PeerInfo, name: string) {
   }
 
   .el-dialog__body {
-    padding: 16px 20px 6px;
-    min-height: 40px;
-    background: color-mix(in srgb, var(--k-side-bg) 58%, var(--k-card-bg));
-
     > div {
       margin: 1rem 0;
-    }
-
-    &:last-child {
-      padding-bottom: 1rem;
     }
   }
 
   .peer-table-scroll {
-    border-radius: 8px;
-    background: var(--k-card-bg);
     box-shadow: none;
   }
 
-  table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
+  .peer-table {
+    min-width: 38rem;
     table-layout: fixed;
-    border: 1px solid var(--k-color-border);
-    border-radius: 8px;
-    overflow: hidden;
-    margin: 0.75rem 0;
 
     .peer-name-col {
       width: 42%;
@@ -556,41 +528,11 @@ function getResultText(peer: PeerInfo, name: string) {
       width: 20%;
     }
 
-    thead, tbody {
-      td, th {
-        padding: 0.62rem 0.875rem;
-        white-space: nowrap;
-        overflow: hidden;
-        color: var(--fg1);
-        text-overflow: ellipsis;
-        border-bottom: 1px solid var(--k-color-border);
-        border-right: 1px solid var(--k-color-border);
-        font-size: 0.82rem;
-
-        &:last-child {
-          border-right: none;
-        }
-      }
-    }
-
-    th {
-      background: color-mix(in srgb, var(--fg1) 5%, var(--k-side-bg));
-      color: var(--fg2);
-      font-weight: 700;
-      text-align: left;
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    tbody tr {
-      background: var(--k-card-bg);
-      transition: background 0.15s;
-
-      &:hover {
-        background: color-mix(in srgb, var(--k-color-primary) 6%, var(--k-card-bg));
-      }
+    th,
+    td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 
@@ -631,42 +573,9 @@ function getResultText(peer: PeerInfo, name: string) {
     }
   }
 
-  .el-button + .el-button {
-    margin-left: 1rem;
-  }
-
-  .el-dialog__footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    min-height: 68px;
-    padding: 14px 16px;
-    border-top: 1px solid color-mix(in srgb, var(--k-color-border) 82%, transparent);
-    background: color-mix(in srgb, var(--k-side-bg) 50%, var(--k-card-bg));
-  }
-
   &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent), transparent 44%),
-      var(--k-card-bg);
-    box-shadow:
-      0 28px 80px rgb(0 0 0 / 32%),
-      0 0 0 1px color-mix(in srgb, var(--fg1) 8%, transparent) inset;
-
-    .el-dialog__header {
-      border-bottom-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
-        color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
-    }
-
     .peer-table-scroll {
-      box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
-    }
-
-    .el-dialog__footer {
-      border-top-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--fg1) 8%, transparent);
     }
   }
 
@@ -677,7 +586,7 @@ function getResultText(peer: PeerInfo, name: string) {
     max-width: 100%;
 
     .shadow {
-      letter-spacing: 1px;
+      letter-spacing: 0;
       visibility: hidden;
       padding-right: 22px; // .el-input__suffix
     }
@@ -715,7 +624,97 @@ function getResultText(peer: PeerInfo, name: string) {
   transform: translate(0, -50%);
   background-color: currentColor;
   transition: background-color 0.3s ease;
-  box-shadow: 1px 1px 2px #3333;
+  box-shadow: 1px 1px 2px color-mix(in srgb, var(--fg1) 20%, transparent);
+}
+
+@media (max-width: 640px) {
+  .install-panel {
+    .el-dialog__header {
+      flex-wrap: wrap;
+      min-height: 0;
+
+      .el-dialog__title {
+        flex: 1 1 100%;
+        padding-right: 8px;
+      }
+
+      .el-select {
+        flex: 1 1 100%;
+        max-width: none;
+        margin: 4px 0 0;
+      }
+    }
+
+    .peer-table {
+      display: block;
+      min-width: 0;
+
+      thead {
+        display: none;
+      }
+
+      tbody {
+        display: block;
+      }
+
+      tr {
+        display: grid;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--market-dialog-border-soft);
+
+        &:last-child {
+          border-bottom: 0;
+        }
+      }
+
+      td {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        min-width: 0;
+        padding: 4px 0;
+        border: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+
+        &::before {
+          content: attr(data-label);
+          flex: 0 0 auto;
+          margin-right: auto;
+          color: var(--market-dialog-text-muted);
+          text-align: left;
+        }
+      }
+    }
+
+    .peer-version,
+    .wrapper {
+      min-width: 0;
+      max-width: min(62%, 12rem);
+    }
+
+    .el-dialog__footer {
+      align-items: stretch;
+      flex-direction: column;
+
+      .left,
+      .right {
+        width: 100%;
+      }
+
+      .right {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+
+        .el-button {
+          flex: 1 1 8rem;
+          margin-left: 0;
+        }
+      }
+    }
+  }
 }
 
 </style>

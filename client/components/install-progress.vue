@@ -2,11 +2,11 @@
   <el-dialog
     v-model="installProgressState.visible"
     append-to-body
+    align-center
     :show-close="installProgressState.status !== 'running'"
     :before-close="handleBeforeClose"
-    :class="['install-progress-dialog', modeClass]"
+    :class="['market-dialog', 'market-dialog--medium', 'market-dialog--contained', 'install-progress-dialog', modeClass]"
     :title="installProgressState.title"
-    width="min(800px, calc(100vw - 24px))"
   >
     <div class="progress-body">
       <!-- Status Banner -->
@@ -137,11 +137,11 @@ function retryFallback() {
 
 <style lang="scss">
 .install-progress-dialog {
-  --progress-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #18181b)));
-  --progress-surface-muted: color-mix(in srgb, var(--progress-surface) 84%, var(--k-side-bg, var(--el-fill-color-light, #f8fafc)) 16%);
-  --progress-text: var(--fg1, var(--el-text-color-primary, #1e293b));
-  --progress-text-muted: var(--fg2, var(--el-text-color-regular, #64748b));
-  --progress-border-base: var(--k-color-border, var(--el-border-color, #d4d8e2));
+  --progress-surface: var(--market-dialog-surface);
+  --progress-surface-muted: var(--market-dialog-surface-muted);
+  --progress-text: var(--market-dialog-text);
+  --progress-text-muted: var(--market-dialog-text-muted);
+  --progress-border-base: var(--market-dialog-border);
   --progress-border: color-mix(in srgb, var(--progress-border-base) 78%, var(--progress-text) 22%);
   --progress-border-soft: color-mix(in srgb, var(--progress-border-base) 76%, transparent);
   --success-color: var(--k-color-success, var(--el-color-success, #10b981));
@@ -151,47 +151,17 @@ function retryFallback() {
   --status-bg: color-mix(in srgb, var(--status-color) 10%, var(--progress-surface));
   --status-border: color-mix(in srgb, var(--status-color) 34%, var(--progress-border));
 
-  border-radius: 12px;
-  border: 1px solid var(--progress-border);
-  color: var(--progress-text);
-  background: var(--progress-surface);
-  box-shadow: none;
-  overflow: hidden;
-
-  .el-dialog__header {
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--progress-border-soft);
-    background: color-mix(in srgb, var(--progress-surface-muted) 72%, var(--progress-surface));
-  }
-
-  .el-dialog__title {
-    color: var(--progress-text);
-  }
-
-  .el-dialog__headerbtn {
-    .el-dialog__close {
-      color: var(--progress-text-muted);
-    }
-
-    &:hover .el-dialog__close {
-      color: var(--primary-color);
-    }
-  }
-
   .el-dialog__body {
-    padding-top: 0.5rem;
-    padding-bottom: 1rem;
-    background: var(--progress-surface);
-  }
-
-  .el-dialog__footer {
-    border-top: 1px solid var(--progress-border-soft);
-    background: color-mix(in srgb, var(--progress-surface) 86%, var(--progress-surface-muted) 14%);
+    display: flex;
+    flex-direction: column;
   }
 
   .progress-body {
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
+    min-height: 0;
+    height: clamp(240px, 54dvh, 430px);
     gap: 0.75rem;
   }
 
@@ -275,7 +245,8 @@ function retryFallback() {
     background: var(--progress-surface-muted);
     border: 1px solid var(--progress-border);
     border-radius: 8px;
-    height: 360px;
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -296,7 +267,7 @@ function retryFallback() {
     color: color-mix(in srgb, var(--progress-text) 64%, transparent);
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0;
   }
 
   .terminal-viewport {
@@ -348,29 +319,6 @@ function retryFallback() {
 
   // Styles specific to Polished Mode
   &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--progress-border) 82%, var(--primary-color) 18%);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 5%, transparent), transparent 44%),
-      var(--progress-surface);
-    box-shadow:
-      0 24px 54px color-mix(in srgb, var(--progress-text) 22%, transparent),
-      0 8px 18px color-mix(in srgb, var(--primary-color) 8%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--primary-color) 10%, transparent) inset;
-    backdrop-filter: blur(12px);
-
-    .el-dialog__header {
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 68%),
-        color-mix(in srgb, var(--progress-surface-muted) 72%, var(--progress-surface));
-    }
-
-    .el-dialog__body {
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 2%, transparent), transparent),
-        var(--progress-surface);
-    }
-
     .terminal-header {
       background:
         linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 7%, transparent), transparent 64%),
@@ -385,18 +333,25 @@ function retryFallback() {
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .status-banner {
-      backdrop-filter: blur(6px);
-    }
   }
 
   // Styles specific to Performance Mode
   &.market-mode-performance {
-    border-radius: 8px;
-    box-shadow: none;
-    
     .terminal-container {
       box-shadow: none;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .install-progress-dialog {
+    .progress-body {
+      height: min(56dvh, 360px);
+      min-height: 210px;
+    }
+
+    .fallback-prompt {
+      flex-basis: 100%;
     }
   }
 }
@@ -408,5 +363,24 @@ function retryFallback() {
 
 @keyframes term-spin {
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .install-progress-dialog {
+    .pulse-dot,
+    .loading-spinner {
+      animation: none;
+      transform: none;
+    }
+
+    .pulse-dot {
+      opacity: 0.8;
+    }
+
+    .status-banner,
+    .terminal-container {
+      transition: none;
+    }
+  }
 }
 </style>

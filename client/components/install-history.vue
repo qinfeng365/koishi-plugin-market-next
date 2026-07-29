@@ -2,10 +2,10 @@
   <el-dialog
     v-model="showInstallHistory"
     append-to-body
+    align-center
     destroy-on-close
-    :class="['install-history-dialog', modeClass]"
+    :class="['market-dialog', 'market-dialog--large', 'market-dialog--contained', 'install-history-dialog', modeClass]"
     :title="t('operations.history.title')"
-    width="min(1040px, calc(100vw - 24px))"
   >
     <div class="history-toolbar">
       <span>{{ loading ? t('operations.history.syncing') : t('operations.history.count', { count: entries.length }) }}</span>
@@ -76,14 +76,28 @@
               <span>{{ t('operations.history.versionChanges') }}</span>
               <span>{{ t('operations.history.items', { count: detail.changes.length }) }}</span>
             </div>
-            <div class="change-list">
+            <div class="change-list market-data-frame">
+              <div class="change-header">
+                <span class="market-col-name">{{ t('operations.confirm.dependency') }}</span>
+                <span class="market-col-version">{{ t('operations.confirm.oldVersion') }}</span>
+                <span class="market-col-indicator"></span>
+                <span class="market-col-version">{{ t('operations.confirm.newVersion') }}</span>
+              </div>
               <div v-for="change in detail.changes" :key="change.name" class="change-row">
-                <strong :title="change.name">{{ change.name }}</strong>
-                <span class="version-value" :title="beforeVersion(change)">
+                <strong class="market-col-name" :title="change.name">{{ change.name }}</strong>
+                <span
+                  class="version-value market-col-version"
+                  :data-label="t('operations.confirm.oldVersion')"
+                  :title="beforeVersion(change)"
+                >
                   <span class="version-text">{{ beforeVersion(change) }}</span>
                 </span>
-                <span class="version-arrow">→</span>
-                <span class="version-value after" :title="afterVersion(change)">
+                <span class="version-arrow market-col-indicator">→</span>
+                <span
+                  class="version-value after market-col-version"
+                  :data-label="t('operations.confirm.newVersion')"
+                  :title="afterVersion(change)"
+                >
                   <span class="version-text">{{ afterVersion(change) }}</span>
                 </span>
               </div>
@@ -275,31 +289,9 @@ function formatSize(value: number) {
   --history-danger: var(--k-color-danger, var(--el-color-danger));
   --history-warning: var(--k-color-warning, var(--el-color-warning));
 
-  color: var(--history-text);
-  background: var(--history-surface);
-  border: 1px solid color-mix(in srgb, var(--history-border) 84%, transparent);
-
-  .el-dialog__title {
-    color: var(--history-text);
-    font-size: 18px;
-    font-weight: 600;
-  }
-
-  .el-dialog__header,
-  .el-dialog__footer {
-    border-color: color-mix(in srgb, var(--history-border) 78%, transparent);
-  }
-
-  .el-dialog__header {
-    border-bottom: 1px solid color-mix(in srgb, var(--history-border) 78%, transparent);
-  }
-
   .el-dialog__body {
-    padding-top: 14px;
-  }
-
-  .el-dialog__footer {
-    border-top: 1px solid color-mix(in srgb, var(--history-border) 78%, transparent);
+    display: flex;
+    flex-direction: column;
   }
 
   .history-toolbar {
@@ -320,9 +312,9 @@ function formatSize(value: number) {
   .history-layout {
     display: grid;
     grid-template-columns: 300px minmax(0, 1fr);
-    height: min(470px, max(320px, calc(100vh - 205px)));
-    height: min(470px, max(320px, calc(100dvh - 205px)));
-    min-height: 320px;
+    height: min(500px, calc(100vh - 216px));
+    height: min(500px, calc(100dvh - 216px));
+    min-height: 0;
     border: 1px solid var(--history-border);
     border-radius: 8px;
     overflow: hidden;
@@ -575,18 +567,30 @@ function formatSize(value: number) {
     flex: 1 1 auto;
     max-height: none;
     overflow-y: auto;
-    border: 1px solid color-mix(in srgb, var(--history-border) 82%, transparent);
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--history-muted) 34%, var(--history-surface));
   }
 
+  .change-header,
   .change-row {
     display: grid;
     grid-template-columns: minmax(150px, 1fr) minmax(90px, 128px) 16px minmax(90px, 128px);
     align-items: center;
     gap: 8px;
-    min-height: 34px;
-    padding: 5px 10px;
+    min-height: 38px;
+    padding: 0 12px;
+  }
+
+  .change-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--history-border);
+    color: var(--history-text-muted);
+    background: color-mix(in srgb, var(--history-muted) 72%, var(--history-surface));
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .change-row {
     border-bottom: 1px solid color-mix(in srgb, var(--history-border) 64%, transparent);
     font-size: 11px;
 
@@ -610,6 +614,7 @@ function formatSize(value: number) {
     color: var(--history-text-muted);
     font-family: Consolas, Monaco, 'Andale Mono', monospace;
     text-align: right;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
 
     &.after {
@@ -651,9 +656,6 @@ function formatSize(value: number) {
   }
 
   &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--history-primary) 16%, var(--history-border));
-    box-shadow: 0 18px 46px color-mix(in srgb, var(--history-text) 16%, transparent);
-
     .history-layout {
       border-color: color-mix(in srgb, var(--history-primary) 12%, var(--history-border));
     }
@@ -666,12 +668,6 @@ function formatSize(value: number) {
 
 @media (max-width: 720px) {
   .install-history-dialog {
-    .el-dialog__header { padding: 12px 44px 10px 14px; }
-
-    .el-dialog__body {
-      padding: 10px;
-    }
-
     .history-toolbar {
       align-items: flex-start;
       flex-wrap: wrap;
@@ -683,9 +679,9 @@ function formatSize(value: number) {
     .history-layout {
       grid-template-columns: 1fr;
       grid-template-rows: 132px minmax(0, 1fr);
-      height: min(540px, max(300px, calc(100vh - 180px)));
-      height: min(540px, max(300px, calc(100dvh - 180px)));
-      min-height: 300px;
+      height: min(560px, calc(100vh - 196px));
+      height: min(560px, calc(100dvh - 196px));
+      min-height: 0;
       overflow: hidden;
     }
 
@@ -726,14 +722,6 @@ function formatSize(value: number) {
 
     .section-heading { flex-basis: 26px; }
 
-    .el-dialog__footer {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-
-      .el-button { flex: 1 1 8rem; margin-left: 0; }
-    }
-
     .detail-header {
       align-items: flex-start;
       flex-wrap: wrap;
@@ -744,18 +732,35 @@ function formatSize(value: number) {
       justify-content: flex-start;
     }
 
+    .change-header {
+      display: none;
+    }
+
     .change-row {
-      grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
-      gap: 4px;
-      padding-block: 7px;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 5px;
+      padding: 8px 10px;
 
       strong {
         grid-column: 1 / -1;
       }
 
-      .version-value.after {
-        text-align: left;
-        justify-content: flex-start;
+      .version-arrow {
+        display: none;
+      }
+
+      .version-value {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        width: 100%;
+
+        &::before {
+          content: attr(data-label);
+          color: var(--history-text-muted);
+          font-family: inherit;
+          text-align: left;
+        }
       }
     }
   }

@@ -4,7 +4,7 @@
     <div class="dep-status-mark" aria-hidden="true">
       <market-icon :name="markIcon"></market-icon>
     </div>
-    <div class="col-name">
+    <div class="col-name market-col-name">
       <span class="name-display" :title="name">
         <span class="name-label">{{ displayName }}</span>
         <span v-if="bundlePackage" class="dep-list-kind-pill" :title="t('dependencyCard.identity.bundle')">
@@ -14,11 +14,11 @@
       </span>
       <span class="name-full" :title="name">{{ name }}</span>
     </div>
-    <div class="col-version" :data-label="t('common.labels.current')">{{ currentText }}</div>
-    <div class="col-latest" :data-label="targetLabel" :class="{ 'has-update': updatable, 'pending-val': pending }">
+    <div class="col-version market-col-version" :data-label="t('common.labels.current')">{{ currentText }}</div>
+    <div class="col-latest market-col-version" :data-label="targetLabel" :class="{ 'has-update': updatable, 'pending-val': pending }">
       {{ showTargetMeta ? targetText : '—' }}
     </div>
-    <div class="col-actions" @click.stop>
+    <div class="col-actions market-col-actions" @click.stop>
       <el-button v-if="showQuickUpdate" size="small" type="primary" @click="selectedVersion = latestVersion">{{ t('dependencyCard.actions.update') }}</el-button>
       <el-button v-if="showConfigure" size="small" type="primary" :loading="configuring" @click="configure">{{ t('dependencyCard.actions.configure') }}</el-button>
       <el-button v-if="showInlineIgnoreUpdate" size="small" @click="openIgnoreDialog">{{ t('dependencyCard.actions.ignore') }}</el-button>
@@ -182,7 +182,13 @@
     </div>
   </article>
 
-  <el-dialog v-model="showIgnoreDialog" :class="['dep-ignore-dialog', modeClass]" append-to-body destroy-on-close>
+  <el-dialog
+    v-model="showIgnoreDialog"
+    append-to-body
+    align-center
+    :class="['market-dialog', 'market-dialog--small', 'dep-ignore-dialog', modeClass]"
+    destroy-on-close
+  >
     <template #header>{{ t('dependencyCard.ignore.title') }}</template>
     <div class="dep-ignore-body">
       <p>
@@ -834,59 +840,7 @@ async function configure() {
 
 <style lang="scss">
 
-.el-dialog.dep-ignore-dialog,
-.dep-ignore-dialog.el-dialog,
-.dep-ignore-dialog .el-dialog {
-  width: min(560px, calc(100vw - 32px)) !important;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 88%, var(--fg1, currentColor) 12%);
-  border-radius: 10px;
-  color: var(--fg1, var(--el-text-color-primary));
-  background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 88%, var(--k-side-bg, var(--el-bg-color)));
-  box-shadow: none;
-}
-
 .dep-ignore-dialog {
-  .el-dialog__header {
-    display: flex;
-    align-items: center;
-    min-height: 52px;
-    margin: 0;
-    padding: 13px 44px 12px 18px;
-    border-bottom: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 82%, transparent);
-    background: color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 70%, var(--k-card-bg, var(--el-bg-color)));
-
-    .el-dialog__title {
-      color: var(--fg1, var(--el-text-color-primary));
-      font-weight: 700;
-    }
-  }
-
-  .el-dialog__headerbtn {
-    top: 8px;
-    right: 10px;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    color: var(--fg2, var(--el-text-color-regular));
-
-    &:hover {
-      color: var(--k-color-primary, var(--el-color-primary));
-      background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 12%, transparent);
-    }
-  }
-
-  .el-dialog__body {
-    padding: 16px 18px 10px;
-    background: color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 46%, var(--k-card-bg, var(--el-bg-color)));
-  }
-
-  .el-dialog__footer {
-    padding: 10px 18px 14px;
-    border-top: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 70%, transparent);
-    background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 84%, var(--k-side-bg, var(--el-bg-color)));
-  }
-
   .dep-ignore-body {
     display: grid;
     gap: 0.85rem;
@@ -919,7 +873,7 @@ async function configure() {
   }
 
   .dep-ignore-note {
-    border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--market-dialog-border) 70%, transparent);
     border-radius: 7px;
     padding: 0.52rem 0.62rem;
     color: var(--fg2, var(--el-text-color-regular));
@@ -935,34 +889,19 @@ async function configure() {
 
   .el-radio-button__inner {
     border-radius: 7px !important;
-    border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 82%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--market-dialog-border) 82%, transparent) !important;
     background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 86%, var(--k-side-bg, var(--el-bg-color)));
     color: var(--fg2, var(--el-text-color-regular));
     box-shadow: none !important;
   }
 
   .el-radio-button__original-radio:checked + .el-radio-button__inner {
-    border-color: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 58%, var(--k-color-border, #dcdfe6)) !important;
+    border-color: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 58%, var(--market-dialog-border)) !important;
     background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 15%, var(--k-card-bg, var(--el-bg-color)));
     color: var(--k-color-primary, var(--el-color-primary));
   }
 
   &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border, #dcdfe6));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 5%, transparent), transparent 46%),
-      color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 88%, var(--k-side-bg, var(--el-bg-color)));
-    box-shadow:
-      0 24px 68px rgb(0 0 0 / 32%),
-      0 0 0 1px color-mix(in srgb, var(--fg1, currentColor) 7%, transparent) inset;
-
-    .el-dialog__header {
-      border-bottom-color: color-mix(in srgb, var(--k-color-primary) 10%, var(--k-color-border, #dcdfe6));
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
-        color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 70%, var(--k-card-bg, var(--el-bg-color)));
-    }
-
     .dep-ignore-note {
       background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 5%, var(--k-side-bg, var(--el-bg-color)));
     }
@@ -971,10 +910,6 @@ async function configure() {
 
 @media (max-width: 560px) {
   .dep-ignore-dialog {
-    .el-dialog__body {
-      padding: 14px;
-    }
-
     .dep-ignore-field.inline {
       grid-template-columns: 1fr;
     }
@@ -1313,6 +1248,12 @@ async function configure() {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .dep-card-actions {
+    animation: none;
+  }
+}
+
 .dep-card-buttons {
   display: flex;
   flex: 0 0 auto;
@@ -1482,6 +1423,8 @@ async function configure() {
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 0 0.25rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 
     &.has-update { color: var(--k-color-success); font-weight: 600; }
     &.pending-val { color: var(--k-color-primary); font-weight: 600; }
@@ -1539,23 +1482,33 @@ async function configure() {
 
     .col-version {
       grid-area: current;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.4rem;
       padding: 0;
 
       &::before {
         content: attr(data-label) ' ';
+        margin-right: auto;
         color: var(--fg3);
         font-weight: 500;
+        text-align: left;
       }
     }
 
     .col-latest {
       grid-area: latest;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.4rem;
       padding: 0;
 
       &::before {
         content: attr(data-label) ' ';
+        margin-right: auto;
         color: var(--fg3);
         font-weight: 500;
+        text-align: left;
       }
     }
 

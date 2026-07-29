@@ -2,10 +2,10 @@
   <el-dialog
     v-model="showEnvironmentVersions"
     append-to-body
+    align-center
     destroy-on-close
-    :class="['environment-versions-dialog', modeClass]"
+    :class="['market-dialog', 'market-dialog--large', 'market-dialog--contained', 'environment-versions-dialog', modeClass]"
     :title="t('environment.title')"
-    width="min(1080px, calc(100vw - 24px))"
   >
     <div class="environment-toolbar">
       <span>{{ loading ? t('environment.syncing') : t('environment.count', { count: snapshots.length }) }}</span>
@@ -64,20 +64,28 @@
             {{ t('environment.scopeWarning') }}
           </k-comment>
 
-          <div class="diff-list">
+          <div class="diff-list market-data-frame">
             <div class="diff-header">
-              <span>{{ t('environment.dependency') }}</span>
-              <span>{{ t('environment.currentVersion') }}</span>
-              <span></span>
-              <span>{{ t('environment.targetVersion') }}</span>
-              <span>{{ t('environment.status') }}</span>
+              <span class="market-col-name">{{ t('environment.dependency') }}</span>
+              <span class="market-col-version">{{ t('environment.currentVersion') }}</span>
+              <span class="market-col-indicator"></span>
+              <span class="market-col-version">{{ t('environment.targetVersion') }}</span>
+              <span class="market-col-status">{{ t('environment.status') }}</span>
             </div>
             <div v-for="change in orderedChanges" :key="change.name" :class="['diff-row', change.status]">
-              <strong :title="change.name">{{ change.name }}</strong>
-              <span class="version-value" :title="versionText(change.currentVersion)">{{ versionText(change.currentVersion) }}</span>
-              <span class="version-arrow">→</span>
-              <span class="version-value target" :title="versionText(change.targetVersion)">{{ versionText(change.targetVersion) }}</span>
-              <span :class="['change-status', change.status]">{{ statusText(change.status) }}</span>
+              <strong class="market-col-name" :title="change.name">{{ change.name }}</strong>
+              <span
+                class="version-value market-col-version"
+                :data-label="t('environment.currentVersion')"
+                :title="versionText(change.currentVersion)"
+              >{{ versionText(change.currentVersion) }}</span>
+              <span class="version-arrow market-col-indicator">→</span>
+              <span
+                class="version-value target market-col-version"
+                :data-label="t('environment.targetVersion')"
+                :title="versionText(change.targetVersion)"
+              >{{ versionText(change.targetVersion) }}</span>
+              <span :class="['change-status', 'market-col-status', change.status]">{{ statusText(change.status) }}</span>
               <small v-if="change.reason" class="change-reason">{{ reasonText(change.reason) }}</small>
             </div>
           </div>
@@ -97,9 +105,9 @@
   <el-dialog
     v-model="confirmVisible"
     append-to-body
-    :class="['environment-confirm-dialog', modeClass]"
+    align-center
+    :class="['market-dialog', 'market-dialog--small', 'environment-confirm-dialog', modeClass]"
     :title="t('environment.confirmTitle')"
-    width="min(520px, calc(100vw - 24px))"
   >
     <p>{{ t('environment.confirmText', { count: preview?.actionableCount ?? 0 }) }}</p>
     <k-comment type="warning">{{ t('environment.scopeWarning') }}</k-comment>
@@ -261,17 +269,13 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
   --environment-warning: var(--k-color-warning, var(--el-color-warning));
   --environment-danger: var(--k-color-danger, var(--el-color-danger));
 
-  color: var(--environment-text);
-  border: 1px solid color-mix(in srgb, var(--environment-border) 84%, transparent);
-  background: var(--environment-surface);
-
-  .el-dialog__title { color: var(--environment-text); font-weight: 600; }
-  .el-dialog__header { border-bottom: 1px solid color-mix(in srgb, var(--environment-border) 76%, transparent); }
-  .el-dialog__footer { border-top: 1px solid color-mix(in srgb, var(--environment-border) 76%, transparent); }
 }
 
 .environment-versions-dialog {
-  .el-dialog__body { padding-top: 14px; }
+  .el-dialog__body {
+    display: flex;
+    flex-direction: column;
+  }
 
   .environment-toolbar {
     display: flex;
@@ -286,9 +290,9 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
   .environment-layout {
     display: grid;
     grid-template-columns: 300px minmax(0, 1fr);
-    height: min(520px, calc(100vh - 215px));
-    height: min(520px, calc(100dvh - 215px));
-    min-height: 360px;
+    height: min(540px, calc(100vh - 216px));
+    height: min(540px, calc(100dvh - 216px));
+    min-height: 0;
     overflow: hidden;
     border: 1px solid var(--environment-border);
     border-radius: 8px;
@@ -441,9 +445,6 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
     min-height: 0;
     flex: 1;
     overflow-y: auto;
-    border: 1px solid var(--environment-border);
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--environment-muted) 30%, var(--environment-surface));
   }
 
   .diff-header,
@@ -490,6 +491,7 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
     color: var(--environment-text-muted);
     font-family: Consolas, Monaco, monospace;
     text-align: right;
+    font-variant-numeric: tabular-nums;
 
     &.target { color: var(--environment-primary); }
   }
@@ -532,9 +534,6 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
   }
 
   &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--environment-primary) 16%, var(--environment-border));
-    box-shadow: 0 18px 46px color-mix(in srgb, var(--environment-text) 16%, transparent);
-
     .environment-layout { border-color: color-mix(in srgb, var(--environment-primary) 12%, var(--environment-border)); }
     .snapshot-row.active { background: color-mix(in srgb, var(--environment-primary) 13%, var(--environment-surface)); }
   }
@@ -547,9 +546,6 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
 
 @media (max-width: 760px) {
   .environment-versions-dialog {
-    .el-dialog__header { padding: 12px 44px 10px 14px; }
-    .el-dialog__body { padding: 10px; }
-
     .environment-toolbar {
       align-items: flex-start;
       flex-wrap: wrap;
@@ -562,8 +558,8 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
     .environment-layout {
       grid-template-columns: 1fr;
       grid-template-rows: 148px minmax(0, 1fr);
-      height: min(650px, max(360px, calc(100dvh - 185px)));
-      min-height: 360px;
+      height: min(650px, calc(100dvh - 196px));
+      min-height: 0;
     }
 
     .snapshot-sidebar {
@@ -597,18 +593,29 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
 
     .diff-header { display: none; }
     .diff-row {
-      grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr) minmax(48px, auto);
+      grid-template-columns: minmax(0, 1fr);
       gap: 5px;
-      padding-block: 7px;
+      padding: 8px 10px;
       overflow: hidden;
 
       > strong { grid-column: 1 / -1; }
+      .version-arrow { display: none; }
       .version-value {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
         max-width: 100%;
         font-size: 10px;
-        text-align: left;
+
+        &::before {
+          content: attr(data-label);
+          color: var(--environment-text-muted);
+          font-family: inherit;
+          text-align: left;
+        }
       }
       .change-status {
+        justify-self: end;
         min-width: 48px;
         max-width: 64px;
         overflow: hidden;
@@ -617,25 +624,6 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
       }
     }
 
-    .el-dialog__footer {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-
-      .el-button { flex: 1 1 8rem; margin-left: 0; }
-    }
-  }
-
-  .environment-confirm-dialog {
-    .el-dialog__header { padding: 12px 44px 10px 14px; }
-    .el-dialog__body { padding: 12px 14px; }
-    .el-dialog__footer {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-
-      .el-button { flex: 1 1 8rem; margin-left: 0; }
-    }
   }
 }
 </style>

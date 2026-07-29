@@ -2,9 +2,9 @@
   <el-dialog
     v-model="visible"
     append-to-body
-    :class="['bundle-uninstall-dialog', modeClass]"
+    align-center
+    :class="['market-dialog', 'market-dialog--medium', 'bundle-uninstall-dialog', modeClass]"
     :title="title || t('bundle.actions.uninstall')"
-    width="min(760px, calc(100vw - 24px))"
     destroy-on-close
   >
     <template v-if="packageName">
@@ -299,50 +299,27 @@ async function uninstallBundle() {
 
 </script>
 
-<style lang="scss" scoped>
+<style lang="scss">
 
-:global(.bundle-uninstall-dialog) {
+.bundle-uninstall-dialog {
   --bundle-uninstall-primary: var(--k-color-primary, var(--el-color-primary, #8b5cf6));
-  --bundle-uninstall-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #ffffff)));
+  --bundle-uninstall-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color)));
   --bundle-uninstall-surface-muted: var(--k-side-bg, var(--el-fill-color-lighter, var(--bundle-uninstall-surface)));
   --bundle-uninstall-text: var(--fg1, var(--el-text-color-primary, currentColor));
   --bundle-uninstall-text-muted: var(--fg2, var(--el-text-color-regular, currentColor));
   --bundle-uninstall-border-base: var(--k-color-border, var(--el-border-color, #dcdfe6));
   --bundle-uninstall-border: color-mix(in srgb, var(--bundle-uninstall-border-base) 82%, var(--bundle-uninstall-text) 10%);
-  color: var(--bundle-uninstall-text);
-  border: 1px solid var(--bundle-uninstall-border);
-  border-radius: 10px;
-  background: var(--bundle-uninstall-surface);
-  box-shadow: none;
-
-  :deep(.el-dialog__header) {
-    border-bottom: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 68%, transparent);
-    background: color-mix(in srgb, var(--bundle-uninstall-surface-muted) 54%, var(--bundle-uninstall-surface));
-  }
-
-  :deep(.el-dialog__body) {
-    max-height: min(68vh, 620px);
-    overflow: auto;
-    background: var(--bundle-uninstall-surface);
-  }
-
-  :deep(.el-dialog__footer) {
-    padding-top: 0.25rem;
-    border-top: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 72%, transparent);
-    background: color-mix(in srgb, var(--bundle-uninstall-surface) 86%, var(--bundle-uninstall-surface-muted) 14%);
-  }
-
-  :deep(.el-radio-group) {
+  .el-radio-group {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
 
-  :deep(.el-radio-button) {
+  .el-radio-button {
     min-width: 0;
   }
 
-  :deep(.el-radio-button__inner) {
+  .el-radio-button__inner {
     width: 100%;
     padding: 0 0.5rem;
     overflow: hidden;
@@ -374,9 +351,6 @@ async function uninstallBundle() {
   .bundle-member-list {
     display: grid;
     gap: 0.55rem;
-    max-height: 46vh;
-    overflow: auto;
-    padding-right: 0.25rem;
   }
 
   .bundle-member-option {
@@ -478,41 +452,31 @@ async function uninstallBundle() {
   }
 
   &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 14%, var(--bundle-uninstall-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--bundle-uninstall-primary) 5%, transparent), transparent 42%),
-      var(--bundle-uninstall-surface);
-    box-shadow: 0 18px 42px color-mix(in srgb, var(--bundle-uninstall-text) 12%, transparent);
-
     .bundle-member-option {
-      border-radius: 12px;
       background: color-mix(in srgb, var(--bundle-uninstall-surface) 90%, var(--bundle-uninstall-surface-muted) 10%);
-      backdrop-filter: blur(10px);
-      box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-uninstall-surface) 86%, white 14%);
-      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+      box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-uninstall-text) 10%, transparent);
+      transition: border-color 0.2s, box-shadow 0.2s;
 
       &:hover {
         border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 28%, var(--bundle-uninstall-border));
-        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-uninstall-primary) 10%, transparent);
-        transform: translateY(-2px);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--bundle-uninstall-primary) 8%, transparent);
       }
     }
   }
 
-  @media (max-width: 640px) {
-    :deep(.el-dialog__footer) {
-      display: flex;
-      gap: 0.5rem;
-      justify-content: flex-end;
-      flex-wrap: wrap;
+  @media (prefers-reduced-motion: reduce) {
+    .bundle-member-option,
+    .bundle-section-action {
+      transition: none;
     }
+  }
 
-    :deep(.el-radio-group) {
+  @media (max-width: 640px) {
+    .el-radio-group {
       grid-template-columns: 1fr;
     }
 
-    :deep(.el-radio-button__inner) {
+    .el-radio-button__inner {
       text-align: center;
     }
   }
