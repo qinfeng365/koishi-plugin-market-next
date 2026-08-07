@@ -1,5 +1,6 @@
 # Market Next
 
+![AI-Crap](https://img.shields.io/badge/💩-AI_crap_code-5C4033?style=flat-square)
 [![npm version](https://img.shields.io/npm/v/koishi-plugin-market-next?color=3178c6)](https://www.npmjs.com/package/koishi-plugin-market-next)
 [![CI](https://github.com/qinfeng365/koishi-plugin-market-next/actions/workflows/ci.yml/badge.svg)](https://github.com/qinfeng365/koishi-plugin-market-next/actions/workflows/ci.yml)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
