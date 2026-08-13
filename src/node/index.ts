@@ -13,6 +13,7 @@ import Installer, {
   InstallFallbackCandidate,
   InstallHistoryEntry,
   InstallLogDetail,
+  LocalBindingResult,
   InstallOptions,
   loadManifest,
 } from './installer'
@@ -126,6 +127,7 @@ declare module '@koishijs/console' {
     'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>
     'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>
     'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>
+    'market/prepare-local-binding'(name: string): Promise<LocalBindingResult>
     'market/environment-snapshots'(): Promise<EnvironmentSnapshotSummary[]>
     'market/environment-snapshot-preview'(id: string): Promise<EnvironmentSnapshotPreview | undefined>
     'market/environment-snapshot-apply'(id: string, options?: InstallOptions): Promise<number>
@@ -1393,7 +1395,7 @@ export function apply(ctx: Context, config: Config = {}) {
         const now = Date.now()
         const updates = Array.from(new Set(requested)).flatMap((name) => {
           const dep = deps[name]
-          if (!dep?.resolved || dep.workspace || dep.invalid) return []
+          if (!dep?.resolved || dep.local || dep.workspace || dep.invalid) return []
           const versions = Object.keys(ctx.installer.fullCache[name] ?? {})
           if (!versions.length && dep.latest) versions.push(dep.latest)
           const target = options.force
@@ -1493,6 +1495,10 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.console.addListener('market/install-history-detail', async (id) => {
       return ctx.installer.getInstallLogDetail(id)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/prepare-local-binding', async (name) => {
+      return ctx.installer.prepareLocalBinding(name)
     }, { authority: 4 })
 
     ctx.console.addListener('market/environment-snapshots', async () => {

@@ -39,7 +39,7 @@
 
   <!-- external -->
   <k-comment type="warning" v-if="local && !local.workspace && store.dependencies && !store.dependencies[name]">
-    <p>{{ t('extensions.messages.externalPrefix') }}<span class="k-link" @click="addDependency">{{ t('extensions.actions.add') }}</span>{{ t('extensions.messages.externalSuffix') }}</p>
+    <p>{{ t('extensions.messages.externalLocal') }}</p>
   </k-comment>
 
   <el-dialog v-model="showUninstallDialog" class="market-extension-uninstall-dialog" :title="t('operations.install.uninstall')" destroy-on-close>
@@ -67,7 +67,6 @@ import type {} from '@koishijs/plugin-config'
 import type { PluginBundleRecord } from '../../src/shared/bundle'
 import {
   createLocalBundleRecord,
-  ensureInstalledConfig,
   fetchBundleRecord,
   getConfigWriter,
   install,
@@ -125,18 +124,6 @@ const showDependencyUninstall = computed(() => {
   if (store.dependencies) return !!dep.value
   return !!local.value
 })
-
-async function addDependency() {
-  if (!local.value?.package.version) return
-  await install({ [name.value]: local.value.package.version }, async () => {
-    await ensureInstalledConfig(ctx, name.value, true)
-  }, undefined, {
-    loadingText: t('operations.progress.dependencyTitle'),
-    successText: t('operations.install.added'),
-    errorText: t('operations.install.addFailed'),
-    timeoutText: t('operations.install.addTimeout'),
-  })
-}
 
 function ensureOverride() {
   return getPendingOverrides()

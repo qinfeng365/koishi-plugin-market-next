@@ -2,7 +2,7 @@ import { Context, Dict, Schema } from 'koishi';
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry';
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps';
 import { MarketDataStore, MarketDataStorePayload } from './data';
-import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, InstallOptions } from './installer';
+import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, LocalBindingResult, InstallOptions } from './installer';
 import MarketProvider from './market';
 import type { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
 import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult, PluginBundleRecord } from '../shared/bundle';
@@ -30,6 +30,7 @@ declare module '@koishijs/console' {
         'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>;
         'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>;
         'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>;
+        'market/prepare-local-binding'(name: string): Promise<LocalBindingResult>;
         'market/environment-snapshots'(): Promise<EnvironmentSnapshotSummary[]>;
         'market/environment-snapshot-preview'(id: string): Promise<EnvironmentSnapshotPreview | undefined>;
         'market/environment-snapshot-apply'(id: string, options?: InstallOptions): Promise<number>;

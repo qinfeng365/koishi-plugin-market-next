@@ -2,13 +2,13 @@
   <el-dialog :model-value="!!active" @update:model-value="closePanel" :class="['install-panel', modeClass]" destroy-on-close>
     <template v-if="active" #header="{ titleId, titleClass }">
       <span :id="titleId" :class="titleClass">
-        {{ active + (workspace ? ` (${t('dependencyCard.current.workspace')})` : '') }}
+        {{ active + (localSelection ? ` (${t('dependencyCard.current.local')})` : '') }}
       </span>
       <el-select
         v-if="data"
         v-model="selectVersion"
         class="market-version-select"
-        :disabled="!!workspace"
+        :disabled="localSelection"
         :popper-class="versionPopperClass"
       >
         <el-option v-for="({ result }, version) in data" :key="version" :value="version">
@@ -22,7 +22,7 @@
     <k-comment class="danger" v-if="danger" type="danger">{{ danger }}</k-comment>
     <k-comment class="warning" v-if="warning" type="warning">{{ warning }}</k-comment>
 
-    <div v-if="!data && active && !workspace">
+    <div v-if="!data && active && !localSelection">
       <k-comment :type="registryStatus?.error ? 'danger' : 'info'">{{ registryStatusText }}</k-comment>
     </div>
 
@@ -94,9 +94,9 @@
       </div>
       <div class="right">
         <el-button v-if="local" type="primary" @click="configure()">{{ t('dependencyCard.actions.configure') }}</el-button>
-        <template v-if="workspace">
+        <template v-if="localSelection">
           <el-button v-if="showRemoveButton" @click="installDep('', true)" type="danger">{{ t('operations.install.remove') }}</el-button>
-          <el-button v-else @click="installDep(workspace)" type="success">{{ t('operations.install.add') }}</el-button>
+          <el-button v-else-if="workspace" @click="installDep(workspace)" type="success">{{ t('operations.install.add') }}</el-button>
         </template>
         <template v-else-if="data">
           <el-button v-if="showRemoveButton" @click="requestRemove()" type="danger">{{ t('operations.install.uninstall') }}</el-button>
@@ -141,6 +141,7 @@ import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getCon
 import { active, getBulkMode, getBundleRecords, getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
+import { isLocalDependency } from '../../src/shared/dependency-source'
 import BundleUninstall from './bundle-uninstall.vue'
 import { useMarketNextI18n } from '../i18n'
 import { getMarketObject } from '../market/state'
@@ -254,7 +255,7 @@ function setVersion(name: string, version: string) {
 }
 
 function shouldShowPeerVersionSelect(peer: PeerInfo, name: string) {
-  if (!store.registry?.[name] || getWorkspaceVersion(name)) return false
+  if (!store.registry?.[name] || isLocalPackageSelection(name)) return false
   if (name in getOverride()) return true
   return peer.result === 'danger'
 }
@@ -286,6 +287,15 @@ const showRemoveButton = computed(() => {
 })
 
 const workspace = computed(() => getWorkspaceVersion(active.value))
+const localSelection = computed(() => isLocalPackageSelection(active.value))
+
+function isLocalPackageSelection(name: string) {
+  if (!name) return false
+  const dependency = store.dependencies?.[name]
+  return isLocalDependency(dependency)
+    || !!getWorkspaceVersion(name)
+    || !dependency && !!store.packages?.[name]
+}
 
 function requestRemove() {
   const target = active.value
@@ -311,7 +321,7 @@ function getWorkspaceVersion(name: string) {
 }
 
 const data = computed(() => {
-  if (!active.value || workspace.value) return
+  if (!active.value || localSelection.value) return
   return analyzeVersions(active.value, getVersion)
 })
 
@@ -320,7 +330,7 @@ const registryStatus = computed(() => getRegistryStatus(active.value))
 const registryStatusText = computed(() => getRegistryStatusText(active.value))
 
 const danger = computed(() => {
-  if (workspace.value) return
+  if (localSelection.value) return
   const deprecated = store.registry?.[active.value]?.[version.value]?.deprecated
   if (deprecated) return t('operations.install.deprecated', { reason: deprecated })
   if (getMarketObject(active.value)?.insecure) {
@@ -329,7 +339,7 @@ const danger = computed(() => {
 })
 
 const warning = computed(() => {
-  if (!version.value || !current.value || workspace.value) return
+  if (!version.value || !current.value || localSelection.value) return
   try {
     const source = parse(current.value)
     const target = parse(version.value)
@@ -348,7 +358,9 @@ const result = computed(() => {
 })
 
 function shouldFetchRegistry(name: string) {
-  return !store.registry?.[name] && !getWorkspaceVersion(name) && !getRegistryStatus(name)?.loading
+  return !store.registry?.[name]
+    && !isLocalPackageSelection(name)
+    && !getRegistryStatus(name)?.loading
 }
 
 watch(() => data.value?.[version.value]?.peers, async (peers) => {

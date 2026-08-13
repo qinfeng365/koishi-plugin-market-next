@@ -1,6 +1,7 @@
 import { defineComponent, h, isReactive, markRaw, ref, toRaw, watch } from 'vue'
 import { Context, Dict, global, message, receive, router, send, store, useConfig } from '@koishijs/client'
 import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
+import type { DependencySource } from '../src/shared/dependency-source'
 import { getPendingOverrides, patchMarketNextData, type IgnoredUpdates } from './utils'
 import { registerMarketNextI18n, translate } from './i18n'
 import { showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
@@ -33,6 +34,16 @@ declare module '@koishijs/client' {
       bundleRecords?: Dict<PluginBundleRecord>
       collapsedGroups?: Dict<boolean>
     }
+    dependencies?: Dict<{
+      request: string
+      resolved?: string
+      workspace?: boolean
+      source?: DependencySource
+      local?: boolean
+      bound?: boolean
+      invalid?: boolean
+      latest?: string
+    }>
   }
 }
 
@@ -387,9 +398,7 @@ export default (ctx: Context) => {
       if (!value) return
       const overrides = getPendingOverrides()
       for (const key in overrides) {
-        if (value[key]?.workspace) {
-          delete overrides[key]
-        } else if (!overrides[key] && !value[key]) {
+        if (!overrides[key] && !value[key]) {
           // package to be removed has been removed
           delete overrides[key]
         } else if (value[key]?.request === overrides[key]) {

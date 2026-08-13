@@ -1,6 +1,6 @@
 import { Context, Dict, HTTP, Schema, Service } from 'koishi';
 import { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry';
-import type { RegistryStatus } from '../shared';
+import { type DependencySource, type RegistryStatus } from '../shared';
 import { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
 export interface InstallOptions {
     installEndpoint?: string;
@@ -30,6 +30,11 @@ export interface InstallHistoryEntry {
     size: number;
     changes: InstallHistoryChange[];
 }
+export interface LocalBindingResult {
+    request: string;
+    filename: string;
+    size: number;
+}
 export interface InstallLogDetail extends InstallHistoryEntry {
     content: string;
     truncated: boolean;
@@ -47,6 +52,12 @@ export interface Dependency {
     resolved?: string;
     /** whether it is a workspace package */
     workspace?: boolean;
+    /** dependency origin used to decide whether npm may manage it */
+    source?: DependencySource;
+    /** whether this dependency is supplied by a local source */
+    local?: boolean;
+    /** whether package.json contains a reproducible local source */
+    bound?: boolean;
     /** valid (unsupported) syntax */
     invalid?: boolean;
     /** latest version */
@@ -63,7 +74,7 @@ export interface LocalPackage extends PackageJson {
     private?: boolean;
     $workspace?: boolean;
 }
-export declare function loadManifest(name: string): LocalPackage;
+export declare function loadManifest(name: string, baseDir?: string): LocalPackage;
 declare class Installer extends Service {
     ctx: Context;
     config: Installer.Config;
@@ -139,6 +150,7 @@ declare class Installer extends Service {
     private _getPackage;
     setPackage(name: string, versions: RemotePackage[]): void;
     getPackage(name: string): Promise<any>;
+    private markRegistryNotFoundDependency;
     private getLocalDepsSnapshot;
     private _refreshDependencyMetadata;
     refreshDependencyMetadata(wait?: boolean): Promise<Dict<Dependency>>;
@@ -170,12 +182,14 @@ declare class Installer extends Service {
     private restorePackageManifest;
     private _install;
     private _getLocalDeps;
+    private requiresPackageManager;
     private captureCurrentEnvironmentSnapshot;
     private recordCurrentEnvironmentSnapshot;
     private _installLocked;
     private withInstallLock;
     private queueInstall;
     install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options?: InstallOptions): Promise<number>;
+    prepareLocalBinding(name: string): Promise<LocalBindingResult>;
     applyEnvironmentSnapshot(id: string, options?: InstallOptions): Promise<number>;
     isSelfUpdate(deps: Dict<string>): boolean;
 }

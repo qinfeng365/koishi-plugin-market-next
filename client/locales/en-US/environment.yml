@@ -41,4 +41,5 @@ change:
   unchanged: Unchanged
   unsupported: Unsupported
 reason:
+  local: Dependencies supplied by local sources cannot be restored automatically.
   workspace: Workspace dependencies are determined by local source and cannot be restored automatically.

@@ -1,8 +1,12 @@
 import type { Dict } from 'koishi';
+import { type DependencySource } from '../shared/dependency-source';
 export interface EnvironmentDependencySnapshot {
     request: string;
     resolved?: string;
     workspace?: boolean;
+    source?: DependencySource;
+    local?: boolean;
+    bound?: boolean;
     invalid?: boolean;
 }
 export type EnvironmentSnapshotSource = 'startup' | 'operation' | 'external';
@@ -31,7 +35,7 @@ export interface EnvironmentSnapshotChange {
     targetRequest?: string;
     targetVersion?: string;
     status: EnvironmentChangeStatus;
-    reason?: 'workspace';
+    reason?: 'local';
 }
 export interface EnvironmentSnapshotPreview {
     snapshot: EnvironmentSnapshotSummary;

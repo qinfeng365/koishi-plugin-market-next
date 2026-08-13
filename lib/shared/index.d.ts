@@ -2,6 +2,7 @@ import { Context, Dict } from 'koishi';
 import { DataService } from '@koishijs/console';
 import { SearchObject, SearchResult } from '@koishijs/registry';
 export * from './bundle';
+export * from './dependency-source';
 export * from './update';
 export interface RegistryStatus {
     loading?: boolean;
