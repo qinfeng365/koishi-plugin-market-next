@@ -20,7 +20,7 @@ filters:
   checkDisabled: 不检测
   invalid: 不支持
   error: 版本异常
-  workspace: 工作区
+  local: 本地插件
   manual: 手动添加
 groups:
   pending:
@@ -47,9 +47,9 @@ groups:
   error:
     label: 版本异常
     description: npm 元数据暂时不可用，可能是网络、超时或镜像未同步。
-  workspace:
-    label: 工作区
-    description: 来自当前工作区的本地依赖，不参与远端版本更新。
+  local:
+    label: 本地插件
+    description: 来自工作区、本地目录、本地压缩包或手动加载的插件，不参与远端版本更新。
   manual:
     label: 手动添加
     description: 已加入待安装列表，但当前尚未安装到本地。

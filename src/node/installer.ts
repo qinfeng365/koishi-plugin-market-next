@@ -1,7 +1,9 @@
 import { Context, defineProperty, Dict, HTTP, Logger, pick, Schema, Service, Time, valueMap } from 'koishi'
 import Scanner, { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry'
-import { basename, resolve } from 'path'
+import { basename, dirname, relative, resolve } from 'path'
 import { promises as fsp, readFileSync } from 'fs'
+import { createHash } from 'crypto'
+import { createRequire } from 'module'
 import { compare, satisfies, valid } from 'semver'
 import {} from '@koishijs/console'
 import {} from '@koishijs/loader'
@@ -9,8 +11,36 @@ import getRegistry from 'get-registry'
 import which from 'which-pm-runs'
 import spawn from 'execa'
 import pMap from 'p-map'
-import type { RegistryStatus } from '../shared'
+import {
+  allRegistryAttemptsNotFound,
+  classifyDependencySource,
+  classifyRegistryNotFoundDependency,
+  findDependenciesNeedingSourceCheck,
+  findUnboundLocalDependencies,
+  getRegistryAttemptReasons,
+  reuseConfirmedDependencySource,
+  shouldPenalizeRegistryRoute,
+  type DependencySource,
+  type RegistryStatus,
+} from '../shared'
 import {} from '.'
+import {
+  createHashedLocalBindingFilename,
+  createLocalBindingRequest,
+  MAX_LOCAL_BINDING_PACK_SIZE,
+  parseNpmPackOutput,
+} from './local-binding'
+import {
+  getLocalPackageOperation,
+  LocalPackageUploadStore,
+  type LocalPackageUploadChunkRequest,
+  type LocalPackageUploadCommitResult,
+  type LocalPackageUploadFinishRequest,
+  type LocalPackageUploadPreview,
+  type LocalPackageUploadProgress,
+  type LocalPackageUploadStartRequest,
+  type LocalPackageUploadStartResult,
+} from './local-upload'
 import {
   createEnvironmentSnapshot,
   EnvironmentSnapshot,
@@ -124,6 +154,12 @@ export interface InstallHistoryEntry {
   changes: InstallHistoryChange[]
 }
 
+export interface LocalBindingResult {
+  request: string
+  filename: string
+  size: number
+}
+
 export interface InstallLogDetail extends InstallHistoryEntry {
   content: string
   truncated: boolean
@@ -154,6 +190,12 @@ export interface Dependency {
   resolved?: string
   /** whether it is a workspace package */
   workspace?: boolean
+  /** dependency origin used to decide whether npm may manage it */
+  source?: DependencySource
+  /** whether this dependency is supplied by a local source */
+  local?: boolean
+  /** whether package.json contains a reproducible local source */
+  bound?: boolean
   /** valid (unsupported) syntax */
   invalid?: boolean
   /** latest version */
@@ -179,12 +221,18 @@ export interface LocalPackage extends PackageJson {
   $workspace?: boolean
 }
 
-export function loadManifest(name: string) {
-  const filename = require.resolve(name + '/package.json')
+export function loadManifest(name: string, baseDir?: string) {
+  const resolver = baseDir ? createRequire(resolve(baseDir, 'package.json')) : require
+  const filename = resolver.resolve(name + '/package.json')
   const meta: LocalPackage = JSON.parse(readFileSync(filename, 'utf8'))
   meta.dependencies ||= {}
   defineProperty(meta, '$workspace', !filename.includes('node_modules'))
   return meta
+}
+
+function resolvePackageManifest(name: string, baseDir: string) {
+  const resolver = createRequire(resolve(baseDir, 'package.json'))
+  return resolver.resolve(name + '/package.json')
 }
 
 function getVersions(versions: RemotePackage[]) {
@@ -232,6 +280,7 @@ class Installer extends Service {
   private installLogWriteTask = Promise.resolve()
   private installLogCleanupTask?: Promise<void>
   private environmentSnapshots: EnvironmentSnapshotStore
+  private localPackageUploads: LocalPackageUploadStore
   private serial = 0
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
@@ -242,9 +291,14 @@ class Installer extends Service {
       resolve(ctx.baseDir, 'data', 'market-next-environment-snapshots.json'),
       message => logger.warn(message),
     )
+    this.localPackageUploads = new LocalPackageUploadStore(ctx.baseDir, message => logger.warn(message))
+    ctx.setInterval(() => {
+      void this.localPackageUploads.pruneExpired()
+    }, Time.minute * 5)
     ctx.effect(() => () => {
       clearTimeout(this.statsWriteTimer)
       this.abortPendingRequests('installer disposed')
+      void this.localPackageUploads.dispose()
     })
     this.flushData = ctx.throttle(() => {
       ctx.get('console')?.broadcast('market/registry', this.tempCache)
@@ -435,7 +489,9 @@ class Installer extends Service {
         .then(r => { this.recordRegistryRouteSuccess(r); return r })
         .catch(e => {
           if (!this.isStale(serial) && !this.isInternalAbort(e)) {
-            this.recordRegistryRouteFailure(endpoints[0], this.formatRegistryError(e).reason)
+            const reason = this.formatRegistryError(e).reason
+            if (shouldPenalizeRegistryRoute(reason)) this.recordRegistryRouteFailure(endpoints[0], reason)
+            attachRegistryAttemptReasons(e, [reason])
           }
           throw e
         })
@@ -443,6 +499,7 @@ class Installer extends Service {
     }
     return new Promise<RegistryEndpointResult>((resolve, reject) => {
       let settled = false, failed = 0, lastError: any, fallbackStarted = false
+      const failureReasons: RegistryStatus['reason'][] = []
       let fallbackReason: RegistryEndpointResult['fallbackReason']
       const controllers = endpoints.map(() => this.trackController(new AbortController()))
       const timer = setTimeout(() => startFallback('primary-slow'), fallbackDelay)
@@ -470,12 +527,15 @@ class Installer extends Service {
           reject(error)
           return
         }
-        this.recordRegistryRouteFailure(endpoint, this.formatRegistryError(error).reason)
+        const reason = this.formatRegistryError(error).reason
+        failureReasons.push(reason)
+        if (shouldPenalizeRegistryRoute(reason)) this.recordRegistryRouteFailure(endpoint, reason)
         lastError = error
         if (index === 0) startFallback('primary-failed')
         if (++failed < endpoints.length) return
         settled = true
         finish()
+        attachRegistryAttemptReasons(lastError, failureReasons)
         reject(lastError)
       }
       const startEndpoint = (endpoint: string, index: number, waitIndex = 0) => {
@@ -713,6 +773,7 @@ class Installer extends Service {
     let attempts = 0
     let lastError: any
     let lastEndpoint = this.metadataEndpoint || this.endpoint
+    const failureReasons: RegistryStatus['reason'][] = []
     this.setRegistryStatus(name, {
       loading: true,
       error: undefined,
@@ -768,26 +829,47 @@ class Installer extends Service {
       } catch (error) {
         lastError = error
         const detail = this.formatRegistryError(error)
+        failureReasons.push(...getRegistryAttemptReasons(error, detail.reason) as RegistryStatus['reason'][])
         logger.debug(`failed routed registry metadata for ${name}, attempt=${retry + 1}/${maxRetry + 1}, endpoint=${lastEndpoint}, attempts=${attempts}: ${detail.error}`)
-        if (detail.reason === 'not-found') break
         if (retry < maxRetry) await sleep(300 * (retry + 1))
       }
     }
 
     const detail = this.formatRegistryError(lastError)
+    const finalDetail = allRegistryAttemptsNotFound(failureReasons)
+      ? detail
+      : failureReasons.some(reason => reason !== 'not-found')
+        ? { reason: failureReasons.find(reason => reason !== 'not-found')!, error: detail.error }
+        : detail
     this.setRegistryStatus(name, {
       loading: false,
-      reason: detail.reason,
-      error: detail.error,
+      reason: finalDetail.reason,
+      error: finalDetail.error,
       endpoint: lastEndpoint,
       attempts,
       elapsed: Date.now() - start,
     }, serial)
     logger.warn(`failed to fetch registry metadata for ${name}: ${detail.error}`)
-    throw lastError ?? new Error(detail.error)
+    if (lastError && typeof lastError === 'object') {
+      Object.defineProperty(lastError, 'marketNextReason', {
+        value: finalDetail.reason,
+        configurable: true,
+      })
+      Object.defineProperty(lastError, 'marketNextReasons', {
+        value: failureReasons,
+        configurable: true,
+      })
+    }
+    throw lastError ?? Object.assign(new Error(finalDetail.error), { marketNextReason: finalDetail.reason })
   }
 
   private formatRegistryError(error: any): Required<Pick<RegistryStatus, 'reason' | 'error'>> {
+    if (error?.marketNextReason) {
+      return {
+        reason: error.marketNextReason,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
     const message = error instanceof Error ? error.message : String(error)
     if (this.ctx.http.isError(error)) {
       const status = (error as any).response?.status
@@ -834,6 +916,7 @@ class Installer extends Service {
     if (notFoundAt && Date.now() - notFoundAt < NOT_FOUND_CACHE_TTL) {
       return Promise.resolve(undefined)
     }
+    if (notFoundAt) delete this.notFoundCache[name]
     if (!this.pkgTasks[name]) {
       const task = this._getPackage(name, this.serial)
       this.pkgTasks[name] = task
@@ -850,6 +933,16 @@ class Installer extends Service {
     return this.pkgTasks[name]
   }
 
+  private markRegistryNotFoundDependency(name: string, dependency = this.depCache[name]) {
+    const source = classifyRegistryNotFoundDependency(dependency, Scanner.isPlugin(name))
+    if (!source || !dependency) return false
+    Object.assign(dependency, source)
+    dependency.invalid = false
+    delete dependency.latest
+    logger.info(`dependency classified as unbound local plugin: ${name}@${dependency.resolved}`)
+    return true
+  }
+
   private getLocalDepsSnapshot() {
     const start = Date.now()
     const result = valueMap(this.manifest.dependencies, (request) => {
@@ -858,7 +951,7 @@ class Installer extends Service {
     const names = Object.keys(result)
     for (const name of names) {
       try {
-        const meta = loadManifest(name)
+        const meta = loadManifest(name, this.cwd)
         result[name].resolved = meta.version
         result[name].workspace = meta.$workspace
         logger.debug(`local dependency resolved: ${name}@${meta.version}, workspace=${!!meta.$workspace}, request=${result[name].request}`)
@@ -866,12 +959,25 @@ class Installer extends Service {
         logger.debug(`local dependency not found before metadata fetch: ${name}, request=${result[name].request}`)
       }
 
-      if (!valid(result[name].request)) {
+      const source = classifyDependencySource(result[name].request, {
+        workspace: result[name].workspace,
+        installed: !!result[name].resolved,
+      })
+      Object.assign(result[name], source)
+
+      if (!result[name].local && !valid(result[name].request)) {
         result[name].invalid = true
         logger.debug(`dependency request is not exact semver: ${name}, request=${result[name].request}`)
       }
 
       const previous = this.depCache?.[name]
+      const notFoundAt = this.notFoundCache[name]
+      const preserved = reuseConfirmedDependencySource(
+        previous,
+        result[name],
+        !!notFoundAt && Date.now() - notFoundAt < NOT_FOUND_CACHE_TTL,
+      )
+      if (preserved) Object.assign(result[name], preserved)
       if (previous?.latest && previous.request === result[name].request && previous.resolved === result[name].resolved) {
         result[name].latest = previous.latest
       }
@@ -885,20 +991,32 @@ class Installer extends Service {
   private async _refreshDependencyMetadata(result = this.depCache, serial = this.serial) {
     const start = Date.now()
     const names = Object.keys(result)
-    const targets = names.filter((name) => !result[name].workspace && !result[name].invalid)
+    const targets = names.filter((name) => !result[name].local && !result[name].invalid)
     logger.debug(`refresh dependency metadata started: total=${names.length}, targets=${targets.length}, concurrency=${this.config.concurrency ?? 4}, registry=${this.endpoint}, autoRoute=${this.config.autoRoute !== false}`)
     const probeName = pickMetadataProbe(targets)
     if (probeName) await this.ensureMetadataEndpoint(probeName, this.serial)
     logger.debug(`refresh dependency metadata route ready: probe=${probeName ?? '-'}, selected=${this.metadataEndpoint}, configured=${this.endpoint}, probed=${!!this.routeProbeResult}`)
     await pMap(targets, async (name) => {
       if (this.isStale(serial)) return
-      const versions = await this.getPackage(name)
-      if (this.isStale(serial)) return
-      if (versions) {
-        result[name].latest = Object.keys(versions)[0]
-        logger.debug(`dependency latest resolved: ${name}, resolved=${result[name].resolved ?? '-'}, latest=${result[name].latest}, versions=${Object.keys(versions).length}`)
-      } else {
-        logger.debug(`dependency latest unresolved: ${name}, resolved=${result[name].resolved ?? '-'}, request=${result[name].request}`)
+      try {
+        const versions = await this.getPackage(name)
+        if (this.isStale(serial)) return
+        if (versions) {
+          result[name].latest = Object.keys(versions)[0]
+          logger.debug(`dependency latest resolved: ${name}, resolved=${result[name].resolved ?? '-'}, latest=${result[name].latest}, versions=${Object.keys(versions).length}`)
+        } else if (!versions && this.notFoundCache[name] && this.markRegistryNotFoundDependency(name, result[name])) {
+          logger.debug(`dependency npm not-found result reused from cache: ${name}`)
+        } else {
+          logger.debug(`dependency latest unresolved: ${name}, resolved=${result[name].resolved ?? '-'}, request=${result[name].request}`)
+        }
+      } catch (error) {
+        if (this.isStale(serial)) return
+        const detail = this.formatRegistryError(error)
+        if (detail.reason === 'not-found' && this.markRegistryNotFoundDependency(name, result[name])) {
+          // A definitive all-route 404 identifies an installed, registry-shaped plugin as local.
+        } else {
+          logger.debug(`dependency metadata refresh skipped after error: ${name}, reason=${detail.reason}, error=${detail.error}`)
+        }
       }
     }, { concurrency: this.config.concurrency ?? 4 })
     logger.info(`dependency metadata refresh completed: total=${names.length}, targets=${targets.length}, registry=${this.metadataEndpoint}, elapsed=${Date.now() - start}ms`)
@@ -1449,12 +1567,38 @@ class Installer extends Service {
     return valueMap(override, (request, name) => {
       const dep = { request } as Dependency
       try {
-        const meta = loadManifest(name)
+        const meta = loadManifest(name, this.cwd)
         dep.resolved = meta.version
         dep.workspace = meta.$workspace
       } catch {}
+      Object.assign(dep, classifyDependencySource(request, {
+        workspace: dep.workspace,
+        installed: !!dep.resolved,
+      }))
       return dep
     })
+  }
+
+  private requiresPackageManager(deps: Dict<string>, localDeps: Dict<Dependency>, forced?: boolean) {
+    if (forced) return true
+    for (const name in deps) {
+      const nextRequest = deps[name]
+      const currentRequest = this.manifest.dependencies?.[name]
+      const currentSource = classifyDependencySource(currentRequest ?? '', {
+        workspace: this.depCache[name]?.workspace,
+        installed: !!this.depCache[name]?.resolved,
+      })
+      const nextSource = classifyDependencySource(nextRequest ?? '', {
+        workspace: localDeps[name]?.workspace,
+        installed: !!localDeps[name]?.resolved,
+      })
+      if (!nextRequest) return true
+      if (currentRequest !== nextRequest && (currentSource.local || nextSource.local)) return true
+      const { resolved, local } = localDeps[name] || {}
+      if (local || resolved && satisfies(resolved, nextRequest, { includePrerelease: true })) continue
+      return true
+    }
+    return false
   }
 
   private async captureCurrentEnvironmentSnapshot(source: EnvironmentSnapshotSource, operationId?: string): Promise<EnvironmentSnapshot> {
@@ -1467,7 +1611,10 @@ class Installer extends Service {
         request,
         resolved: local[name]?.resolved,
         workspace: local[name]?.workspace,
-        invalid: !valid(normalizedRequest),
+        source: local[name]?.source,
+        local: local[name]?.local,
+        bound: local[name]?.bound,
+        invalid: !local[name]?.local && !valid(normalizedRequest),
       }
     }
     return createEnvironmentSnapshot(dependencies, source, operationId)
@@ -1512,18 +1659,60 @@ class Installer extends Service {
       if (snapshotError) throw snapshotError
       if (!snapshot) throw new Error('failed to snapshot package.json before dependency operation')
       logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
+      const needsPackageManager = this.requiresPackageManager(deps, localDeps, forced)
+
+      if (needsPackageManager) {
+        let sourceStateChanged = false
+        // A fresh 404 cache avoids another network request in getPackage(), but it
+        // still has to pass through markRegistryNotFoundDependency() before the
+        // package-manager operation can be considered safe.
+        const completedSourceChecks = Object.keys(this.fullCache)
+        const unresolved = findDependenciesNeedingSourceCheck(this.depCache, deps, completedSourceChecks)
+        if (unresolved.length) {
+          logger.info(`resolve possible local plugin sources before package manager: ${unresolved.join(', ')}`)
+          const unresolvedErrors = await Promise.all(unresolved.map(async (name) => {
+            try {
+              const versions = await this.getPackage(name)
+              if (versions) return
+              if (this.notFoundCache[name]) {
+                sourceStateChanged = this.markRegistryNotFoundDependency(name) || sourceStateChanged
+                return
+              }
+              return {
+                name,
+                error: Object.assign(new Error('npm metadata check completed without a result'), {
+                  marketNextReason: 'unknown',
+                }),
+              }
+            } catch (error) {
+              if (this.formatRegistryError(error).reason === 'not-found') {
+                sourceStateChanged = this.markRegistryNotFoundDependency(name) || sourceStateChanged
+                return
+              }
+              return { name, error }
+            }
+          }))
+          const uncertain = unresolvedErrors.filter((item): item is { name: string, error: unknown } => {
+            if (!item) return false
+            return this.formatRegistryError(item.error).reason !== 'not-found'
+          })
+          if (sourceStateChanged) {
+            await this.ctx.get('console')?.refresh('dependencies')
+          }
+          if (uncertain.length) {
+            throw new Error(`暂时无法确认以下已安装插件是否来自 npm：${uncertain.map(item => item.name).join(', ')}。为避免包管理器误下载本地插件，本次操作已取消；请检查 npm 网络后重试。`)
+          }
+        }
+        const blockers = findUnboundLocalDependencies(this.depCache, deps)
+        if (blockers.length) {
+          throw new Error(`检测到来源未绑定的本地插件，继续安装会让包管理器尝试从 npm 下载它们：${blockers.join(', ')}。请先在“本地插件”分组中绑定来源或移除这些依赖。`)
+        }
+      }
+
       await this.override(deps)
       this.emitInstallLog('stdout', 'package.json dependencies updated, preparing package manager workflow…')
 
-      for (const name in deps) {
-        const { resolved, workspace } = localDeps[name] || {}
-        if (workspace || deps[name] && resolved && satisfies(resolved, deps[name], { includePrerelease: true })) continue
-        forced = true
-        logger.debug(`dependency install requires package manager: name=${name}, requested=${deps[name] || '(remove)'}, resolved=${resolved ?? '-'}, workspace=${!!workspace}`)
-        break
-      }
-
-      if (forced) {
+      if (needsPackageManager) {
         this.emitInstallLog('stdout', 'running package manager install…')
         const code = await this._install(options)
         if (code) {
@@ -1539,9 +1728,14 @@ class Installer extends Service {
       const newDeps = await this.getDeps()
       let shouldReload = false
       for (const name in localDeps) {
-        const { resolved, workspace } = localDeps[name]
-        if (workspace || !newDeps[name]) continue
-        if (newDeps[name].resolved === resolved) continue
+        const { resolved } = localDeps[name]
+        if (!newDeps[name]) continue
+        const requestChanged = snapshot.dependencies[name] !== deps[name]
+        const localRequestChanged = requestChanged && classifyDependencySource(deps[name] ?? '', {
+          workspace: newDeps[name].workspace,
+          installed: !!newDeps[name].resolved,
+        }).local
+        if (newDeps[name].resolved === resolved && !localRequestChanged) continue
         try {
           if (!(require.resolve(name) in require.cache)) continue
         } catch (error) {
@@ -1560,7 +1754,7 @@ class Installer extends Service {
       await this.recordCurrentEnvironmentSnapshot('operation', this.installLogMetadata?.id).catch((error) => {
         logger.warn(`failed to record dependency environment snapshot: ${error instanceof Error ? error.message : error}`)
       })
-      logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!forced}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
+      logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!needsPackageManager}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
       if (shouldReload) {
         this.emitInstallLog('stdout', `full reload scheduled in ${FULL_RELOAD_DELAY}ms`)
         logger.info(`dependency install triggers full reload after ${FULL_RELOAD_DELAY}ms`)
@@ -1614,6 +1808,143 @@ class Installer extends Service {
     return this.queueInstall(deps, forced, beforeReload, options)
   }
 
+  startLocalPackageUpload(request: LocalPackageUploadStartRequest): Promise<LocalPackageUploadStartResult> {
+    return this.localPackageUploads.start(request)
+  }
+
+  appendLocalPackageUpload(request: LocalPackageUploadChunkRequest): Promise<LocalPackageUploadProgress> {
+    return this.localPackageUploads.append(request)
+  }
+
+  async finishLocalPackageUpload(request: LocalPackageUploadFinishRequest): Promise<LocalPackageUploadPreview> {
+    const result = await this.localPackageUploads.finish(request)
+    const snapshot = await this.snapshotPackageManifest()
+    const currentRequest = snapshot.dependencies[result.manifest.name]
+    const currentVersion = this.depCache[result.manifest.name]?.resolved
+    const scripts = Object.keys(result.manifest.scripts ?? {})
+      .filter(name => ['preinstall', 'install', 'postinstall', 'prepare'].includes(name))
+    return {
+      uploadId: result.uploadId,
+      filename: result.filename,
+      name: result.manifest.name,
+      version: result.manifest.version,
+      description: typeof result.manifest.description === 'string' ? result.manifest.description : undefined,
+      size: result.size,
+      hash: result.hash,
+      scripts,
+      currentRequest,
+      currentVersion,
+      operation: getLocalPackageOperation(currentRequest, currentVersion, result.manifest.version),
+    }
+  }
+
+  commitLocalPackageUpload(uploadId: string): Promise<LocalPackageUploadCommitResult> {
+    return this.localPackageUploads.commit(uploadId)
+  }
+
+  cancelLocalPackageUpload(uploadId: string) {
+    return this.localPackageUploads.cancel(uploadId)
+  }
+
+  async prepareLocalBinding(name: string): Promise<LocalBindingResult> {
+    const packageSnapshot = await this.snapshotPackageManifest()
+    if (!Scanner.isPlugin(name) || !Object.prototype.hasOwnProperty.call(packageSnapshot.dependencies, name)) {
+      throw new Error('只能绑定当前 package.json 中的 Koishi 插件依赖。')
+    }
+    const dependency = this.depCache[name]
+    if (!dependency?.resolved || dependency.source !== 'unbound') {
+      throw new Error('该插件不是来源未绑定的本地插件。')
+    }
+    const currentRequest = packageSnapshot.dependencies[name].replace(/^[~^]/, '')
+    if (dependency.request !== currentRequest) {
+      throw new Error('package.json 已发生变化，请刷新依赖后重试。')
+    }
+
+    let manifestFile: string
+    try {
+      manifestFile = resolvePackageManifest(name, this.cwd)
+    } catch {
+      throw new Error('无法定位本地插件目录；请确认插件仍可被当前 Koishi 实例加载。')
+    }
+    const sourceDir = dirname(manifestFile)
+    const manifest = JSON.parse(await fsp.readFile(manifestFile, 'utf8')) as PackageJson
+    if (manifest.name !== name || manifest.version !== dependency.resolved) {
+      throw new Error('本地插件清单与当前依赖状态不一致，请刷新依赖后重试。')
+    }
+
+    const destination = resolve(this.cwd, '.yarn', 'local')
+    await fsp.mkdir(destination, { recursive: true })
+    const temporary = await fsp.mkdtemp(resolve(destination, '.market-next-pack-'))
+    try {
+      const child = await spawn('npm', [
+        'pack', sourceDir,
+        '--ignore-scripts',
+        '--json',
+        '--pack-destination', temporary,
+      ], {
+        cwd: this.cwd,
+        timeout: Math.max(Time.minute, this.config.timeout ?? 0),
+      })
+      const pack = parseNpmPackOutput(child.stdout)
+      if (pack.name && pack.name !== name || pack.version && pack.version !== dependency.resolved) {
+        throw new Error('本地插件打包结果与当前依赖不一致。')
+      }
+      const packedFile = resolve(temporary, pack.filename)
+      if (dirname(packedFile) !== temporary || relative(temporary, packedFile).startsWith('..')) {
+        throw new Error('本地插件打包路径无效。')
+      }
+      const stat = await fsp.stat(packedFile)
+      if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_LOCAL_BINDING_PACK_SIZE || stat.size !== pack.size) {
+        throw new Error('本地插件打包文件无效或过大。')
+      }
+      const content = await fsp.readFile(packedFile)
+      const hash = createHash('sha256').update(content).digest('hex')
+      const filename = createHashedLocalBindingFilename(pack.filename, hash.slice(0, 12))
+      const target = resolve(destination, filename)
+      if (dirname(target) !== destination || relative(destination, target).startsWith('..')) {
+        throw new Error('本地插件目标路径无效。')
+      }
+
+      const validateExistingTarget = async () => {
+        let targetStat
+        try {
+          targetStat = await fsp.stat(target)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+          throw error
+        }
+        if (!targetStat.isFile() || targetStat.size !== stat.size) {
+          throw new Error('同名本地插件归档已存在，但文件状态不一致。')
+        }
+        const targetHash = createHash('sha256').update(await fsp.readFile(target)).digest('hex')
+        if (targetHash !== hash) {
+          throw new Error('同名本地插件归档已存在，但文件内容不一致。')
+        }
+        return true
+      }
+
+      if (!await validateExistingTarget()) {
+        try {
+          // The npm output already lives on the destination volume, so rename publishes it atomically.
+          await fsp.rename(packedFile, target)
+        } catch (error) {
+          // A concurrent binding may have published the same content first.
+          if (!await validateExistingTarget()) throw error
+        }
+      }
+      logger.info(`local plugin source prepared: ${name}@${dependency.resolved}, file=${filename}, size=${pack.size}`)
+      return {
+        request: createLocalBindingRequest(filename),
+        filename,
+        size: pack.size,
+      }
+    } finally {
+      await fsp.rm(temporary, { recursive: true, force: true }).catch((error) => {
+        logger.debug(`failed to remove local binding temp directory ${temporary}: ${error instanceof Error ? error.message : error}`)
+      })
+    }
+  }
+
   async applyEnvironmentSnapshot(id: string, options: InstallOptions = {}) {
     options ||= {}
     return this.withInstallLock(`environmentSnapshot=${id}`, async () => {
@@ -1623,7 +1954,7 @@ class Installer extends Service {
       const diff = getEnvironmentDiff(current, target)
       const unsupported = diff.filter(change => change.status === 'unsupported')
       if (unsupported.length) {
-        throw new Error(`目标环境包含无法自动恢复的工作区依赖：${unsupported.map(change => change.name).join(', ')}`)
+        throw new Error(`目标环境包含无法自动恢复的本地依赖：${unsupported.map(change => change.name).join(', ')}`)
       }
       const changes = getEnvironmentInstallChanges(diff, target)
       if (!Object.keys(changes).length) {
@@ -1671,6 +2002,14 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function attachRegistryAttemptReasons(error: unknown, reasons: RegistryStatus['reason'][]) {
+  if (!error || typeof error !== 'object') return
+  Object.defineProperty(error, 'marketNextReasons', {
+    value: [...reasons],
+    configurable: true,
+  })
+}
+
 function formatDeps(deps: Dict<string>) {
   const entries = Object.entries(deps)
   if (!entries.length) return '(none)'
@@ -1708,7 +2047,7 @@ function sanitizeInstallLogText(value: string) {
 function formatLocalDeps(deps: Dict<Dependency>) {
   const entries = Object.entries(deps)
   if (!entries.length) return '(none)'
-  return entries.map(([name, dep]) => `${name}{request=${dep.request || '-'},resolved=${dep.resolved ?? '-'},workspace=${!!dep.workspace}}`).join(', ')
+  return entries.map(([name, dep]) => `${name}{request=${dep.request || '-'},resolved=${dep.resolved ?? '-'},source=${dep.source ?? '-'},local=${!!dep.local}}`).join(', ')
 }
 
 function pickMetadataProbe(names: string[]) {

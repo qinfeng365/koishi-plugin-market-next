@@ -2,7 +2,7 @@ status:
   pendingRemove: Pending removal
   pendingApply: Pending change
   pendingInstall: Pending install
-  workspace: Workspace
+  local: Local plugin
   unsupported: Unsupported
   bundle: Plugin bundle
   unconfigured: Not configured
@@ -14,11 +14,12 @@ status:
   installed: Installed
 current:
   notInstalled: Not installed
+  local: Local
   workspace: Workspace
   installError: Installation error
 target:
   remove: Remove dependency
-  keepWorkspace: Keep workspace
+  keepLocal: Keep local source
   loading: Loading
   waitingData: Waiting for version data
   waitingInstall: Waiting for installation
@@ -32,14 +33,17 @@ detail:
   pendingRemove: This dependency will be removed from package.json after the changes are applied.
   pendingApply: A version change is staged for this dependency and will take effect after applying.
   pendingInstall: This dependency is staged for installation and will be installed locally after applying.
-  workspace: This local workspace dependency does not participate in npm registry updates.
+  local: This plugin uses a bound local source and does not participate in npm registry updates.
+  localDiscovered: Koishi discovered this plugin locally, but it is not a remote dependency in the current package.json and does not participate in npm registry updates.
+  localUnbound: This plugin is loaded locally, but package.json only records a version. Bind its local source first or a later dependency install may try to download it from npm.
   unsupported: This version range cannot be managed automatically. Edit package.json manually.
   bundle: The bundle itself does not need a config entry; member configs are managed by the bundle group.
   unconfigured: Downloaded locally, but no matching plugin config exists yet.
   checkDisabled: Update checks are disabled for this dependency. Click “Restore prompt” to enable them again.
   ignored: The current update is ignored.
   foundUpdate: New version {version} is available.
-  workspaceShort: Workspace dependency
+  localShort: Local source
+  localUnboundShort: Source not bound
   unsupportedShort: Unsupported
   fetching: Fetching version data
   noData: No version data
@@ -55,6 +59,13 @@ source:
   bundle: 'Plugin bundle: {name}'
   bundleSelf: Bundle itself
   workspace: Workspace
+  file: Local file or directory
+  link: Local link
+  portal: Local directory portal
+  unbound: Source not bound
+  registry: npm registry
+  git: Git repository
+  url: Remote archive
   pending: Pending install
   local: Local
   manual: Manual
@@ -78,6 +89,15 @@ actions:
   operate: Actions
   uninstall: Uninstall
   uninstallBundle: Uninstall plugin bundle
+  bindLocal: Bind local source
+localBinding:
+  title: Bind Local Plugin Source
+  description: Create a local archive from the currently loaded {name} package and stage that source for this dependency.
+  note: Plugin scripts are not run while packing, and package.json is not changed immediately. Bind every plugin marked “Source not bound”, then apply the staged changes together.
+  cancel: Cancel
+  confirm: Create and bind
+  prepared: The local source has been added to pending changes.
+  failed: Could not create the local source. Check the backend log.
 ignore:
   title: Ignore update
   intro: Ignore updates for {name}

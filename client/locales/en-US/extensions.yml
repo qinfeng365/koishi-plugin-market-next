@@ -23,6 +23,7 @@ messages:
   deprecated: 'This version is deprecated. Migrate soon: {reason}'
   externalPrefix: 'This plugin is not listed as a dependency. '
   externalSuffix: .
+  externalLocal: Koishi discovered this plugin locally. It is not listed in package.json, so npm will not update or download it again.
   configQuestion: This plugin has configuration. Remove it too?
   stagedUninstall: Uninstall staged. It will take effect after applying changes.
   bundleRecordFailed: Failed to save plugin bundle ownership. Refresh and check again.

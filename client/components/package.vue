@@ -23,6 +23,7 @@
       <el-button v-if="showConfigure" size="small" type="primary" :loading="configuring" @click="configure">{{ t('dependencyCard.actions.configure') }}</el-button>
       <el-button v-if="showInlineIgnoreUpdate" size="small" @click="openIgnoreDialog">{{ t('dependencyCard.actions.ignore') }}</el-button>
       <el-button v-if="showRestoreUpdate" size="small" @click="restoreUpdate">{{ t('dependencyCard.actions.restore') }}</el-button>
+      <el-button v-if="showBindLocal" size="small" type="primary" :loading="bindingLocal" @click="openLocalBinding">{{ t('dependencyCard.actions.bindLocal') }}</el-button>
       <el-select
         v-if="showVersionControl && data && (editing || pending)"
         v-model="selectedVersion"
@@ -170,6 +171,15 @@
           {{ t('dependencyCard.actions.addConfig') }}
         </el-button>
         <el-button
+          v-if="showBindLocal"
+          size="small"
+          type="primary"
+          :loading="bindingLocal"
+          @click="openLocalBinding"
+        >
+          {{ t('dependencyCard.actions.bindLocal') }}
+        </el-button>
+        <el-button
           v-if="showRemoveDependency"
           class="dep-remove-button"
           size="small"
@@ -227,6 +237,24 @@
     </template>
   </el-dialog>
 
+  <el-dialog
+    v-model="showLocalBindingDialog"
+    append-to-body
+    align-center
+    :class="['market-dialog', 'market-dialog--small', 'dep-local-binding-dialog', modeClass]"
+    destroy-on-close
+  >
+    <template #header>{{ t('dependencyCard.localBinding.title') }}</template>
+    <div class="dep-local-binding-body">
+      <p>{{ t('dependencyCard.localBinding.description', { name: displayName }) }}</p>
+      <k-comment type="warning">{{ t('dependencyCard.localBinding.note') }}</k-comment>
+    </div>
+    <template #footer>
+      <el-button @click="showLocalBindingDialog = false">{{ t('dependencyCard.localBinding.cancel') }}</el-button>
+      <el-button type="primary" :loading="bindingLocal" @click="confirmLocalBinding">{{ t('dependencyCard.localBinding.confirm') }}</el-button>
+    </template>
+  </el-dialog>
+
   <bundle-uninstall
     v-model="showBundleUninstallDialog"
     :package-name="name"
@@ -237,9 +265,10 @@
 <script lang="ts" setup>
 
 import { computed, ref } from 'vue'
-import { message, store, useConfig, useContext } from '@koishijs/client'
+import { message, send, store, useConfig, useContext } from '@koishijs/client'
 import type { SearchObject } from '@koishijs/registry'
 import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
+import { isLocalDependency } from '../../src/shared/dependency-source'
 import { createUpdateIgnoreRule, getBundleRecords, getFrontendMode, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getConfigWriter, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
@@ -248,7 +277,7 @@ import BundleUninstall from './bundle-uninstall.vue'
 import { useMarketNextI18n } from '../i18n'
 import { getMarketObject } from '../market/state'
 
-type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
+type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'local' | 'manual' | 'installed'
 
 const props = defineProps<{
   name: string
@@ -271,6 +300,8 @@ const editing = computed({
 })
 const showIgnoreDialog = ref(false)
 const showBundleUninstallDialog = ref(false)
+const showLocalBindingDialog = ref(false)
+const bindingLocal = ref(false)
 const ignoreDurationPreset = ref<'forever' | '1d' | '7d' | '30d' | 'custom'>('forever')
 const ignoreCustomDays = ref(7)
 const ignoreCount = ref(1)
@@ -279,6 +310,10 @@ const ignoreSaving = ref(false)
 
 const dep = computed(() => store.dependencies?.[props.name])
 const local = computed(() => store.packages?.[props.name])
+const localDependency = computed(() => {
+  return isLocalDependency(dep.value)
+    || props.kind === 'local' && !dep.value && !!local.value
+})
 const marketData = computed(() => getMarketObject(props.name))
 const bundleRecord = computed(() => getBundleRecords(config.value)[props.name] || createLocalBundleRecord(props.name))
 const bundleOrigin = computed(() => findBundleOrigin(props.name))
@@ -286,7 +321,7 @@ const bundleOrigin = computed(() => findBundleOrigin(props.name))
 const displayName = computed(() => formatPackageDisplayName(props.name))
 
 const data = computed(() => {
-  if (dep.value?.workspace || dep.value?.invalid) return
+  if (localDependency.value || dep.value?.invalid) return
   return analyzeVersions(props.name, (name) => getPendingOverrides()[name])
 })
 
@@ -348,7 +383,7 @@ const selectedVersion = computed({
 
 const statusClass = computed<ItemKind>(() => {
   if (pending.value) return 'pending'
-  if (dep.value?.workspace) return 'workspace'
+  if (localDependency.value) return 'local'
   if (dep.value?.invalid) return 'invalid'
   if (bundlePackage.value && (dep.value || local.value)) return 'bundle'
   if (unconfigured.value) return 'unconfigured'
@@ -364,7 +399,7 @@ const statusLabel = computed(() => {
   if (pendingRemove.value) return t('dependencyCard.status.pendingRemove')
   if (pending.value && dep.value) return t('dependencyCard.status.pendingApply')
   if (pending.value) return t('dependencyCard.status.pendingInstall')
-  if (dep.value?.workspace) return t('dependencyCard.status.workspace')
+  if (localDependency.value) return t('dependencyCard.status.local')
   if (dep.value?.invalid) return t('dependencyCard.status.unsupported')
   if (bundlePackage.value && (dep.value || local.value)) return t('dependencyCard.status.bundle')
   if (unconfigured.value) return t('dependencyCard.status.unconfigured')
@@ -383,7 +418,7 @@ const statusIcon = computed(() => {
   if (unconfigured.value) return 'preview'
   if (dep.value?.invalid) return 'insecure'
   if (status.value?.error) return 'insecure'
-  if (dep.value?.workspace) return 'file-archive'
+  if (localDependency.value) return 'file-archive'
   if (!dep.value) return 'search'
   if (updateCheckDisabled.value) return 'installed'
   if (ignoredUpdate.value) return 'installed'
@@ -400,7 +435,7 @@ const markIcon = computed(() => {
 
 const currentText = computed(() => {
   if (!dep.value) return local.value?.package.version ?? t('dependencyCard.current.notInstalled')
-  if (dep.value.workspace) return dep.value.resolved ? `${dep.value.resolved} / ${t('dependencyCard.current.workspace')}` : t('dependencyCard.current.workspace')
+  if (localDependency.value) return dep.value.resolved ? `${dep.value.resolved} / ${t('dependencyCard.current.local')}` : t('dependencyCard.current.local')
   return dep.value.resolved ?? t('dependencyCard.current.installError')
 })
 
@@ -409,8 +444,8 @@ const targetText = computed(() => {
   if (overrideValue.value) return overrideValue.value
   if (updatable.value && latestVersion.value) return latestVersion.value
   if (ignoredUpdate.value && latestVersion.value) return latestVersion.value
-  if (dep.value?.workspace) return t('dependencyCard.target.keepWorkspace')
-  if (statusClass.value === 'installed' && dep.value && !dep.value.workspace) {
+  if (localDependency.value) return t('dependencyCard.target.keepLocal')
+  if (statusClass.value === 'installed' && dep.value && !dep.value.local && !dep.value.workspace) {
     if (dep.value.latest) return dep.value.latest
     if (status.value?.loading) return t('dependencyCard.target.loading')
   }
@@ -430,12 +465,17 @@ const detailText = computed(() => {
   if (pendingRemove.value) return t('dependencyCard.detail.pendingRemove')
   if (pending.value && dep.value) return t('dependencyCard.detail.pendingApply')
   if (pending.value) return t('dependencyCard.detail.pendingInstall')
-  if (dep.value?.workspace) return t('dependencyCard.detail.workspace')
+  if (localDependency.value) {
+    if (!dep.value) return t('dependencyCard.detail.localDiscovered')
+    return dep.value.bound === false
+      ? t('dependencyCard.detail.localUnbound')
+      : t('dependencyCard.detail.local')
+  }
   if (dep.value?.invalid) return t('dependencyCard.detail.unsupported')
   if (bundlePackage.value && (dep.value || local.value)) return t('dependencyCard.detail.bundle')
   if (unconfigured.value) return t('dependencyCard.detail.unconfigured')
   if (status.value?.error) return getRegistryStatusText(props.name)
-  if (!data.value && !dep.value?.workspace) return getRegistryStatusText(props.name)
+  if (!data.value && !localDependency.value) return getRegistryStatusText(props.name)
   if (updateCheckDisabled.value) return t('dependencyCard.detail.checkDisabled')
   if (ignoredUpdate.value) return getUpdateIgnoreText(props.name, getUpdatePolicy()) || t('dependencyCard.detail.ignored')
   if (updatable.value && latestVersion.value) return t('dependencyCard.detail.foundUpdate', { version: latestVersion.value })
@@ -443,7 +483,9 @@ const detailText = computed(() => {
 })
 
 const compactStatusText = computed(() => {
-  if (dep.value?.workspace) return t('dependencyCard.detail.workspaceShort')
+  if (localDependency.value) return dep.value?.bound === false
+    ? t('dependencyCard.detail.localUnboundShort')
+    : t('dependencyCard.detail.localShort')
   if (dep.value?.invalid) return t('dependencyCard.detail.unsupportedShort')
   return status.value?.loading || !status.value ? t('dependencyCard.detail.fetching') : t('dependencyCard.detail.noData')
 })
@@ -459,6 +501,10 @@ const configText = computed(() => {
 const sourceText = computed(() => {
   if (bundleOrigin.value) return t('dependencyCard.source.bundle', { name: bundleOrigin.value.label || formatPackageDisplayName(bundleOrigin.value.package) })
   if (bundleRecord.value) return t('dependencyCard.source.bundleSelf')
+  if (dep.value?.source) return t(`dependencyCard.source.${dep.value.source}`)
+  if (localDependency.value) return local.value?.workspace
+    ? t('dependencyCard.source.workspace')
+    : t('dependencyCard.source.local')
   if (dep.value?.workspace || local.value?.workspace) return t('dependencyCard.source.workspace')
   if (pending.value && !dep.value) return t('dependencyCard.source.pending')
   if (!dep.value && local.value) return t('dependencyCard.source.local')
@@ -476,7 +522,7 @@ const requestText = computed(() => {
 
 const versionSourceText = computed(() => {
   if (statusClass.value === 'installed' && !editing.value) return ''
-  if (dep.value?.workspace) return ''
+  if (localDependency.value) return ''
   if (status.value?.endpoint) return formatEndpoint(status.value.endpoint)
   if (status.value?.loading) return t('dependencyCard.target.loading')
   if (!data.value && dep.value) return t('dependencyCard.target.waiting')
@@ -515,7 +561,7 @@ const summaryText = computed(() => {
 const showTargetMeta = computed(() => {
   if (pending.value || updatable.value || ignoredUpdate.value) return true
   if (statusClass.value === 'manual' || statusClass.value === 'error') return true
-  return !!(dep.value || local.value) && !dep.value?.workspace && !local.value?.workspace
+  return !!(dep.value || local.value) && !localDependency.value
 })
 
 const showDetailText = computed(() => {
@@ -523,6 +569,7 @@ const showDetailText = computed(() => {
 })
 
 const showVersionControl = computed(() => {
+  if (localDependency.value) return false
   if (!data.value && !status.value?.error) return false
   return editing.value || pending.value || updatable.value || statusClass.value === 'error' || statusClass.value === 'manual'
 })
@@ -541,12 +588,13 @@ const showEditToggle = computed(() => {
 const canExpandCard = computed(() => {
   if (bundlePackage.value && (dep.value || local.value)) return !pending.value
   if (pending.value || statusClass.value === 'error' || statusClass.value === 'manual') return false
+  if (localDependency.value) return false
   if (data.value) return true
   return !!dep.value && !dep.value.workspace && !dep.value.invalid
 })
 
 const showQuickUpdate = computed(() => {
-  return !pending.value && !unconfigured.value && updatable.value && !!latestVersion.value && !dep.value?.workspace
+  return !pending.value && !unconfigured.value && updatable.value && !!latestVersion.value && !localDependency.value
 })
 
 const showInlineIgnoreUpdate = computed(() => {
@@ -554,11 +602,15 @@ const showInlineIgnoreUpdate = computed(() => {
 })
 
 const showRestoreUpdate = computed(() => {
-  return !pending.value && ignoredUpdate.value
+  return !pending.value && !localDependency.value && ignoredUpdate.value
 })
 
 const showConfigure = computed(() => {
   return !pending.value && unconfigured.value
+})
+
+const showBindLocal = computed(() => {
+  return !pending.value && dep.value?.source === 'unbound' && dep.value?.bound === false
 })
 
 const showRemoveDependency = computed(() => {
@@ -570,7 +622,7 @@ const showRemoveDependency = computed(() => {
 })
 
 const showCardActions = computed(() => {
-  return showVersionControl.value || showQuickUpdate.value || showRestoreUpdate.value || showConfigure.value || showRemoveDependency.value || pending.value
+  return showVersionControl.value || showQuickUpdate.value || showRestoreUpdate.value || showConfigure.value || showBindLocal.value || showRemoveDependency.value || pending.value
 })
 
 const floatingActions = computed(() => {
@@ -627,6 +679,32 @@ function removeDependency() {
     return
   }
   selectedVersion.value = removeValue
+}
+
+function openLocalBinding() {
+  showLocalBindingDialog.value = true
+}
+
+async function confirmLocalBinding() {
+  if (bindingLocal.value) return
+  bindingLocal.value = true
+  try {
+    const result = await send('market/prepare-local-binding', props.name)
+    if (!result?.request) throw new Error('invalid local binding result')
+    getPendingOverrides()[props.name] = result.request
+    const saved = await patchMarketNextData({ override: { ...getPendingOverrides() } })
+    if (!saved) {
+      delete getPendingOverrides()[props.name]
+      throw new Error('failed to save local binding override')
+    }
+    showLocalBindingDialog.value = false
+    message.success(t('dependencyCard.localBinding.prepared'))
+  } catch (error) {
+    console.error(error)
+    message.error(t('dependencyCard.localBinding.failed'))
+  } finally {
+    bindingLocal.value = false
+  }
 }
 
 function openIgnoreDialog() {
@@ -836,7 +914,10 @@ async function configure() {
 
 .el-dialog.dep-ignore-dialog,
 .dep-ignore-dialog.el-dialog,
-.dep-ignore-dialog .el-dialog {
+.dep-ignore-dialog .el-dialog,
+.el-dialog.dep-local-binding-dialog,
+.dep-local-binding-dialog.el-dialog,
+.dep-local-binding-dialog .el-dialog {
   width: min(560px, calc(100vw - 32px)) !important;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 88%, var(--fg1, currentColor) 12%);
@@ -846,7 +927,8 @@ async function configure() {
   box-shadow: none;
 }
 
-.dep-ignore-dialog {
+.dep-ignore-dialog,
+.dep-local-binding-dialog {
   .el-dialog__header {
     display: flex;
     align-items: center;
@@ -887,6 +969,7 @@ async function configure() {
     background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 84%, var(--k-side-bg, var(--el-bg-color)));
   }
 
+  .dep-local-binding-body,
   .dep-ignore-body {
     display: grid;
     gap: 0.85rem;
@@ -970,7 +1053,8 @@ async function configure() {
 }
 
 @media (max-width: 560px) {
-  .dep-ignore-dialog {
+  .dep-ignore-dialog,
+  .dep-local-binding-dialog {
     .el-dialog__body {
       padding: 14px;
     }
@@ -1036,7 +1120,7 @@ async function configure() {
   &.error     { --dep-accent: var(--danger); border-color: var(--dep-accent-border); }
   &.invalid   { --dep-accent: var(--warning); border-color: var(--dep-accent-border); }
   &.bundle    { --dep-accent: #9b74df; }
-  &.unconfigured, &.workspace { --dep-accent: var(--warning); }
+  &.unconfigured, &.local, &.workspace { --dep-accent: var(--warning); }
   &.manual    { --dep-accent: var(--k-color-primary); }
   &.ignored, &.check-disabled { --dep-accent: var(--fg3); }
 
@@ -1159,6 +1243,7 @@ async function configure() {
     background: color-mix(in srgb, var(--danger) 9%, transparent);
   }
 
+  &.local,
   &.workspace {
     color: var(--warning);
   }
@@ -1505,7 +1590,7 @@ async function configure() {
   &.bundle    { --dep-accent: #9b74df; background: color-mix(in srgb, #9b74df 4%, var(--k-card-bg)); }
   &.updatable { --dep-accent: var(--k-color-success); }
   &.error, &.invalid { --dep-accent: var(--danger); background: color-mix(in srgb, var(--danger) 4%, var(--k-card-bg)); }
-  &.unconfigured { --dep-accent: var(--warning); background: color-mix(in srgb, var(--warning) 3%, var(--k-card-bg)); }
+  &.unconfigured, &.local { --dep-accent: var(--warning); background: color-mix(in srgb, var(--warning) 3%, var(--k-card-bg)); }
 
   .dep-status-mark {
     color: var(--dep-accent);

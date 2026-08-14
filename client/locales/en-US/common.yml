@@ -8,7 +8,7 @@ actions:
   apply: Apply Changes
   refresh: Refresh
   upgradeAll: Update All
-  manual: Add Manually
+  manual: Add dependency
   history: Recent Operations
   versionManagement: Version Management
   cancel: Cancel

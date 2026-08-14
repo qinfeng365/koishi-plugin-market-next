@@ -3,11 +3,15 @@ import { promises as fsp } from 'fs'
 import { dirname } from 'path'
 import type { Dict } from 'koishi'
 import { compare, valid } from 'semver'
+import { classifyDependencySource, type DependencySource } from '../shared/dependency-source'
 
 export interface EnvironmentDependencySnapshot {
   request: string
   resolved?: string
   workspace?: boolean
+  source?: DependencySource
+  local?: boolean
+  bound?: boolean
   invalid?: boolean
 }
 
@@ -48,7 +52,7 @@ export interface EnvironmentSnapshotChange {
   targetRequest?: string
   targetVersion?: string
   status: EnvironmentChangeStatus
-  reason?: 'workspace'
+  reason?: 'local'
 }
 
 export interface EnvironmentSnapshotPreview {
@@ -70,10 +74,16 @@ export function normalizeEnvironmentDependencies(dependencies: Dict<EnvironmentD
   for (const name of Object.keys(dependencies).sort((a, b) => a.localeCompare(b))) {
     const dependency = dependencies[name]
     if (!dependency || typeof dependency.request !== 'string') continue
+    const source = classifyDependencySource(dependency.request, {
+      workspace: dependency.workspace,
+    })
     result[name] = {
       request: dependency.request,
       resolved: dependency.resolved || undefined,
       workspace: dependency.workspace || undefined,
+      source: dependency.source || source.source,
+      local: (dependency.local ?? source.local) || undefined,
+      bound: dependency.bound,
       invalid: dependency.invalid || undefined,
     }
   }
@@ -84,8 +94,9 @@ function canonicalDependencies(dependencies: Dict<EnvironmentDependencySnapshot>
   const normalized = normalizeEnvironmentDependencies(dependencies)
   return JSON.stringify(Object.entries(normalized).map(([name, dependency]) => [
     name,
-    dependency.resolved || dependency.request,
-    !!dependency.workspace,
+    dependency.local ? dependency.request : dependency.resolved || dependency.request,
+    dependency.source || '',
+    !!dependency.local,
   ]))
 }
 
@@ -112,8 +123,12 @@ export function createEnvironmentSnapshot(
 
 function sameDependency(left?: EnvironmentDependencySnapshot, right?: EnvironmentDependencySnapshot) {
   if (!left || !right) return false
+  if (left.local || right.local) {
+    return left.request === right.request
+      && left.source === right.source
+      && !!left.local === !!right.local
+  }
   return (left.resolved || left.request) === (right.resolved || right.request)
-    && !!left.workspace === !!right.workspace
 }
 
 function displayVersion(dependency?: EnvironmentDependencySnapshot) {
@@ -140,11 +155,11 @@ export function getEnvironmentDiff(current: EnvironmentSnapshot, target: Environ
       return { ...base, status: 'unchanged' }
     }
 
-    if (currentDependency?.workspace || targetDependency?.workspace) {
+    if (currentDependency?.local || targetDependency?.local) {
       return {
         ...base,
         status: 'unsupported',
-        reason: 'workspace',
+        reason: 'local',
       }
     }
 
@@ -166,9 +181,10 @@ export function getEnvironmentInstallChanges(diff: EnvironmentSnapshotChange[], 
   const changes: Dict<string> = {}
   for (const change of diff) {
     if (change.status === 'unchanged') continue
+    if (change.status === 'unsupported') continue
     const dependency = target.dependencies[change.name]
     changes[change.name] = dependency
-      ? dependency.workspace ? dependency.request : dependency.resolved || dependency.request
+      ? dependency.resolved || dependency.request
       : ''
   }
   return changes

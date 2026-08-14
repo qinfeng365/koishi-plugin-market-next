@@ -41,4 +41,5 @@ change:
   unchanged: 未变化
   unsupported: 不支持
 reason:
+  local: 本地来源依赖不能通过环境版本自动恢复。
   workspace: 工作区依赖由本地源码决定，不能通过环境版本自动恢复。

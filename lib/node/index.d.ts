@@ -2,13 +2,15 @@ import { Context, Dict, Schema } from 'koishi';
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry';
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps';
 import { MarketDataStore, MarketDataStorePayload } from './data';
-import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, InstallOptions } from './installer';
+import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, LocalBindingResult, InstallOptions } from './installer';
 import MarketProvider from './market';
 import type { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
+import type { LocalPackageUploadChunkRequest, LocalPackageUploadCommitResult, LocalPackageUploadFinishRequest, LocalPackageUploadPreview, LocalPackageUploadProgress, LocalPackageUploadStartRequest, LocalPackageUploadStartResult } from './local-upload';
 import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallRequest, BundleInstallResult, PluginBundleRecord } from '../shared/bundle';
 export * from '../shared';
 export { Installer };
 export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail } from './installer';
+export type { LocalPackageOperation, LocalPackageUploadChunkRequest, LocalPackageUploadCommitResult, LocalPackageUploadFinishRequest, LocalPackageUploadPreview, LocalPackageUploadProgress, LocalPackageUploadStartRequest, LocalPackageUploadStartResult, } from './local-upload';
 export type { EnvironmentChangeStatus, EnvironmentDependencySnapshot, EnvironmentSnapshotChange, EnvironmentSnapshotPreview, EnvironmentSnapshotSource, EnvironmentSnapshotSummary, } from './environment';
 declare module 'koishi' {
     interface Context {
@@ -30,6 +32,12 @@ declare module '@koishijs/console' {
         'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>;
         'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>;
         'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>;
+        'market/local-package-upload-start'(request: LocalPackageUploadStartRequest): Promise<LocalPackageUploadStartResult>;
+        'market/local-package-upload-chunk'(request: LocalPackageUploadChunkRequest): Promise<LocalPackageUploadProgress>;
+        'market/local-package-upload-finish'(request: LocalPackageUploadFinishRequest): Promise<LocalPackageUploadPreview>;
+        'market/local-package-upload-commit'(uploadId: string): Promise<LocalPackageUploadCommitResult>;
+        'market/local-package-upload-cancel'(uploadId: string): Promise<boolean>;
+        'market/prepare-local-binding'(name: string): Promise<LocalBindingResult>;
         'market/environment-snapshots'(): Promise<EnvironmentSnapshotSummary[]>;
         'market/environment-snapshot-preview'(id: string): Promise<EnvironmentSnapshotPreview | undefined>;
         'market/environment-snapshot-apply'(id: string, options?: InstallOptions): Promise<number>;

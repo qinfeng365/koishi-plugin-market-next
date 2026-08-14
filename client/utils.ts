@@ -11,6 +11,7 @@ import {
   type IgnoredUpdates,
   type UpdateIgnoreRule,
 } from '../src/shared/update'
+import { isLocalDependency } from '../src/shared/dependency-source'
 
 export type { IgnoredUpdates, UpdateIgnoreRule } from '../src/shared/update'
 
@@ -367,7 +368,7 @@ export function isUpdateIgnored(name: string, policy?: UpdatePolicy) {
 export function hasUpdate(name: string, policy?: UpdatePolicy) {
   const latest = getLatestVersion(name, policy)
   const local = store.dependencies?.[name]
-  if (!latest || local?.workspace) return
+  if (!latest || isLocalDependency(local)) return
   try {
     return gt(latest, local.resolved)
   } catch {}
@@ -379,7 +380,7 @@ export function isUpdateCheckDisabled(name: string, policy?: UpdatePolicy) {
 
 function getUpdateCandidates(name: string, policy?: UpdatePolicy) {
   const local = store.dependencies?.[name]
-  if (local?.workspace) return []
+  if (isLocalDependency(local)) return []
   return getSharedUpdateCandidates(Object.keys(store.registry?.[name] ?? {}), local?.resolved, policy)
 }
 

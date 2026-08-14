@@ -47,11 +47,39 @@ install:
   uninstallFailed: 卸载失败！
   uninstallTimeout: 卸载超时！
 manual:
-  title: 高级：手动添加依赖
+  title: 添加依赖
+  localTab: 本地构建
+  registryTab: npm 包名
+  dropTitle: 拖拽到此处上传
+  dropHint: 或点击选择由 npm pack 生成的 .tgz 文件
+  dropLimit: 单个文件最大 64 MiB
+  uploading: 正在上传并校验本地插件……
+  uploadFailed: 本地插件上传失败，请重试。
+  invalidFile: 仅支持 npm pack 生成的 .tgz 文件。
+  singleFile: 每次只能拖入一个 .tgz 文件。
+  chooseAnother: 重新选择
+  installLocal: 安装本地插件
+  notInstalled: 未安装
+  scriptWarning: 此归档包含安装生命周期脚本：{scripts}。确认来源可信后再安装。
+  installingTitle: 正在安装本地插件 {name}……
+  installSuccess: 本地插件 {name}@{version} 安装成功。
+  installFailed: 本地插件 {name} 安装失败！
+  operation:
+    install: 新安装
+    upgrade: 升级
+    downgrade: 降级
+    replace: 替换构建
+  confirmOperation:
+    install: 安装 {version}
+    upgrade: 更新到 {version}
+    downgrade: 回退到 {version}
+    replace: 替换当前构建
   hint: 提示：如果你想要安装插件，请前往
   market: 插件市场
   hintAfter: 页面。
   placeholder: 请输入名称
+  registryLoading: 正在查询包信息……
+  registryLookupFailed: 无法获取包信息，请检查包名和网络连接。
   latest: 最新版本
   description: 介绍
   cancel: 取消
@@ -76,8 +104,8 @@ progress:
   dependencyTitle: 正在更新依赖……
   submitted: 已提交依赖变更，正在等待后端启动包管理器……
   selfSubmitted: 正在更新当前插件。安装完成后 Console 可能会短暂断开并自动重载。
-  waitingSelf: 仍在等待包管理器输出；如果 Console 随后断开连接，这是 market-next 自更新重载的正常过程。
-  waitingDependencies: 仍在等待包管理器输出；大型依赖变更或弱网环境下可能需要更久。
+  waitingSelf: 仍在等待包管理器输出；如果 Console 随后断开连接，这是更新重载的正常过程。
+  waitingDependencies: 仍在等待包管理器输出。
   disconnected: Console 连接已断开，安装结果无法确认。请刷新依赖页确认实际状态。
   disconnectedShort: 连接已断开，安装结果无法确认，请刷新后检查。
   selfSubmittedSuccess: market-next 更新已提交，Console 正在重载。
@@ -92,7 +120,7 @@ progress:
   installTimeout: 安装超时！
   environmentTitle: 正在恢复依赖环境……
   environmentPreparing: 正在重新读取当前环境并校验目标版本……
-  environmentWaiting: 仍在等待包管理器输出；恢复多个依赖可能需要更久。
+  environmentWaiting: 仍在等待包管理器输出。
   environmentDisconnected: Console 连接已断开，恢复结果无法确认。请刷新依赖页和版本管理后确认。
   environmentDisconnectedShort: 连接已断开，环境恢复结果无法确认。
   environmentError: 依赖环境恢复失败。

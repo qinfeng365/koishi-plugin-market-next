@@ -13,6 +13,7 @@ import Installer, {
   InstallFallbackCandidate,
   InstallHistoryEntry,
   InstallLogDetail,
+  LocalBindingResult,
   InstallOptions,
   loadManifest,
 } from './installer'
@@ -21,6 +22,15 @@ import type {
   EnvironmentSnapshotPreview,
   EnvironmentSnapshotSummary,
 } from './environment'
+import type {
+  LocalPackageUploadChunkRequest,
+  LocalPackageUploadCommitResult,
+  LocalPackageUploadFinishRequest,
+  LocalPackageUploadPreview,
+  LocalPackageUploadProgress,
+  LocalPackageUploadStartRequest,
+  LocalPackageUploadStartResult,
+} from './local-upload'
 import { applyChatLunaTool } from './chatluna'
 import {
   BUNDLE_KEYWORD,
@@ -53,6 +63,16 @@ export * from '../shared'
 
 export { Installer }
 export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail } from './installer'
+export type {
+  LocalPackageOperation,
+  LocalPackageUploadChunkRequest,
+  LocalPackageUploadCommitResult,
+  LocalPackageUploadFinishRequest,
+  LocalPackageUploadPreview,
+  LocalPackageUploadProgress,
+  LocalPackageUploadStartRequest,
+  LocalPackageUploadStartResult,
+} from './local-upload'
 export type {
   EnvironmentChangeStatus,
   EnvironmentDependencySnapshot,
@@ -126,6 +146,12 @@ declare module '@koishijs/console' {
     'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>
     'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>
     'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>
+    'market/local-package-upload-start'(request: LocalPackageUploadStartRequest): Promise<LocalPackageUploadStartResult>
+    'market/local-package-upload-chunk'(request: LocalPackageUploadChunkRequest): Promise<LocalPackageUploadProgress>
+    'market/local-package-upload-finish'(request: LocalPackageUploadFinishRequest): Promise<LocalPackageUploadPreview>
+    'market/local-package-upload-commit'(uploadId: string): Promise<LocalPackageUploadCommitResult>
+    'market/local-package-upload-cancel'(uploadId: string): Promise<boolean>
+    'market/prepare-local-binding'(name: string): Promise<LocalBindingResult>
     'market/environment-snapshots'(): Promise<EnvironmentSnapshotSummary[]>
     'market/environment-snapshot-preview'(id: string): Promise<EnvironmentSnapshotPreview | undefined>
     'market/environment-snapshot-apply'(id: string, options?: InstallOptions): Promise<number>
@@ -1393,7 +1419,7 @@ export function apply(ctx: Context, config: Config = {}) {
         const now = Date.now()
         const updates = Array.from(new Set(requested)).flatMap((name) => {
           const dep = deps[name]
-          if (!dep?.resolved || dep.workspace || dep.invalid) return []
+          if (!dep?.resolved || dep.local || dep.workspace || dep.invalid) return []
           const versions = Object.keys(ctx.installer.fullCache[name] ?? {})
           if (!versions.length && dep.latest) versions.push(dep.latest)
           const target = options.force
@@ -1493,6 +1519,30 @@ export function apply(ctx: Context, config: Config = {}) {
 
     ctx.console.addListener('market/install-history-detail', async (id) => {
       return ctx.installer.getInstallLogDetail(id)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/local-package-upload-start', async (request) => {
+      return ctx.installer.startLocalPackageUpload(request)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/local-package-upload-chunk', async (request) => {
+      return ctx.installer.appendLocalPackageUpload(request)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/local-package-upload-finish', async (request) => {
+      return ctx.installer.finishLocalPackageUpload(request)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/local-package-upload-commit', async (uploadId) => {
+      return ctx.installer.commitLocalPackageUpload(uploadId)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/local-package-upload-cancel', async (uploadId) => {
+      return ctx.installer.cancelLocalPackageUpload(uploadId)
+    }, { authority: 4 })
+
+    ctx.console.addListener('market/prepare-local-binding', async (name) => {
+      return ctx.installer.prepareLocalBinding(name)
     }, { authority: 4 })
 
     ctx.console.addListener('market/environment-snapshots', async () => {

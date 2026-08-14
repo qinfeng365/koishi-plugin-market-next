@@ -20,7 +20,7 @@ filters:
   checkDisabled: Update checks disabled
   invalid: Unsupported
   error: Version error
-  workspace: Workspace
+  local: Local plugins
   manual: Added manually
 groups:
   pending:
@@ -47,9 +47,9 @@ groups:
   error:
     label: Version Error
     description: npm metadata is currently unavailable, possibly because of a network or mirror issue.
-  workspace:
-    label: Workspace
-    description: This local workspace dependency does not participate in remote version checks.
+  local:
+    label: Local Plugins
+    description: Plugins loaded from a workspace, local directory, local archive, or manual installation do not participate in remote version checks.
   manual:
     label: Added Manually
     description: This dependency is staged for installation but is not installed yet.

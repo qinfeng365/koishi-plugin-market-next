@@ -128,10 +128,11 @@ import { addManual, createLocalBundleRecord, getConfigWriter, getRegistryStatus,
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
 import { isBundlePackageName } from '../../src/shared/bundle'
+import { shouldIncludeDiscoveredLocalPlugin } from '../../src/shared/dependency-source'
 import { loadMarketObjects } from '../market/state'
 
-type FilterKey = 'all' | 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual'
-type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'workspace' | 'manual' | 'installed'
+type FilterKey = 'all' | 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'local' | 'manual'
+type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'local' | 'manual' | 'installed'
 
 interface DependencyItem {
   name: string
@@ -180,7 +181,17 @@ const names = computed(() => {
     ...getOverride(),
   }
   for (const name of Object.keys(store.packages ?? {})) {
-    if (isUnconfigured(name, configWriter) || isManageableBundle(name)) explicit[name] = true
+    const pkg = store.packages?.[name]
+    if (isUnconfigured(name, configWriter)
+      || isManageableBundle(name)
+      || isPluginPackage(name) && shouldIncludeDiscoveredLocalPlugin({
+        declared: !!store.dependencies?.[name],
+        configured: !!configWriter?.get(name)?.length,
+        running: !!pkg?.runtime?.id,
+        workspace: !!pkg?.workspace,
+      })) {
+      explicit[name] = true
+    }
   }
   return Object
     .keys(explicit)
@@ -229,8 +240,8 @@ function classify(name: string, configWriter?: ClientConfigWriter): ItemKind {
   const override = getOverride()
   const pending = Object.prototype.hasOwnProperty.call(override, name)
   if (pending) return 'pending'
-  if (!dep) return isManageableBundle(name) && store.packages?.[name] ? 'bundle' : isUnconfigured(name, configWriter) ? 'unconfigured' : 'manual'
-  if (dep.workspace) return 'workspace'
+  if (!dep) return store.packages?.[name] ? 'local' : 'manual'
+  if (dep.local || dep.workspace) return 'local'
   if (dep.invalid) return 'invalid'
   if (isManageableBundle(name)) return 'bundle'
   if (isUnconfigured(name, configWriter)) return 'unconfigured'
@@ -276,7 +287,7 @@ const summary = computed(() => {
     checkDisabled: items.value.filter(item => item.kind === 'check-disabled').length,
     invalid: items.value.filter(item => item.kind === 'invalid').length,
     errors: items.value.filter(item => item.kind === 'error').length,
-    workspace: items.value.filter(item => item.kind === 'workspace').length,
+    local: items.value.filter(item => item.kind === 'local').length,
     manual: items.value.filter(item => item.manual).length,
   }
 })
@@ -296,7 +307,7 @@ const filterOptions = computed(() => [
   { value: 'check-disabled' as const, label: t('dependencies.filters.checkDisabled'), icon: 'installed', count: summary.value.checkDisabled },
   { value: 'invalid' as const, label: t('dependencies.filters.invalid'), icon: 'insecure', count: summary.value.invalid },
   { value: 'error' as const, label: t('dependencies.filters.error'), icon: 'insecure', count: summary.value.errors },
-  { value: 'workspace' as const, label: t('dependencies.filters.workspace'), icon: 'file-archive', count: summary.value.workspace },
+  { value: 'local' as const, label: t('dependencies.filters.local'), icon: 'file-archive', count: summary.value.local },
   { value: 'manual' as const, label: t('dependencies.filters.manual'), icon: 'search', count: summary.value.manual },
 ])
 
@@ -309,12 +320,12 @@ const groupMeta = computed<Record<ItemKind, Omit<DependencyGroup, 'items' | 'col
   unconfigured: { key: 'unconfigured', label: t('dependencies.groups.unconfigured.label'), icon: 'preview', description: t('dependencies.groups.unconfigured.description') },
   invalid: { key: 'invalid', label: t('dependencies.groups.invalid.label'), icon: 'insecure', description: t('dependencies.groups.invalid.description') },
   error: { key: 'error', label: t('dependencies.groups.error.label'), icon: 'insecure', description: t('dependencies.groups.error.description') },
-  workspace: { key: 'workspace', label: t('dependencies.groups.workspace.label'), icon: 'file-archive', description: t('dependencies.groups.workspace.description') },
+  local: { key: 'local', label: t('dependencies.groups.local.label'), icon: 'file-archive', description: t('dependencies.groups.local.description') },
   manual: { key: 'manual', label: t('dependencies.groups.manual.label'), icon: 'search', description: t('dependencies.groups.manual.description') },
   installed: { key: 'installed', label: t('dependencies.groups.installed.label'), icon: 'installed', description: t('dependencies.groups.installed.description') },
 }))
 
-const groupOrder: ItemKind[] = ['pending', 'bundle', 'unconfigured', 'updatable', 'ignored', 'check-disabled', 'invalid', 'error', 'workspace', 'manual', 'installed']
+const groupOrder: ItemKind[] = ['pending', 'bundle', 'unconfigured', 'updatable', 'ignored', 'check-disabled', 'invalid', 'error', 'local', 'manual', 'installed']
 
 const collapseEnabled = computed(() => filter.value === 'all' && !keyword.value.trim())
 
@@ -567,7 +578,7 @@ ctx.action('dependencies.upgrade', {
   &.bundle { --group-accent: #9b74df; }
   &.updatable { --group-accent: var(--k-color-success); }
   &.ignored, &.check-disabled { --group-accent: var(--fg3); }
-  &.unconfigured, &.workspace { --group-accent: var(--warning); }
+  &.unconfigured, &.local { --group-accent: var(--warning); }
   &.invalid  { --group-accent: var(--warning); }
   &.error    { --group-accent: var(--danger); }
   &.manual   { --group-accent: var(--k-color-primary); }
