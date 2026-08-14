@@ -47,11 +47,39 @@ install:
   uninstallFailed: Uninstall failed!
   uninstallTimeout: Uninstall timed out!
 manual:
-  title: 'Advanced: Add dependency manually'
+  title: Add dependency
+  localTab: Local build
+  registryTab: npm package
+  dropTitle: Drop a local plugin archive here
+  dropHint: Or select a .tgz file created by npm pack
+  dropLimit: 'Maximum file size: 64 MiB'
+  uploading: Uploading and validating the local plugin…
+  uploadFailed: Failed to upload the local plugin. Try again.
+  invalidFile: Only .tgz files created by npm pack are supported.
+  singleFile: Drop one .tgz file at a time.
+  chooseAnother: Choose another
+  installLocal: Install local plugin
+  notInstalled: Not installed
+  scriptWarning: 'This archive contains installation lifecycle scripts: {scripts}. Install it only if you trust the source.'
+  installingTitle: Installing local plugin {name}…
+  installSuccess: Local plugin {name}@{version} installed successfully.
+  installFailed: Failed to install local plugin {name}!
+  operation:
+    install: New install
+    upgrade: Upgrade
+    downgrade: Downgrade
+    replace: Replace build
+  confirmOperation:
+    install: Install {version}
+    upgrade: Update to {version}
+    downgrade: Roll back to {version}
+    replace: Replace current build
   hint: 'Tip: to install a plugin, open the '
   market: plugin market
   hintAfter: .
   placeholder: Enter a package name
+  registryLoading: Looking up package metadata…
+  registryLookupFailed: Package metadata could not be loaded. Check the package name and network connection.
   latest: Latest version
   description: Description
   cancel: Cancel

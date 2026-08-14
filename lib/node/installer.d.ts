@@ -1,6 +1,7 @@
 import { Context, Dict, HTTP, Schema, Service } from 'koishi';
 import { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry';
 import { type DependencySource, type RegistryStatus } from '../shared';
+import { type LocalPackageUploadChunkRequest, type LocalPackageUploadCommitResult, type LocalPackageUploadFinishRequest, type LocalPackageUploadPreview, type LocalPackageUploadProgress, type LocalPackageUploadStartRequest, type LocalPackageUploadStartResult } from './local-upload';
 import { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
 export interface InstallOptions {
     installEndpoint?: string;
@@ -108,6 +109,7 @@ declare class Installer extends Service {
     private installLogWriteTask;
     private installLogCleanupTask?;
     private environmentSnapshots;
+    private localPackageUploads;
     private serial;
     constructor(ctx: Context, config?: Installer.Config);
     get cwd(): string;
@@ -189,6 +191,11 @@ declare class Installer extends Service {
     private withInstallLock;
     private queueInstall;
     install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options?: InstallOptions): Promise<number>;
+    startLocalPackageUpload(request: LocalPackageUploadStartRequest): Promise<LocalPackageUploadStartResult>;
+    appendLocalPackageUpload(request: LocalPackageUploadChunkRequest): Promise<LocalPackageUploadProgress>;
+    finishLocalPackageUpload(request: LocalPackageUploadFinishRequest): Promise<LocalPackageUploadPreview>;
+    commitLocalPackageUpload(uploadId: string): Promise<LocalPackageUploadCommitResult>;
+    cancelLocalPackageUpload(uploadId: string): Promise<boolean>;
     prepareLocalBinding(name: string): Promise<LocalBindingResult>;
     applyEnvironmentSnapshot(id: string, options?: InstallOptions): Promise<number>;
     isSelfUpdate(deps: Dict<string>): boolean;

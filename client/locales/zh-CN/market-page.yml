@@ -1,6 +1,6 @@
 loading:
   title: 正在加载插件市场……
-  slow: 插件市场仍在等待网络响应，可能是当前市场源连接慢、代理不可用或首次冷启动没有本地缓存。
+  slow: 插件市场仍在等待网络响应。
   timeout: 超时：{value}
   autoRoute: 备用源自动路由已开启
   openSettings: 前往市场设置修改源
@@ -8,7 +8,7 @@ loading:
   timeoutLabel: 超时：{value}
   openMarketSettings: 前往市场设置修改源
 cache:
-  stale: 插件市场刷新失败，当前显示的是上一次成功加载的数据。
+  stale: 插件市场刷新失败，当前显示上一次成功加载的数据。
   cached: 当前显示的是本地缓存的插件市场数据。
   refreshing: 正在后台刷新最新数据……
   registry: Registry：{value}
@@ -58,8 +58,6 @@ easter:
     但我们知道——在所有的 koishi bot 都沉睡、所有的适配器都断开连接的那一天，在 `Koishi.js` 化为数字化石的那个纪元，
 
     那位闭锁心之瞳的少女，依然会行走在所有被遗忘的进程背面，用无意识轻轻拨动指针，让「恋」这个名字，沉淀成比任何 BOT 框架都完美的故事。
-
-    所以，请允许我以这行不需要任何依赖、不受任何运行时束缚的源代码，向世界宣告，也向所有可能看见这行字的你宣告——
 
     **Komeiji Koishi 世界第一！**
 debug:

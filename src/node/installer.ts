@@ -31,6 +31,17 @@ import {
   parseNpmPackOutput,
 } from './local-binding'
 import {
+  getLocalPackageOperation,
+  LocalPackageUploadStore,
+  type LocalPackageUploadChunkRequest,
+  type LocalPackageUploadCommitResult,
+  type LocalPackageUploadFinishRequest,
+  type LocalPackageUploadPreview,
+  type LocalPackageUploadProgress,
+  type LocalPackageUploadStartRequest,
+  type LocalPackageUploadStartResult,
+} from './local-upload'
+import {
   createEnvironmentSnapshot,
   EnvironmentSnapshot,
   EnvironmentSnapshotPreview,
@@ -269,6 +280,7 @@ class Installer extends Service {
   private installLogWriteTask = Promise.resolve()
   private installLogCleanupTask?: Promise<void>
   private environmentSnapshots: EnvironmentSnapshotStore
+  private localPackageUploads: LocalPackageUploadStore
   private serial = 0
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
@@ -279,9 +291,14 @@ class Installer extends Service {
       resolve(ctx.baseDir, 'data', 'market-next-environment-snapshots.json'),
       message => logger.warn(message),
     )
+    this.localPackageUploads = new LocalPackageUploadStore(ctx.baseDir, message => logger.warn(message))
+    ctx.setInterval(() => {
+      void this.localPackageUploads.pruneExpired()
+    }, Time.minute * 5)
     ctx.effect(() => () => {
       clearTimeout(this.statsWriteTimer)
       this.abortPendingRequests('installer disposed')
+      void this.localPackageUploads.dispose()
     })
     this.flushData = ctx.throttle(() => {
       ctx.get('console')?.broadcast('market/registry', this.tempCache)
@@ -1711,9 +1728,14 @@ class Installer extends Service {
       const newDeps = await this.getDeps()
       let shouldReload = false
       for (const name in localDeps) {
-        const { resolved, local } = localDeps[name]
-        if (local || !newDeps[name]) continue
-        if (newDeps[name].resolved === resolved) continue
+        const { resolved } = localDeps[name]
+        if (!newDeps[name]) continue
+        const requestChanged = snapshot.dependencies[name] !== deps[name]
+        const localRequestChanged = requestChanged && classifyDependencySource(deps[name] ?? '', {
+          workspace: newDeps[name].workspace,
+          installed: !!newDeps[name].resolved,
+        }).local
+        if (newDeps[name].resolved === resolved && !localRequestChanged) continue
         try {
           if (!(require.resolve(name) in require.cache)) continue
         } catch (error) {
@@ -1784,6 +1806,44 @@ class Installer extends Service {
 
   async install(deps: Dict<string>, forced?: boolean, beforeReload?: () => unknown | Promise<unknown>, options: InstallOptions = {}) {
     return this.queueInstall(deps, forced, beforeReload, options)
+  }
+
+  startLocalPackageUpload(request: LocalPackageUploadStartRequest): Promise<LocalPackageUploadStartResult> {
+    return this.localPackageUploads.start(request)
+  }
+
+  appendLocalPackageUpload(request: LocalPackageUploadChunkRequest): Promise<LocalPackageUploadProgress> {
+    return this.localPackageUploads.append(request)
+  }
+
+  async finishLocalPackageUpload(request: LocalPackageUploadFinishRequest): Promise<LocalPackageUploadPreview> {
+    const result = await this.localPackageUploads.finish(request)
+    const snapshot = await this.snapshotPackageManifest()
+    const currentRequest = snapshot.dependencies[result.manifest.name]
+    const currentVersion = this.depCache[result.manifest.name]?.resolved
+    const scripts = Object.keys(result.manifest.scripts ?? {})
+      .filter(name => ['preinstall', 'install', 'postinstall', 'prepare'].includes(name))
+    return {
+      uploadId: result.uploadId,
+      filename: result.filename,
+      name: result.manifest.name,
+      version: result.manifest.version,
+      description: typeof result.manifest.description === 'string' ? result.manifest.description : undefined,
+      size: result.size,
+      hash: result.hash,
+      scripts,
+      currentRequest,
+      currentVersion,
+      operation: getLocalPackageOperation(currentRequest, currentVersion, result.manifest.version),
+    }
+  }
+
+  commitLocalPackageUpload(uploadId: string): Promise<LocalPackageUploadCommitResult> {
+    return this.localPackageUploads.commit(uploadId)
+  }
+
+  cancelLocalPackageUpload(uploadId: string) {
+    return this.localPackageUploads.cancel(uploadId)
   }
 
   async prepareLocalBinding(name: string): Promise<LocalBindingResult> {

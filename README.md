@@ -1,12 +1,14 @@
 # Market Next
 
 ![AI-Crap](https://img.shields.io/badge/💩-AI_crap_code-5C4033?style=flat-square)
+![AI-Crap](https://img.shields.io/badge/💩-AI_crap_code-5C4033?style=flat-square)
+![AI-Crap](https://img.shields.io/badge/💩-AI_crap_code-5C4033?style=flat-square)
 [![npm version](https://img.shields.io/npm/v/koishi-plugin-market-next?color=3178c6)](https://www.npmjs.com/package/koishi-plugin-market-next)
 [![CI](https://github.com/qinfeng365/koishi-plugin-market-next/actions/workflows/ci.yml/badge.svg)](https://github.com/qinfeng365/koishi-plugin-market-next/actions/workflows/ci.yml)
 ![Koishi](https://img.shields.io/badge/Koishi-%5E4.18.11-6f42c1)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-orange)
 
-面向 Koishi Console 的插件市场与依赖管理中心。Market Next 在兼容 Koishi 原有管理链路的基础上，提供缓存优先的市场加载、依赖更新、插件包、环境版本恢复、安装日志和弱网回退。
+Market Next 是面向 Koishi Console 的插件市场与依赖管理中心。它在兼容 Koishi 原有管理链路的基础上，提供缓存优先的市场加载、依赖更新、插件包、环境版本恢复、安装日志和弱网回退。
 
 [npm](https://www.npmjs.com/package/koishi-plugin-market-next) · [更新日志](./CHANGELOG.md) · [问题反馈](https://github.com/qinfeng365/koishi-plugin-market-next/issues)
 
@@ -14,15 +16,25 @@
 > Market Next 与 `@koishijs/plugin-market` 提供同名的 `market` / `installer` Console 能力。请只启用其中一个；同时启用可能造成侧边栏入口、服务和前端资源相互覆盖。
 
 > [!WARNING]
-> 市场自动路由包含官方地址、CDN、社区镜像和少量第三方 GitHub 代理；npm 元数据使用另一组 registry 镜像。自动路由不会静默改写你的 npm/yarn 全局配置，但市场索引仍会影响用户看到的插件信息。对来源有严格要求时，请关闭 `search.autoRoute`，并将 `search.endpoint` 设置为你信任的地址。
+> 市场自动路由包含官方地址、CDN、社区镜像和少量第三方 GitHub 代理；npm 元数据使用另一组 registry 镜像。自动路由不会静默改写 npm/yarn 全局配置，但市场索引仍会影响用户看到的插件信息。对来源有严格要求时，请关闭 `search.autoRoute`，并将 `search.endpoint` 设置为可信地址。
 
-## 能做什么
+## 相比官方市场的改进
+
+与 `@koishijs/plugin-market` 相比，Market Next 在以下方面有所增强：
+
+- **缓存优先**：有缓存时先展示旧数据，再在后台验证新索引；市场刷新失败时保留当前列表，避免用空白页覆盖可用结果。
+- **变更可见**：安装前展示具体依赖差异；包管理器失败时仅回滚本次涉及的依赖键，尽量保留外部编辑。
+- **安装串行化**：安装操作串行执行，避免多个包管理器进程同时修改 `package.json` 和 lockfile。
+- **环境快照**：以整个 Koishi 直接依赖环境为单位保存版本快照，恢复前展示新增、移除、升级和降级差异。
+- **弱网回退**：市场索引与 npm 元数据均支持备用源自动路由；安装失败时可使用一次性备用源重试，不修改全局配置。
+- **安装日志**：每次操作保留完整包管理器输出，默认保留 72 小时，便于事后排查。
+
+## 功能一览
 
 ### 插件市场
 
-- 有缓存时先显示旧数据，再在后台验证新索引。
-- 市场刷新失败时保留当前列表，不用空白页覆盖可用结果。
-- 支持关键词、分类、状态、作者邮箱和创建/更新时间筛选。
+- 有缓存时先显示旧数据，再在后台验证新索引；市场刷新失败时保留当前列表，不用空白页覆盖可用结果。
+- 支持关键词、分类、状态、作者邮箱和创建 / 更新时间筛选。
 - 提供综合、推荐、下载量、创建时间和更新时间排序。
 - 使用虚拟窗口控制大列表的实际渲染数量。
 - 提供性能模式与精致模式，兼容浅色、深色和纯黑主题。
@@ -36,6 +48,8 @@
 - 可以临时忽略一次更新，也可以永久关闭指定依赖的更新提示。
 - 包管理器失败时保留日志，并可由用户确认使用一次性备用 npm 源重试。
 - 安装操作串行执行，避免多个包管理器进程同时修改 `package.json` 和 lockfile。
+- 本地开发插件、工作区依赖和文件依赖会进入独立分组，不参与普通 npm 更新判断。
+- 支持从“添加依赖”直接导入 `npm pack` 生成的 `.tgz`，同名插件会替换当前本地构建而不是新增重复依赖。
 
 ### 恢复与审计
 
@@ -49,7 +63,7 @@
 - 支持一个插件包声明多个 Koishi 插件成员及建议配置。
 - 安装前展示成员、版本范围、风险字段和最终变更。
 - 成员配置默认停用，必须经过用户确认才会写入。
-- 卸载时区分插件包分组配置与用户原有配置，避免顺手删除外部配置。
+- 卸载时区分插件包分组配置与用户原有配置，避免删除外部配置。
 
 ## 快速开始
 
@@ -116,7 +130,23 @@ plugins:
 
 待应用变更只是计划，不代表已经修改 `node_modules`。只有确认执行后，Market Next 才会写入依赖并启动实例当前使用的包管理器。
 
-### 安装备用源
+### 导入本地插件开发包
+
+在插件源码目录先生成 npm 归档：
+
+```bash
+npm pack
+```
+
+随后打开“依赖管理”，点击“添加依赖”，在“本地构建”页拖入生成的 `.tgz` 文件。Market Next 会先完成后端校验，再展示包名、版本、文件哈希、安装类型和生命周期脚本；确认后才会进入正常依赖安装流程。
+
+- 仅支持 `npm pack` 结构的 Koishi 插件归档，单个文件最大 64 MiB。
+- 归档会保存到实例的 `.yarn/local/`，依赖请求写为可迁移的相对 `file:` 路径。
+- 再次导入同名插件时会修改原依赖；版本更高、版本更低和同版本重新构建会分别显示为升级、降级或替换构建。
+- 同版本不同内容使用文件哈希区分，旧归档会保留，便于环境版本恢复。
+- 检测到 `preinstall`、`install`、`postinstall` 或 `prepare` 时会明确警告；只有信任来源时才应继续安装。
+
+### 市场源与 npm 安装源
 
 市场源与 npm 安装源不是同一概念：
 
@@ -245,7 +275,7 @@ marketSilentRules:
 | `cache/market-next-avatars/` | 成功获取的维护者头像。 |
 | `cache/market-next-registry-stats.json` | npm 元数据源的本地路由统计。 |
 
-真正的插件配置、显示模式、过滤规则和后台探测设置仍保存在 Koishi 配置树中。运行数据不会被塞进 `koishi.yml`。
+真正的插件配置、显示模式、过滤规则和后台探测设置仍保存在 Koishi 配置树中。运行数据不会被写入 `koishi.yml`。
 
 缓存文件损坏或过期时会被忽略或重建。需要手工处理文件时，应先停止 Koishi，避免与正在进行的原子写入冲突。
 

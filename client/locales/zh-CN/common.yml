@@ -8,7 +8,7 @@ actions:
   apply: 应用更改
   refresh: 刷新
   upgradeAll: 全部更新
-  manual: 手动添加
+  manual: 添加依赖
   history: 最近操作
   versionManagement: 版本管理
   cancel: 取消
