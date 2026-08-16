@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: strix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -28,6 +29,7 @@ jobs:
         run: curl -sSL https://strix.ai/install | bash
 
       - name: Run Strix
+        id: strix
         shell: bash
         env:
           STRIX_LLM: openai/gemini-3.7-flash
@@ -54,9 +56,97 @@ jobs:
 
       - name: Upload Strix results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: strix-results-${{ github.run_id }}
           path: strix_runs
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Update pull request comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        env:
+          STRIX_STEP_OUTCOME: ${{ steps.strix.outcome }}
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            const marker = '<!-- strix-review-comment -->'
+            const runsRoot = path.join(process.env.GITHUB_WORKSPACE, 'strix_runs')
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            let report = ''
+            let scanStatus = process.env.STRIX_STEP_OUTCOME || 'unknown'
+
+            if (fs.existsSync(runsRoot)) {
+              const runDirs = fs.readdirSync(runsRoot, { withFileTypes: true })
+                .filter((entry) => entry.isDirectory())
+                .map((entry) => {
+                  const fullPath = path.join(runsRoot, entry.name)
+                  return { fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs }
+                })
+                .sort((left, right) => right.mtimeMs - left.mtimeMs)
+
+              const latestRun = runDirs[0]?.fullPath
+              if (latestRun) {
+                const reportPath = path.join(latestRun, 'penetration_test_report.md')
+                const runJsonPath = path.join(latestRun, 'run.json')
+
+                if (fs.existsSync(reportPath)) {
+                  report = fs.readFileSync(reportPath, 'utf8').trim()
+                }
+
+                if (fs.existsSync(runJsonPath)) {
+                  try {
+                    scanStatus = JSON.parse(fs.readFileSync(runJsonPath, 'utf8')).status || scanStatus
+                  } catch (error) {
+                    core.warning(`Could not parse run.json: ${error.message}`)
+                  }
+                }
+              }
+            }
+
+            if (!report) {
+              report = 'Strix 未生成审查报告。请打开下方运行记录查看安装、模型连接或扫描错误。'
+            }
+
+            const maxReportChars = 55000
+            if (report.length > maxReportChars) {
+              report = `${report.slice(0, maxReportChars)}\n\n> 评论内容已截断，完整报告请从 Action Artifact 下载。`
+            }
+
+            const body = [
+              marker,
+              '## Strix 审查结果',
+              '',
+              `**扫描状态：** ${scanStatus}`,
+              '',
+              report,
+              '',
+              '---',
+              `[查看完整运行与下载报告](${runUrl})`,
+            ].join('\n')
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            })
+            const existing = comments.find((comment) =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker),
+            )
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: existing.id,
+                body,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body,
+              })
+            }
