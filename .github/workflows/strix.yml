@@ -111,23 +111,13 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout review target
+      - name: Checkout trusted workflow source
         uses: actions/checkout@v6
         with:
-          repository: ${{ needs.prepare.outputs.head_repo }}
-          ref: ${{ needs.prepare.outputs.head_sha }}
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Fetch pull request base
-        if: needs.prepare.outputs.is_pr == 'true'
-        shell: bash
-        env:
-          BASE_REF: ${{ needs.prepare.outputs.base_ref }}
-          BASE_REPO: ${{ github.repository }}
-        run: |
-          git remote add strix-base "https://github.com/${BASE_REPO}.git"
-          git fetch --no-tags strix-base "${BASE_REF}:refs/remotes/strix-base/${BASE_REF}"
 
       - name: Prepare trusted instructions
         id: instructions
@@ -161,13 +151,60 @@ jobs:
       - name: Install Strix
         run: curl -sSL https://strix.ai/install | bash
 
+      - name: Prepare isolated review target
+        id: target
+        shell: bash
+        env:
+          BASE_REPO: ${{ github.repository }}
+          BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          HEAD_REPO: ${{ needs.prepare.outputs.head_repo }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          IS_PR: ${{ needs.prepare.outputs.is_pr }}
+        run: |
+          if [[ ! "${HEAD_REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Invalid review repository."
+            exit 1
+          fi
+          if [[ ! "${HEAD_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid review commit SHA."
+            exit 1
+          fi
+          if [[ "${IS_PR}" == "true" && ! "${BASE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid pull request base SHA."
+            exit 1
+          fi
+
+          target_path="${RUNNER_TEMP}/strix-target-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git clone --no-local --no-checkout "${GITHUB_WORKSPACE}" "${target_path}"
+
+          # Materialize the untrusted tree without running its scripts on the host.
+          git -C "${target_path}" fetch --no-tags --force \
+            "https://github.com/${HEAD_REPO}.git" \
+            "${HEAD_SHA}:refs/remotes/strix-head/review"
+          git -C "${target_path}" checkout --detach refs/remotes/strix-head/review
+
+          if [[ "${IS_PR}" == "true" ]]; then
+            git -C "${target_path}" fetch --no-tags --force \
+              "https://github.com/${BASE_REPO}.git" \
+              "${BASE_SHA}:refs/remotes/strix-base/review"
+          fi
+
+          checked_out_sha="$(git -C "${target_path}" rev-parse HEAD)"
+          if [[ "${checked_out_sha,,}" != "${HEAD_SHA,,}" ]]; then
+            echo "::error::Checked-out commit does not match the reviewed SHA."
+            exit 1
+          fi
+
+          echo "path=${target_path}" >> "${GITHUB_OUTPUT}"
+
       - name: Run Strix
         id: strix
         continue-on-error: true
         shell: bash
         env:
-          BASE_REF: ${{ needs.prepare.outputs.base_ref }}
+          IS_PR: ${{ needs.prepare.outputs.is_pr }}
           INSTRUCTION_FILE: ${{ steps.instructions.outputs.path }}
+          REVIEW_TARGET: ${{ steps.target.outputs.path }}
           STRIX_LLM: openai/gemini-3.7-flash
           LLM_API_KEY: ${{ secrets.STRIX_LLM_API_KEY }}
           LLM_API_BASE: https://newapi.mikumiku.love/v1
@@ -180,12 +217,12 @@ jobs:
           fi
 
           scope_args=(--scope-mode full)
-          if [[ -n "${BASE_REF}" ]]; then
-            scope_args=(--scope-mode diff --diff-base "strix-base/${BASE_REF}")
+          if [[ "${IS_PR}" == "true" ]]; then
+            scope_args=(--scope-mode diff --diff-base "refs/remotes/strix-base/review")
           fi
 
           strix -n \
-            --target ./ \
+            --target "${REVIEW_TARGET}" \
             --scan-mode quick \
             "${scope_args[@]}" \
             --instruction-file "${INSTRUCTION_FILE}"
