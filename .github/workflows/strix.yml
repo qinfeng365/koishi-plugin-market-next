@@ -10,18 +10,13 @@ on:
       - created
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: write
-
 concurrency:
   group: strix-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  scan:
-    name: Quick security scan
+  prepare:
+    name: Prepare review
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (
@@ -42,15 +37,38 @@ jobs:
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    outputs:
+      base_ref: ${{ steps.resolve.outputs.base_ref }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      head_repo: ${{ steps.resolve.outputs.head_repo }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      is_pr: ${{ steps.resolve.outputs.is_pr }}
+      number: ${{ steps.resolve.outputs.number }}
+      same_repo: ${{ steps.resolve.outputs.same_repo }}
+      scan_allowed: ${{ steps.resolve.outputs.scan_allowed }}
 
     steps:
-      - name: Resolve pull request
-        id: pr
-        if: github.event_name != 'workflow_dispatch'
+      - name: Resolve review context
+        id: resolve
         uses: actions/github-script@v8
         with:
           script: |
+            if (context.eventName === 'workflow_dispatch') {
+              core.setOutput('base_ref', '')
+              core.setOutput('base_sha', '')
+              core.setOutput('head_repo', `${context.repo.owner}/${context.repo.repo}`)
+              core.setOutput('head_sha', context.sha)
+              core.setOutput('is_pr', 'false')
+              core.setOutput('number', '')
+              core.setOutput('same_repo', 'true')
+              core.setOutput('scan_allowed', 'true')
+              return
+            }
+
             const prNumber = context.eventName === 'issue_comment'
               ? context.payload.issue.number
               : context.payload.pull_request.number
@@ -58,15 +76,22 @@ jobs:
               ...context.repo,
               pull_number: prNumber,
             })
-            const sameRepo = pullRequest.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`
+            const headRepo = pullRequest.head.repo?.full_name || ''
+            const sameRepo = headRepo === `${context.repo.owner}/${context.repo.repo}`
+            const maintainerRequested = context.eventName === 'issue_comment'
+            const scanAllowed = Boolean(headRepo) && (sameRepo || maintainerRequested)
 
-            core.setOutput('number', String(pullRequest.number))
-            core.setOutput('head_sha', pullRequest.head.sha)
             core.setOutput('base_ref', pullRequest.base.ref)
+            core.setOutput('base_sha', pullRequest.base.sha)
+            core.setOutput('head_repo', headRepo)
+            core.setOutput('head_sha', pullRequest.head.sha)
+            core.setOutput('is_pr', 'true')
+            core.setOutput('number', String(pullRequest.number))
             core.setOutput('same_repo', String(sameRepo))
+            core.setOutput('scan_allowed', String(scanAllowed))
 
       - name: Acknowledge review command
-        if: github.event_name == 'issue_comment' && steps.pr.outputs.same_repo == 'true'
+        if: github.event_name == 'issue_comment' && steps.resolve.outputs.scan_allowed == 'true'
         uses: actions/github-script@v8
         with:
           script: |
@@ -76,30 +101,73 @@ jobs:
               content: 'eyes',
             })
 
-      - name: Checkout
-        if: github.event_name == 'workflow_dispatch' || steps.pr.outputs.same_repo == 'true'
+  scan:
+    name: Quick security scan
+    needs: prepare
+    if: needs.prepare.outputs.scan_allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout review target
         uses: actions/checkout@v6
         with:
+          repository: ${{ needs.prepare.outputs.head_repo }}
+          ref: ${{ needs.prepare.outputs.head_sha }}
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || steps.pr.outputs.head_sha }}
+          persist-credentials: false
 
       - name: Fetch pull request base
-        if: github.event_name != 'workflow_dispatch' && steps.pr.outputs.same_repo == 'true'
+        if: needs.prepare.outputs.is_pr == 'true'
         shell: bash
         env:
-          BASE_REF: ${{ steps.pr.outputs.base_ref }}
-        run: git fetch --no-tags origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          BASE_REF: ${{ needs.prepare.outputs.base_ref }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          git remote add strix-base "https://github.com/${BASE_REPO}.git"
+          git fetch --no-tags strix-base "${BASE_REF}:refs/remotes/strix-base/${BASE_REF}"
+
+      - name: Prepare trusted instructions
+        id: instructions
+        shell: bash
+        env:
+          BASE_REPO: ${{ github.repository }}
+          BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          GH_TOKEN: ${{ github.token }}
+          IS_PR: ${{ needs.prepare.outputs.is_pr }}
+          SAME_REPO: ${{ needs.prepare.outputs.same_repo }}
+        run: |
+          instruction_path="${RUNNER_TEMP}/strix-instructions.md"
+
+          if [[ "${IS_PR}" != "true" ]]; then
+            cp .github/strix-instructions.md "${instruction_path}"
+          elif gh api \
+            -H "Accept: application/vnd.github.raw+json" \
+            "repos/${BASE_REPO}/contents/.github/strix-instructions.md?ref=${BASE_SHA}" \
+            > "${instruction_path}"; then
+            echo "Loaded trusted instructions from the PR base commit."
+          elif [[ "${SAME_REPO}" == "true" && -f .github/strix-instructions.md ]]; then
+            cp .github/strix-instructions.md "${instruction_path}"
+            echo "Base branch has no instructions yet; using the same-repository PR copy."
+          else
+            echo "::error::Could not load trusted Strix instructions."
+            exit 1
+          fi
+
+          echo "path=${instruction_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Install Strix
-        if: github.event_name == 'workflow_dispatch' || steps.pr.outputs.same_repo == 'true'
         run: curl -sSL https://strix.ai/install | bash
 
       - name: Run Strix
         id: strix
-        if: github.event_name == 'workflow_dispatch' || steps.pr.outputs.same_repo == 'true'
+        continue-on-error: true
         shell: bash
         env:
-          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          BASE_REF: ${{ needs.prepare.outputs.base_ref }}
+          INSTRUCTION_FILE: ${{ steps.instructions.outputs.path }}
           STRIX_LLM: openai/gemini-3.7-flash
           LLM_API_KEY: ${{ secrets.STRIX_LLM_API_KEY }}
           LLM_API_BASE: https://newapi.mikumiku.love/v1
@@ -113,29 +181,56 @@ jobs:
 
           scope_args=(--scope-mode full)
           if [[ -n "${BASE_REF}" ]]; then
-            scope_args=(--scope-mode diff --diff-base "origin/${BASE_REF}")
+            scope_args=(--scope-mode diff --diff-base "strix-base/${BASE_REF}")
           fi
 
           strix -n \
             --target ./ \
             --scan-mode quick \
             "${scope_args[@]}" \
-            --instruction-file .github/strix-instructions.md
+            --instruction-file "${INSTRUCTION_FILE}"
 
       - name: Upload Strix results
-        if: always() && (github.event_name == 'workflow_dispatch' || steps.pr.outputs.same_repo == 'true')
-        uses: actions/upload-artifact@v5
+        if: always()
+        uses: actions/upload-artifact@v6
         with:
           name: strix-results-${{ github.run_id }}
           path: strix_runs
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Enforce Strix result
+        if: steps.strix.outcome == 'failure'
+        run: exit 1
+
+  comment:
+    name: Publish review comment
+    needs:
+      - prepare
+      - scan
+    if: >-
+      always() &&
+      needs.prepare.outputs.is_pr == 'true' &&
+      needs.prepare.outputs.scan_allowed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Download Strix results
+        continue-on-error: true
+        uses: actions/download-artifact@v6
+        with:
+          name: strix-results-${{ github.run_id }}
+          path: strix_runs
+
       - name: Update pull request comment
-        if: always() && github.event_name != 'workflow_dispatch' && steps.pr.outputs.same_repo == 'true'
         uses: actions/github-script@v8
         env:
-          STRIX_STEP_OUTCOME: ${{ steps.strix.outcome }}
+          STRIX_JOB_RESULT: ${{ needs.scan.result }}
         with:
           script: |
             const fs = require('fs')
@@ -145,7 +240,7 @@ jobs:
             const runsRoot = path.join(process.env.GITHUB_WORKSPACE, 'strix_runs')
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             let report = ''
-            let scanStatus = process.env.STRIX_STEP_OUTCOME || 'unknown'
+            let scanStatus = process.env.STRIX_JOB_RESULT || 'unknown'
 
             if (fs.existsSync(runsRoot)) {
               const runDirs = fs.readdirSync(runsRoot, { withFileTypes: true })
@@ -178,6 +273,8 @@ jobs:
             if (!report) {
               report = 'Strix 未生成审查报告。请打开下方运行记录查看安装、模型连接或扫描错误。'
             }
+
+            report = report.replace(/@(?=[A-Za-z0-9-])/g, '@\u200b')
 
             const maxReportChars = 55000
             if (report.length > maxReportChars) {
