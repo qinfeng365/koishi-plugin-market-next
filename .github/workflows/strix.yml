@@ -1,0 +1,357 @@
+name: Strix Security Scan
+
+on:
+  pull_request:
+    types:
+      - opened
+      - ready_for_review
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+
+concurrency:
+  group: strix-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Prepare review
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (
+          github.event.action == 'ready_for_review' ||
+          (github.event.action == 'opened' && github.event.pull_request.draft == false)
+        )
+      ) ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        (
+          contains(github.event.comment.body, '@github-actions strix-review') ||
+          contains(github.event.comment.body, '@github-actions 复查')
+        ) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    outputs:
+      base_ref: ${{ steps.resolve.outputs.base_ref }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      head_repo: ${{ steps.resolve.outputs.head_repo }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      is_pr: ${{ steps.resolve.outputs.is_pr }}
+      number: ${{ steps.resolve.outputs.number }}
+      same_repo: ${{ steps.resolve.outputs.same_repo }}
+      scan_allowed: ${{ steps.resolve.outputs.scan_allowed }}
+
+    steps:
+      - name: Resolve review context
+        id: resolve
+        uses: actions/github-script@v8
+        with:
+          script: |
+            if (context.eventName === 'workflow_dispatch') {
+              core.setOutput('base_ref', '')
+              core.setOutput('base_sha', '')
+              core.setOutput('head_repo', `${context.repo.owner}/${context.repo.repo}`)
+              core.setOutput('head_sha', context.sha)
+              core.setOutput('is_pr', 'false')
+              core.setOutput('number', '')
+              core.setOutput('same_repo', 'true')
+              core.setOutput('scan_allowed', 'true')
+              return
+            }
+
+            const prNumber = context.eventName === 'issue_comment'
+              ? context.payload.issue.number
+              : context.payload.pull_request.number
+            const { data: pullRequest } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: prNumber,
+            })
+            const headRepo = pullRequest.head.repo?.full_name || ''
+            const sameRepo = headRepo === `${context.repo.owner}/${context.repo.repo}`
+            const maintainerRequested = context.eventName === 'issue_comment'
+            const scanAllowed = Boolean(headRepo) && (sameRepo || maintainerRequested)
+
+            core.setOutput('base_ref', pullRequest.base.ref)
+            core.setOutput('base_sha', pullRequest.base.sha)
+            core.setOutput('head_repo', headRepo)
+            core.setOutput('head_sha', pullRequest.head.sha)
+            core.setOutput('is_pr', 'true')
+            core.setOutput('number', String(pullRequest.number))
+            core.setOutput('same_repo', String(sameRepo))
+            core.setOutput('scan_allowed', String(scanAllowed))
+
+      - name: Acknowledge review command
+        if: github.event_name == 'issue_comment' && steps.resolve.outputs.scan_allowed == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              ...context.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            })
+
+  scan:
+    name: Quick security scan
+    needs: prepare
+    if: needs.prepare.outputs.scan_allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout trusted workflow source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare trusted instructions
+        id: instructions
+        shell: bash
+        env:
+          BASE_REPO: ${{ github.repository }}
+          BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          IS_PR: ${{ needs.prepare.outputs.is_pr }}
+          SAME_REPO: ${{ needs.prepare.outputs.same_repo }}
+        run: |
+          instruction_path="${RUNNER_TEMP}/strix-instructions.md"
+
+          if [[ "${IS_PR}" != "true" ]]; then
+            cp .github/strix-instructions.md "${instruction_path}"
+          elif gh api \
+            -H "Accept: application/vnd.github.raw+json" \
+            "repos/${BASE_REPO}/contents/.github/strix-instructions.md?ref=${BASE_SHA}" \
+            > "${instruction_path}"; then
+            echo "Loaded trusted instructions from the PR base commit."
+          elif [[ "${SAME_REPO}" == "true" ]] && gh api \
+            -H "Accept: application/vnd.github.raw+json" \
+            "repos/${BASE_REPO}/contents/.github/strix-instructions.md?ref=${HEAD_SHA}" \
+            > "${instruction_path}"; then
+            echo "Base branch has no instructions yet; loaded the same-repository PR copy."
+          else
+            echo "::error::Could not load trusted Strix instructions."
+            exit 1
+          fi
+
+          echo "path=${instruction_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Strix
+        run: curl -sSL https://strix.ai/install | bash
+
+      - name: Prepare isolated review target
+        id: target
+        shell: bash
+        env:
+          BASE_REPO: ${{ github.repository }}
+          BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          HEAD_REPO: ${{ needs.prepare.outputs.head_repo }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          IS_PR: ${{ needs.prepare.outputs.is_pr }}
+        run: |
+          if [[ ! "${HEAD_REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Invalid review repository."
+            exit 1
+          fi
+          if [[ ! "${HEAD_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid review commit SHA."
+            exit 1
+          fi
+          if [[ "${IS_PR}" == "true" && ! "${BASE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid pull request base SHA."
+            exit 1
+          fi
+
+          target_path="${RUNNER_TEMP}/strix-target-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git clone --no-local --no-checkout "${GITHUB_WORKSPACE}" "${target_path}"
+
+          # Materialize the untrusted tree without running its scripts on the host.
+          git -C "${target_path}" fetch --no-tags --force \
+            "https://github.com/${HEAD_REPO}.git" \
+            "${HEAD_SHA}:refs/remotes/strix-head/review"
+          git -C "${target_path}" checkout --detach refs/remotes/strix-head/review
+
+          if [[ "${IS_PR}" == "true" ]]; then
+            git -C "${target_path}" fetch --no-tags --force \
+              "https://github.com/${BASE_REPO}.git" \
+              "${BASE_SHA}:refs/remotes/strix-base/review"
+          fi
+
+          checked_out_sha="$(git -C "${target_path}" rev-parse HEAD)"
+          if [[ "${checked_out_sha,,}" != "${HEAD_SHA,,}" ]]; then
+            echo "::error::Checked-out commit does not match the reviewed SHA."
+            exit 1
+          fi
+
+          echo "path=${target_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run Strix
+        id: strix
+        continue-on-error: true
+        shell: bash
+        env:
+          IS_PR: ${{ needs.prepare.outputs.is_pr }}
+          INSTRUCTION_FILE: ${{ steps.instructions.outputs.path }}
+          REVIEW_TARGET: ${{ steps.target.outputs.path }}
+          STRIX_LLM: openai/gemini-3.7-flash
+          LLM_API_KEY: ${{ secrets.STRIX_LLM_API_KEY }}
+          LLM_API_BASE: https://newapi.mikumiku.love/v1
+          STRIX_REASONING_EFFORT: high
+          STRIX_TELEMETRY: '0'
+        run: |
+          if [[ -z "${LLM_API_KEY}" ]]; then
+            echo "::error::Repository secret STRIX_LLM_API_KEY is not configured."
+            exit 1
+          fi
+
+          scope_args=(--scope-mode full)
+          if [[ "${IS_PR}" == "true" ]]; then
+            scope_args=(--scope-mode diff --diff-base "refs/remotes/strix-base/review")
+          fi
+
+          strix -n \
+            --target "${REVIEW_TARGET}" \
+            --scan-mode quick \
+            "${scope_args[@]}" \
+            --instruction-file "${INSTRUCTION_FILE}"
+
+      - name: Upload Strix results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: strix-results-${{ github.run_id }}
+          path: strix_runs
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce Strix result
+        if: steps.strix.outcome == 'failure'
+        run: exit 1
+
+  comment:
+    name: Publish review comment
+    needs:
+      - prepare
+      - scan
+    if: >-
+      always() &&
+      needs.prepare.outputs.is_pr == 'true' &&
+      needs.prepare.outputs.scan_allowed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Download Strix results
+        continue-on-error: true
+        uses: actions/download-artifact@v6
+        with:
+          name: strix-results-${{ github.run_id }}
+          path: strix_runs
+
+      - name: Update pull request comment
+        uses: actions/github-script@v8
+        env:
+          STRIX_JOB_RESULT: ${{ needs.scan.result }}
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            const marker = '<!-- strix-review-comment -->'
+            const runsRoot = path.join(process.env.GITHUB_WORKSPACE, 'strix_runs')
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            let report = ''
+            let scanStatus = process.env.STRIX_JOB_RESULT || 'unknown'
+
+            if (fs.existsSync(runsRoot)) {
+              const runDirs = fs.readdirSync(runsRoot, { withFileTypes: true })
+                .filter((entry) => entry.isDirectory())
+                .map((entry) => {
+                  const fullPath = path.join(runsRoot, entry.name)
+                  return { fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs }
+                })
+                .sort((left, right) => right.mtimeMs - left.mtimeMs)
+
+              const latestRun = runDirs[0]?.fullPath
+              if (latestRun) {
+                const reportPath = path.join(latestRun, 'penetration_test_report.md')
+                const runJsonPath = path.join(latestRun, 'run.json')
+
+                if (fs.existsSync(reportPath)) {
+                  report = fs.readFileSync(reportPath, 'utf8').trim()
+                }
+
+                if (fs.existsSync(runJsonPath)) {
+                  try {
+                    scanStatus = JSON.parse(fs.readFileSync(runJsonPath, 'utf8')).status || scanStatus
+                  } catch (error) {
+                    core.warning(`Could not parse run.json: ${error.message}`)
+                  }
+                }
+              }
+            }
+
+            if (!report) {
+              report = 'Strix 未生成审查报告。请打开下方运行记录查看安装、模型连接或扫描错误。'
+            }
+
+            report = report.replace(/@(?=[A-Za-z0-9-])/g, '@\u200b')
+
+            const maxReportChars = 55000
+            if (report.length > maxReportChars) {
+              report = `${report.slice(0, maxReportChars)}\n\n> 评论内容已截断，完整报告请从 Action Artifact 下载。`
+            }
+
+            const body = [
+              marker,
+              '## Strix 审查结果',
+              '',
+              `**扫描状态：** ${scanStatus}`,
+              '',
+              report,
+              '',
+              '---',
+              `[查看完整运行与下载报告](${runUrl})`,
+            ].join('\n')
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            })
+            const existing = comments.find((comment) =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker),
+            )
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: existing.id,
+                body,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body,
+              })
+            }
