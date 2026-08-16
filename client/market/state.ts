@@ -28,6 +28,8 @@ const missingMarketObjects = new Set<string>()
 const requestedMarketObjects = new Set<string>()
 const requestedMarketServices = new Set<string>()
 const snapshotSuperseded = new Error('market snapshot superseded')
+const snapshotRetryLimit = new Error('market snapshot changed too frequently')
+const MAX_SNAPSHOT_SUPERSEDED_RETRIES = 3
 
 function getSummaryKey(value: Partial<MarketProvider.Payload> | undefined) {
   if (!value) return ''
@@ -112,7 +114,11 @@ export function restoreMarketSnapshot() {
   }
 }
 
-export async function loadMarketSnapshot(force = false) {
+export function loadMarketSnapshot(force = false) {
+  return loadMarketSnapshotAttempt(force, 0)
+}
+
+async function loadMarketSnapshotAttempt(force: boolean, supersededRetries: number): Promise<MarketSnapshot> {
   const key = getSummaryKey(store.market)
   if (!force && !marketSnapshot.value && store.market?.data) {
     return publishSnapshot(store.market)
@@ -123,7 +129,7 @@ export async function loadMarketSnapshot(force = false) {
   if (snapshotTask) {
     if (!force && (!key || key === snapshotTaskKey)) return snapshotTask
     await snapshotTask.catch(() => undefined)
-    return loadMarketSnapshot(force)
+    return loadMarketSnapshotAttempt(force, supersededRetries)
   }
 
   marketSnapshotLoading.value = true
@@ -155,7 +161,13 @@ export async function loadMarketSnapshot(force = false) {
   try {
     return await task
   } catch (error) {
-    if (error === snapshotSuperseded) return loadMarketSnapshot(true)
+    if (error === snapshotSuperseded) {
+      if (supersededRetries < MAX_SNAPSHOT_SUPERSEDED_RETRIES) {
+        return loadMarketSnapshotAttempt(true, supersededRetries + 1)
+      }
+      marketSnapshotError.value = snapshotRetryLimit
+      throw snapshotRetryLimit
+    }
     throw error
   }
 }

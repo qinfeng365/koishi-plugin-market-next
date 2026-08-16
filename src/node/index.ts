@@ -88,6 +88,7 @@ export type {
 
 const SELF_PACKAGE = 'koishi-plugin-market-next'
 const gzip = promisify(gzipCallback)
+const MAX_MARKET_SNAPSHOTS = 6
 
 interface EncodedMarketSnapshot {
   id: string
@@ -140,7 +141,7 @@ class MarketSnapshotTransport {
     const body = await gzip(Buffer.from(json), { level: 6 }) as Buffer
     const entry = { id, body, decodedSize, encodedSize: body.length }
     this.entries.set(id, entry)
-    while (this.entries.size > 3) {
+    while (this.entries.size > MAX_MARKET_SNAPSHOTS) {
       const oldest = this.entries.keys().next().value
       if (!oldest) break
       this.entries.delete(oldest)
@@ -1532,7 +1533,7 @@ export function apply(ctx: Context, config: Config = {}) {
       })
   })
 
-  ctx.inject(['console', 'installer'], (ctx) => {
+  ctx.inject(['console', 'installer', 'server'], (ctx) => {
     ctx.plugin(DependencyProvider)
     ctx.plugin(RegistryProvider)
     ctx.plugin(RegistryStatusProvider)

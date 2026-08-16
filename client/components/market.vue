@@ -224,7 +224,9 @@ const marketLoading = computed(() => {
   if (marketSnapshotError.value) return false
   if (marketSnapshotLoading.value) return true
   const state = marketSnapshot.value ?? store.market
-  return !state || !!state.loading || (state.total ?? 0) > 0
+  if (!state || state.loading) return true
+  const hasResolvedSnapshot = !!marketSnapshot.value || !!store.market?.data
+  return !hasResolvedSnapshot && (state.total ?? 0) > 0
 })
 const loadingSlow = ref(false)
 let loadingTimer: ReturnType<typeof setTimeout>
