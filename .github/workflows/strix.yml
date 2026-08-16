@@ -2,6 +2,10 @@ name: Strix Security Scan
 
 on:
   pull_request:
+    types:
+      - opened
+      - ready_for_review
+      - labeled
   workflow_dispatch:
 
 permissions:
@@ -15,7 +19,16 @@ concurrency:
 jobs:
   scan:
     name: Quick security scan
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (
+          github.event.action == 'ready_for_review' ||
+          (github.event.action == 'opened' && github.event.pull_request.draft == false) ||
+          (github.event.action == 'labeled' && github.event.label.name == 'strix-review')
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
