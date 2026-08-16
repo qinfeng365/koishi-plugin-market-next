@@ -126,6 +126,7 @@ jobs:
           BASE_REPO: ${{ github.repository }}
           BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
           GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
           IS_PR: ${{ needs.prepare.outputs.is_pr }}
           SAME_REPO: ${{ needs.prepare.outputs.same_repo }}
         run: |
@@ -138,9 +139,11 @@ jobs:
             "repos/${BASE_REPO}/contents/.github/strix-instructions.md?ref=${BASE_SHA}" \
             > "${instruction_path}"; then
             echo "Loaded trusted instructions from the PR base commit."
-          elif [[ "${SAME_REPO}" == "true" && -f .github/strix-instructions.md ]]; then
-            cp .github/strix-instructions.md "${instruction_path}"
-            echo "Base branch has no instructions yet; using the same-repository PR copy."
+          elif [[ "${SAME_REPO}" == "true" ]] && gh api \
+            -H "Accept: application/vnd.github.raw+json" \
+            "repos/${BASE_REPO}/contents/.github/strix-instructions.md?ref=${HEAD_SHA}" \
+            > "${instruction_path}"; then
+            echo "Base branch has no instructions yet; loaded the same-repository PR copy."
           else
             echo "::error::Could not load trusted Strix instructions."
             exit 1
