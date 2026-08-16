@@ -134,6 +134,7 @@ import { canInstallBundleSearchObject } from '../market/utils'
 import {
   getMarketSnapshotData,
   loadMarketSnapshot,
+  marketSnapshot,
   marketSnapshotError,
   marketSnapshotLoading,
 } from '../market/state'
@@ -219,8 +220,13 @@ const clientDebug = ref<{
 }>({})
 
 const marketLoading = computed(() => {
-  if (!store.market || store.market.loading || marketSnapshotLoading.value) return true
-  return store.market.total > 0 && !data.value.length && !marketSnapshotError.value
+  if (data.value.length) return false
+  if (marketSnapshotError.value) return false
+  if (marketSnapshotLoading.value) return true
+  const state = marketSnapshot.value ?? store.market
+  if (!state || state.loading) return true
+  const hasResolvedSnapshot = !!marketSnapshot.value || !!store.market?.data
+  return !hasResolvedSnapshot && (state.total ?? 0) > 0
 })
 const loadingSlow = ref(false)
 let loadingTimer: ReturnType<typeof setTimeout>

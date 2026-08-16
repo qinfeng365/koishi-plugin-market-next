@@ -1,6 +1,12 @@
 import { receive, send, store } from '@koishijs/client'
 import { markRaw, ref, shallowRef } from 'vue'
-import type { MarketLookupRequest, MarketLookupResult, MarketProvider } from '../../src/shared'
+import type {
+  MarketLookupRequest,
+  MarketLookupResult,
+  MarketProvider,
+  MarketSnapshotResponse,
+  MarketSnapshotTransfer,
+} from '../../src/shared'
 
 export type MarketSnapshot = MarketProvider.Payload & {
   data: NonNullable<MarketProvider.Payload['data']>
@@ -22,6 +28,8 @@ const missingMarketObjects = new Set<string>()
 const requestedMarketObjects = new Set<string>()
 const requestedMarketServices = new Set<string>()
 const snapshotSuperseded = new Error('market snapshot superseded')
+const snapshotRetryLimit = new Error('market snapshot changed too frequently')
+const MAX_SNAPSHOT_SUPERSEDED_RETRIES = 3
 
 function getSummaryKey(value: Partial<MarketProvider.Payload> | undefined) {
   if (!value) return ''
@@ -39,14 +47,51 @@ function publishSnapshot(value: MarketProvider.Payload): MarketSnapshot {
   marketSnapshotError.value = undefined
 
   // Keep legacy consumers working without making the nested index reactive.
-  if (store.market) {
-    store.market = {
-      ...store.market,
-      ...snapshot,
-      data,
-    }
+  store.market = {
+    ...(store.market ?? {}),
+    ...snapshot,
+    data,
   }
   return snapshot
+}
+
+function isMarketSnapshotTransfer(value: MarketSnapshotResponse): value is MarketSnapshotTransfer {
+  return value?.transport === 'http-gzip'
+}
+
+async function resolveMarketSnapshot(value: MarketSnapshotResponse): Promise<MarketProvider.Payload> {
+  if (!isMarketSnapshotTransfer(value)) return value
+  const response = await fetch(value.url, {
+    cache: 'force-cache',
+    credentials: 'same-origin',
+  })
+  if (!response.ok) throw new Error(`market snapshot request failed with ${response.status}`)
+  const data = await response.json()
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('market snapshot response is invalid')
+  }
+  return {
+    ...value.payload,
+    data,
+  }
+}
+
+async function requestMarketSnapshot() {
+  const response = await (send('market/index' as any, {
+    transport: 'http-gzip',
+  }) as Promise<MarketSnapshotResponse> | undefined)
+  if (!response) throw new Error('market index request is unavailable')
+  try {
+    return await resolveMarketSnapshot(response)
+  } catch (error) {
+    if (!isMarketSnapshotTransfer(response)) throw error
+    console.warn('[market-next] compressed market snapshot failed, falling back to console transport', error)
+    const fallback = await (send('market/index' as any, {
+      transport: 'inline',
+    }) as Promise<MarketSnapshotResponse> | undefined)
+    if (!fallback) throw new Error('market index fallback request is unavailable')
+    return resolveMarketSnapshot(fallback)
+  }
 }
 
 export function getMarketSnapshotData() {
@@ -69,7 +114,11 @@ export function restoreMarketSnapshot() {
   }
 }
 
-export async function loadMarketSnapshot(force = false) {
+export function loadMarketSnapshot(force = false) {
+  return loadMarketSnapshotAttempt(force, 0)
+}
+
+async function loadMarketSnapshotAttempt(force: boolean, supersededRetries: number): Promise<MarketSnapshot> {
   const key = getSummaryKey(store.market)
   if (!force && !marketSnapshot.value && store.market?.data) {
     return publishSnapshot(store.market)
@@ -80,14 +129,13 @@ export async function loadMarketSnapshot(force = false) {
   if (snapshotTask) {
     if (!force && (!key || key === snapshotTaskKey)) return snapshotTask
     await snapshotTask.catch(() => undefined)
-    return loadMarketSnapshot(force)
+    return loadMarketSnapshotAttempt(force, supersededRetries)
   }
 
   marketSnapshotLoading.value = true
   snapshotTaskKey = key
   const task = (async () => {
-    const value = await (send('market/index' as any) as Promise<MarketProvider.Payload> | undefined)
-    if (!value) throw new Error('market index request is unavailable')
+    const value = await requestMarketSnapshot()
     const currentVersion = store.market?.dataVersion
     const currentKey = getSummaryKey(store.market)
     const responseKey = getSummaryKey(value)
@@ -113,7 +161,13 @@ export async function loadMarketSnapshot(force = false) {
   try {
     return await task
   } catch (error) {
-    if (error === snapshotSuperseded) return loadMarketSnapshot(true)
+    if (error === snapshotSuperseded) {
+      if (supersededRetries < MAX_SNAPSHOT_SUPERSEDED_RETRIES) {
+        return loadMarketSnapshotAttempt(true, supersededRetries + 1)
+      }
+      marketSnapshotError.value = snapshotRetryLimit
+      throw snapshotRetryLimit
+    }
     throw error
   }
 }
