@@ -65,11 +65,25 @@ export interface MarketLookupResult {
   dataVersion?: number
 }
 
+export interface MarketSnapshotRequest {
+  transport?: 'inline' | 'http-gzip'
+}
+
+export interface MarketSnapshotTransfer {
+  transport: 'http-gzip'
+  url: string
+  payload: Omit<MarketProvider.Payload, 'data'>
+  decodedSize: number
+  encodedSize: number
+}
+
+export type MarketSnapshotResponse = MarketProvider.Payload | MarketSnapshotTransfer
+
 declare module '@koishijs/console' {
   interface Events {
     'market/refresh'(): Promise<void>
     'market/refresh-dependencies'(): Promise<void>
-    'market/index'(): Promise<MarketProvider.Payload>
+    'market/index'(request?: MarketSnapshotRequest): Promise<MarketSnapshotResponse>
     'market/lookup'(request: MarketLookupRequest): Promise<MarketLookupResult>
   }
 

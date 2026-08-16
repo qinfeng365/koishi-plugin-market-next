@@ -1,6 +1,12 @@
 import { receive, send, store } from '@koishijs/client'
 import { markRaw, ref, shallowRef } from 'vue'
-import type { MarketLookupRequest, MarketLookupResult, MarketProvider } from '../../src/shared'
+import type {
+  MarketLookupRequest,
+  MarketLookupResult,
+  MarketProvider,
+  MarketSnapshotResponse,
+  MarketSnapshotTransfer,
+} from '../../src/shared'
 
 export type MarketSnapshot = MarketProvider.Payload & {
   data: NonNullable<MarketProvider.Payload['data']>
@@ -39,14 +45,51 @@ function publishSnapshot(value: MarketProvider.Payload): MarketSnapshot {
   marketSnapshotError.value = undefined
 
   // Keep legacy consumers working without making the nested index reactive.
-  if (store.market) {
-    store.market = {
-      ...store.market,
-      ...snapshot,
-      data,
-    }
+  store.market = {
+    ...(store.market ?? {}),
+    ...snapshot,
+    data,
   }
   return snapshot
+}
+
+function isMarketSnapshotTransfer(value: MarketSnapshotResponse): value is MarketSnapshotTransfer {
+  return value?.transport === 'http-gzip'
+}
+
+async function resolveMarketSnapshot(value: MarketSnapshotResponse): Promise<MarketProvider.Payload> {
+  if (!isMarketSnapshotTransfer(value)) return value
+  const response = await fetch(value.url, {
+    cache: 'force-cache',
+    credentials: 'same-origin',
+  })
+  if (!response.ok) throw new Error(`market snapshot request failed with ${response.status}`)
+  const data = await response.json()
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('market snapshot response is invalid')
+  }
+  return {
+    ...value.payload,
+    data,
+  }
+}
+
+async function requestMarketSnapshot() {
+  const response = await (send('market/index' as any, {
+    transport: 'http-gzip',
+  }) as Promise<MarketSnapshotResponse> | undefined)
+  if (!response) throw new Error('market index request is unavailable')
+  try {
+    return await resolveMarketSnapshot(response)
+  } catch (error) {
+    if (!isMarketSnapshotTransfer(response)) throw error
+    console.warn('[market-next] compressed market snapshot failed, falling back to console transport', error)
+    const fallback = await (send('market/index' as any, {
+      transport: 'inline',
+    }) as Promise<MarketSnapshotResponse> | undefined)
+    if (!fallback) throw new Error('market index fallback request is unavailable')
+    return resolveMarketSnapshot(fallback)
+  }
 }
 
 export function getMarketSnapshotData() {
@@ -86,8 +129,7 @@ export async function loadMarketSnapshot(force = false) {
   marketSnapshotLoading.value = true
   snapshotTaskKey = key
   const task = (async () => {
-    const value = await (send('market/index' as any) as Promise<MarketProvider.Payload> | undefined)
-    if (!value) throw new Error('market index request is unavailable')
+    const value = await requestMarketSnapshot()
     const currentVersion = store.market?.dataVersion
     const currentKey = getSummaryKey(store.market)
     const responseKey = getSummaryKey(value)

@@ -7,6 +7,8 @@ import { lookup } from 'dns/promises'
 import { isIP } from 'net'
 import { promises as fsp } from 'fs'
 import { createHash } from 'crypto'
+import { gzip as gzipCallback } from 'zlib'
+import { promisify } from 'util'
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
 import { MarketDataStore, MarketDataStorePayload, readMarketDataStore } from './data'
 import Installer, {
@@ -57,6 +59,8 @@ import type {
   MarketLookupRequest,
   MarketLookupResult,
   MarketProvider as BaseMarketProvider,
+  MarketSnapshotResponse,
+  MarketSnapshotTransfer,
 } from '../shared'
 
 export * from '../shared'
@@ -83,6 +87,68 @@ export type {
 } from './environment'
 
 const SELF_PACKAGE = 'koishi-plugin-market-next'
+const gzip = promisify(gzipCallback)
+
+interface EncodedMarketSnapshot {
+  id: string
+  body: Buffer
+  decodedSize: number
+  encodedSize: number
+}
+
+class MarketSnapshotTransport {
+  private tasks = new Map<string, Promise<EncodedMarketSnapshot>>()
+  private entries = new Map<string, EncodedMarketSnapshot>()
+
+  constructor(private ctx: Context, private route: string) {}
+
+  async create(snapshot: BaseMarketProvider.Payload): Promise<MarketSnapshotTransfer> {
+    const data = snapshot.data ?? {}
+    const json = JSON.stringify(data)
+    const id = createHash('sha256').update(json).digest('hex')
+    let entry = this.entries.get(id)
+    if (!entry) {
+      let task = this.tasks.get(id)
+      if (!task) {
+        task = this.encode(id, json).finally(() => this.tasks.delete(id))
+        this.tasks.set(id, task)
+      }
+      entry = await task
+    }
+    const { data: _, ...payload } = snapshot
+    return {
+      transport: 'http-gzip',
+      url: `${this.route}/${entry.id}`,
+      payload,
+      decodedSize: entry.decodedSize,
+      encodedSize: entry.encodedSize,
+    }
+  }
+
+  get(id: string) {
+    return this.entries.get(id)
+  }
+
+  clear() {
+    this.tasks.clear()
+    this.entries.clear()
+  }
+
+  private async encode(id: string, json: string) {
+    const start = Date.now()
+    const decodedSize = Buffer.byteLength(json)
+    const body = await gzip(Buffer.from(json), { level: 6 }) as Buffer
+    const entry = { id, body, decodedSize, encodedSize: body.length }
+    this.entries.set(id, entry)
+    while (this.entries.size > 3) {
+      const oldest = this.entries.keys().next().value
+      if (!oldest) break
+      this.entries.delete(oldest)
+    }
+    this.ctx.logger('market').debug(`prepared console market snapshot: id=${id}, decoded=${decodedSize}, gzip=${body.length}, elapsed=${Date.now() - start}ms`)
+    return entry
+  }
+}
 
 function normalizeMarketLookupValues(values: unknown, limit: number) {
   if (!Array.isArray(values)) return []
@@ -1483,6 +1549,26 @@ export function apply(ctx: Context, config: Config = {}) {
       prod: resolve(__dirname, '../../dist'),
     })
 
+    const uiPath = String((ctx.console as any).config?.uiPath ?? '').replace(/\/+$/, '')
+    const marketSnapshotRoute = `${uiPath}/market-next/snapshot`
+    const marketSnapshotTransport = new MarketSnapshotTransport(ctx, marketSnapshotRoute)
+    const server = (ctx as Context & { server: any }).server
+    server.get(`${marketSnapshotRoute}/:id`, (koa: any) => {
+      const entry = marketSnapshotTransport.get(koa.params.id)
+      if (!entry) {
+        koa.status = 404
+        koa.body = 'market snapshot not found'
+        return
+      }
+      koa.type = 'application/json'
+      koa.set('Content-Encoding', 'gzip')
+      koa.set('Cache-Control', 'public, max-age=31536000, immutable')
+      koa.set('ETag', `"${entry.id}"`)
+      koa.set('X-Content-Type-Options', 'nosniff')
+      koa.body = entry.body
+    })
+    ctx.effect(() => () => marketSnapshotTransport.clear())
+
     ctx.console.addListener('market/install', async (deps, forced, options) => {
       options ||= {}
       const installNames = Object.entries(deps)
@@ -1584,8 +1670,10 @@ export function apply(ctx: Context, config: Config = {}) {
       return ctx.installer.getRegistry(name)
     }, { authority: 4 })
 
-    ctx.console.addListener('market/index', async () => {
-      return ctx.console.services.market?.getSnapshot?.()
+    ctx.console.addListener('market/index', async (request) => {
+      const snapshot = await ctx.console.services.market?.getSnapshot?.()
+      if (!snapshot || request?.transport !== 'http-gzip') return snapshot as MarketSnapshotResponse
+      return marketSnapshotTransport.create(snapshot)
     }, { authority: 4 })
 
     ctx.console.addListener('market/lookup', async (request) => {
