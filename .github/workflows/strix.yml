@@ -37,7 +37,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     outputs:
       base_ref: ${{ steps.resolve.outputs.base_ref }}
       base_sha: ${{ steps.resolve.outputs.base_sha }}
@@ -92,11 +92,15 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            await github.rest.reactions.createForIssueComment({
-              ...context.repo,
-              comment_id: context.payload.comment.id,
-              content: 'eyes',
-            })
+            try {
+              await github.rest.reactions.createForIssueComment({
+                ...context.repo,
+                comment_id: context.payload.comment.id,
+                content: 'eyes',
+              })
+            } catch (error) {
+              core.warning(`Could not acknowledge the review command: ${error.message}`)
+            }
 
   scan:
     name: Quick security scan
@@ -252,7 +256,7 @@ jobs:
       always() &&
       needs.prepare.outputs.is_pr == 'true' &&
       needs.prepare.outputs.scan_allowed == 'true' &&
-      needs.scan.result != 'cancelled'
+      (needs.scan.result == 'success' || needs.scan.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       actions: read
