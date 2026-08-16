@@ -1,0 +1,62 @@
+name: Strix Security Scan
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: strix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Quick security scan
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Strix
+        run: curl -sSL https://strix.ai/install | bash
+
+      - name: Run Strix
+        shell: bash
+        env:
+          STRIX_LLM: openai/gemini-3.7-flash
+          LLM_API_KEY: ${{ secrets.STRIX_LLM_API_KEY }}
+          LLM_API_BASE: https://newapi.mikumiku.love/v1
+          STRIX_REASONING_EFFORT: high
+          STRIX_TELEMETRY: '0'
+        run: |
+          if [[ -z "${LLM_API_KEY}" ]]; then
+            echo "::error::Repository secret STRIX_LLM_API_KEY is not configured."
+            exit 1
+          fi
+
+          scope_args=(--scope-mode full)
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            scope_args=(--scope-mode diff --diff-base "origin/${{ github.base_ref }}")
+          fi
+
+          strix -n \
+            --target ./ \
+            --scan-mode quick \
+            "${scope_args[@]}" \
+            --instruction-file .github/strix-instructions.md
+
+      - name: Upload Strix results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strix-results-${{ github.run_id }}
+          path: strix_runs
+          if-no-files-found: warn
+          retention-days: 14
