@@ -1,20 +1,10 @@
-import { defineComponent, h, isReactive, markRaw, ref, toRaw, watch } from 'vue'
+import { isReactive, markRaw, ref, toRaw, watch } from 'vue'
 import { Context, global, message, router, send, store } from '@koishijs/client'
 import { getPendingOverrides, patchMarketNextData } from './utils'
 import { registerMarketNextI18n, translate } from './i18n'
 import { showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
-import extensions from './extensions'
 import { refreshMarketLookups, restoreMarketSnapshot } from './market/state'
-import Dependencies from './components/dependencies.vue'
-import Install from './components/install.vue'
-import BundleInstall from './components/bundle-install.vue'
-import Confirm from './components/confirm.vue'
-import InstallProgress from './components/install-progress.vue'
-import InstallHistory from './components/install-history.vue'
-import EnvironmentVersions from './components/environment-versions.vue'
-import Market from './components/market.vue'
-import Progress from './components/progress.vue'
-import { createPageBoundary } from './components/page-boundary'
+import { setupPages } from './pages'
 import {
   REGISTRY_STATUS_SWEEP_INTERVAL,
   sweepRegistryStatus,
@@ -25,9 +15,6 @@ import './styles/scrollbars.scss'
 import './styles/version-select.scss'
 
 import 'virtual:uno.css'
-
-const GuardedMarket = createPageBoundary('Market', Market)
-const GuardedDependencies = createPageBoundary('Dependencies', Dependencies)
 
 const APRIL_FOOLS_SHORTCUT_TIMEOUT = 1500
 
@@ -113,63 +100,7 @@ export default (ctx: Context) => {
     return () => window.clearInterval(timer)
   })
 
-  ctx.slot({
-    type: 'welcome-choice',
-    component: defineComponent(() => () => h('div', {
-      class: 'choice',
-      onClick: () => router.push('/market'),
-    }, [
-      h('h2', translate('common.welcome.marketTitle')),
-      h('p', translate('common.welcome.marketDescription')),
-    ])),
-  })
-
-  ctx.slot({
-    type: 'global',
-    component: Install,
-  })
-
-  ctx.slot({
-    type: 'global',
-    component: BundleInstall,
-  })
-
-  ctx.slot({
-    type: 'global',
-    component: Confirm,
-  })
-
-  ctx.slot({
-    type: 'global',
-    component: InstallProgress,
-  })
-
-  ctx.slot({
-    type: 'global',
-    component: InstallHistory,
-  })
-
-  ctx.slot({
-    type: 'global',
-    component: EnvironmentVersions,
-  })
-
-  ctx.page({
-    id: 'market',
-    path: '/market',
-    name: () => translate('common.pages.market'),
-    icon: 'activity:market',
-    order: 750,
-    authority: 4,
-    fields: ['market'],
-    component: GuardedMarket,
-  })
-
-  try {
-    extensions(ctx)
-  } catch (error) {
-    console.warn('[market-next] failed to initialize console extensions', error)
-  }
+  setupPages(ctx)
 
   const refreshingMarket = ref(false)
   const refreshingDependencies = ref(false)
@@ -183,25 +114,6 @@ export default (ctx: Context) => {
     } else {
       message.success(translate('common.messages.refreshMarketSuccess'))
     }
-  }
-
-  if (!global.static) {
-    ctx.slot({
-      type: 'status-right',
-      component: Progress,
-      order: 10,
-    })
-
-    ctx.page({
-      id: 'dependencies',
-      path: '/dependencies',
-      name: () => translate('common.pages.dependencies'),
-      icon: 'activity:deps',
-      order: 700,
-      authority: 4,
-      fields: ['dependencies', 'registry', 'registryStatus'],
-      component: GuardedDependencies,
-    })
   }
 
   ctx.action('market.refresh', {
