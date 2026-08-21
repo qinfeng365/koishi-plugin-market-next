@@ -47,7 +47,6 @@ import { useMarketNextI18n } from '../../i18n'
 const props = defineProps<{
   modelValue: string[],
   data: SearchObject[],
-  installed?: (data: SearchObject) => boolean,
   gravatar?: string,
   debug?: boolean,
   visibilityPrepared?: boolean,

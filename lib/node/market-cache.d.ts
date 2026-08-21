@@ -31,8 +31,6 @@ export declare class MarketDiskCache {
     private maintenanceTimers;
     constructor(ctx: Context, config: MarketProviderConfig, options: MarketDiskCacheOptions);
     get diskMeta(): CacheMeta;
-    get currentMeta(): CacheMeta;
-    get currentResult(): SearchResult;
     dispose(): void;
     clearDiskMeta(): void;
     getConditionalHeaders(endpoint: string): Dict<string>;

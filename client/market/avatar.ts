@@ -106,10 +106,6 @@ export function getUserAvatarCandidates(user: User, gravatar?: string): AvatarCa
   return baseAvatarCandidates(user, gravatar)
 }
 
-export function getUserAvatar(user: User, gravatar?: string) {
-  return getUserAvatarCandidates(user, gravatar)[0]?.url || ''
-}
-
 type AvatarCacheEntry = {
   data: string
   type: string
