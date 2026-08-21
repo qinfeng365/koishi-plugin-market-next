@@ -10,7 +10,6 @@ export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, I
 declare class Installer extends Service {
     ctx: Context;
     config: Installer.Config;
-    private agent;
     private manifest;
     private depCache;
     private depTask?;
@@ -21,6 +20,7 @@ declare class Installer extends Service {
     private installHistory;
     private environmentSnapshots;
     private localPackageUploads;
+    private packageManager;
     constructor(ctx: Context, config?: Installer.Config);
     get cwd(): string;
     get isInstalling(): boolean;
