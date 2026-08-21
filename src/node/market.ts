@@ -28,6 +28,8 @@ class MarketProvider extends BaseMarketProvider {
   private fullCache: Dict<SearchObject> = {}
   private tempCache: Dict<SearchObject> = {}
   private payload?: BaseMarketProvider.Payload
+  private payloadData?: Dict<SearchObject>
+  private payloadDataVersion = -1
   private endpoint: string
   private disposed = false
   private serial = 0
@@ -430,7 +432,10 @@ class MarketProvider extends BaseMarketProvider {
     const payloadStart = Date.now()
     let data: Dict<SearchObject>
     let dataElapsed = 0
-    if (this.indexMode === 'modern') {
+    const reuseData = !!this.payloadData && this.payloadDataVersion === this.dataVersion
+    if (reuseData) {
+      data = this.payloadData!
+    } else if (this.indexMode === 'modern') {
       const dataStart = Date.now()
       data = {}
       for (const item of this.scanner.objects) {
@@ -440,6 +445,8 @@ class MarketProvider extends BaseMarketProvider {
     } else {
       data = this.fullCache
     }
+    this.payloadData = data
+    this.payloadDataVersion = this.dataVersion
     const payload = {
       registry: this.endpoint || this.ctx.installer.endpoint,
       data,
@@ -463,7 +470,7 @@ class MarketProvider extends BaseMarketProvider {
     }
     this.payload = payload
     this.log('debug', `get market payload completed: total=${payload.total}, progress=${payload.progress}, failed=${payload.failed}, stale=${!!payload.stale}, elapsed=${Date.now() - start}ms`)
-    this.log('debug', `market payload detail: registry=${payload.registry}, cached=${payload.cached}, cachedAt=${payload.cachedAt ? formatTime(payload.cachedAt) : '-'}, validatedAt=${payload.validatedAt ? formatTime(payload.validatedAt) : '-'}, refreshing=${payload.refreshing}, payloadData=${payload.debug?.timings?.payloadData ?? '-'}ms, payload=${payload.debug?.timings?.payload ?? '-'}ms`)
+    this.log('debug', `market payload detail: registry=${payload.registry}, cached=${payload.cached}, cachedAt=${payload.cachedAt ? formatTime(payload.cachedAt) : '-'}, validatedAt=${payload.validatedAt ? formatTime(payload.validatedAt) : '-'}, refreshing=${payload.refreshing}, payloadData=${payload.debug?.timings?.payloadData ?? '-'}ms, payloadDataReused=${reuseData}, payload=${payload.debug?.timings?.payload ?? '-'}ms`)
     return payload
   }
 

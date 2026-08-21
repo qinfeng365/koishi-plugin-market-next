@@ -11,6 +11,8 @@ declare class MarketProvider extends BaseMarketProvider {
     private fullCache;
     private tempCache;
     private payload?;
+    private payloadData?;
+    private payloadDataVersion;
     private endpoint;
     private disposed;
     private serial;

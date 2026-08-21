@@ -11,6 +11,7 @@ import type {
 
 const gzip = promisify(gzipCallback)
 const MAX_MARKET_SNAPSHOTS = 6
+const EMPTY_MARKET_DATA = {}
 
 interface EncodedMarketSnapshot {
   id: string
@@ -19,24 +20,34 @@ interface EncodedMarketSnapshot {
   encodedSize: number
 }
 
+interface MarketSnapshotMemo {
+  version: number | undefined
+  task: Promise<EncodedMarketSnapshot>
+}
+
 export class MarketSnapshotTransport {
   private tasks = new Map<string, Promise<EncodedMarketSnapshot>>()
   private entries = new Map<string, EncodedMarketSnapshot>()
+  private memos = new WeakMap<object, MarketSnapshotMemo>()
 
   constructor(private ctx: Context, private route: string) {}
 
   async create(snapshot: MarketProvider.Payload): Promise<MarketSnapshotTransfer> {
-    const data = snapshot.data ?? {}
-    const json = JSON.stringify(data)
-    const id = createHash('sha256').update(json).digest('hex')
-    let entry = this.entries.get(id)
-    if (!entry) {
-      let task = this.tasks.get(id)
-      if (!task) {
-        task = this.encode(id, json).finally(() => this.tasks.delete(id))
-        this.tasks.set(id, task)
-      }
-      entry = await task
+    const data = snapshot.data ?? EMPTY_MARKET_DATA
+    let memo = this.memos.get(data)
+    const reused = !!memo && memo.version === snapshot.dataVersion
+    if (!reused) {
+      const task = this.prepare(data)
+      memo = { version: snapshot.dataVersion, task }
+      this.memos.set(data, memo)
+      void task.catch(() => {
+        if (this.memos.get(data) === memo) this.memos.delete(data)
+      })
+    }
+    const entry = await memo!.task
+    this.remember(entry)
+    if (reused) {
+      this.ctx.logger('market').debug(`reused console market snapshot: id=${entry.id}, decoded=${entry.decodedSize}, gzip=${entry.encodedSize}`)
     }
     const { data: _, ...payload } = snapshot
     return {
@@ -55,6 +66,20 @@ export class MarketSnapshotTransport {
   clear() {
     this.tasks.clear()
     this.entries.clear()
+    this.memos = new WeakMap()
+  }
+
+  private async prepare(data: object) {
+    const json = JSON.stringify(data)
+    const id = createHash('sha256').update(json).digest('hex')
+    const entry = this.entries.get(id)
+    if (entry) return entry
+    let task = this.tasks.get(id)
+    if (!task) {
+      task = this.encode(id, json).finally(() => this.tasks.delete(id))
+      this.tasks.set(id, task)
+    }
+    return task
   }
 
   private async encode(id: string, json: string) {
@@ -62,14 +87,19 @@ export class MarketSnapshotTransport {
     const decodedSize = Buffer.byteLength(json)
     const body = await gzip(Buffer.from(json), { level: 6 }) as Buffer
     const entry = { id, body, decodedSize, encodedSize: body.length }
-    this.entries.set(id, entry)
+    this.remember(entry)
+    this.ctx.logger('market').debug(`prepared console market snapshot: id=${id}, decoded=${decodedSize}, gzip=${body.length}, elapsed=${Date.now() - start}ms`)
+    return entry
+  }
+
+  private remember(entry: EncodedMarketSnapshot) {
+    this.entries.delete(entry.id)
+    this.entries.set(entry.id, entry)
     while (this.entries.size > MAX_MARKET_SNAPSHOTS) {
       const oldest = this.entries.keys().next().value
       if (!oldest) break
       this.entries.delete(oldest)
     }
-    this.ctx.logger('market').debug(`prepared console market snapshot: id=${id}, decoded=${decodedSize}, gzip=${body.length}, elapsed=${Date.now() - start}ms`)
-    return entry
   }
 }
 
