@@ -1,8 +1,6 @@
 import { defineComponent, h, isReactive, markRaw, ref, toRaw, watch } from 'vue'
-import { Context, Dict, global, message, receive, router, send, store, useConfig } from '@koishijs/client'
-import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
-import type { DependencySource } from '../src/shared/dependency-source'
-import { getPendingOverrides, patchMarketNextData, type IgnoredUpdates } from './utils'
+import { Context, global, message, router, send, store } from '@koishijs/client'
+import { getPendingOverrides, patchMarketNextData } from './utils'
 import { registerMarketNextI18n, translate } from './i18n'
 import { showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
 import extensions from './extensions'
@@ -17,61 +15,20 @@ import EnvironmentVersions from './components/environment-versions.vue'
 import Market from './components/market.vue'
 import Progress from './components/progress.vue'
 import { createPageBoundary } from './components/page-boundary'
+import {
+  REGISTRY_STATUS_SWEEP_INTERVAL,
+  sweepRegistryStatus,
+  type MarketStore,
+} from './registry-state'
 import './icons'
 import './styles/scrollbars.scss'
 import './styles/version-select.scss'
 
 import 'virtual:uno.css'
 
-declare module '@koishijs/client' {
-  interface Config {
-    market: MarketConfig
-  }
-  interface Store {
-    marketData?: {
-      override?: Dict<string>
-      updateIgnored?: IgnoredUpdates
-      bundleRecords?: Dict<PluginBundleRecord>
-      collapsedGroups?: Dict<boolean>
-    }
-    dependencies?: Dict<{
-      request: string
-      resolved?: string
-      workspace?: boolean
-      source?: DependencySource
-      local?: boolean
-      bound?: boolean
-      invalid?: boolean
-      latest?: string
-    }>
-  }
-}
-
-interface MarketConfig {
-  bulkMode?: boolean
-  removeConfig?: boolean
-  updateIgnoredPackages?: string
-  updateIgnoreDuration?: number
-  updateIgnoreVersions?: number
-  updateIgnorePrerelease?: boolean
-  gravatar?: string
-  search?: {
-    endpoint?: string
-    timeout?: number
-    autoRoute?: boolean
-    logLevel?: string
-  }
-}
-
-type MarketStore = typeof store & {
-  registryStatus?: Dict<RegistryStatus>
-}
-
 const GuardedMarket = createPageBoundary('Market', Market)
 const GuardedDependencies = createPageBoundary('Dependencies', Dependencies)
 
-const REGISTRY_STATUS_TIMEOUT = 120000
-const REGISTRY_STATUS_SWEEP_INTERVAL = 15000
 const APRIL_FOOLS_SHORTCUT_TIMEOUT = 1500
 
 function isAprilFoolsDay(date = new Date()) {
@@ -81,50 +38,6 @@ function isAprilFoolsDay(date = new Date()) {
 function isKoishiDay(date = new Date()) {
   return date.getMonth() === 4 && date.getDate() === 14
 }
-
-function sweepRegistryStatus(target: MarketStore = store as MarketStore) {
-  const now = Date.now()
-  const next = { ...target.registryStatus }
-  let changed = false
-  for (const [name, status] of Object.entries(next)) {
-    if (!status?.loading) continue
-    if (status.updatedAt && now - status.updatedAt <= REGISTRY_STATUS_TIMEOUT) continue
-    next[name] = {
-      ...status,
-      loading: false,
-      reason: 'timeout',
-      error: translate('common.messages.metadataTimeout'),
-    }
-    changed = true
-  }
-  if (changed) target.registryStatus = next
-  return changed
-}
-
-receive('market/registry', (data) => {
-  store.registry = {
-    ...store.registry,
-    ...data,
-  }
-})
-
-receive('market/registry-status', (data: Dict<RegistryStatus>) => {
-  const target = store as MarketStore
-  const next = { ...target.registryStatus }
-  for (const [name, status] of Object.entries(data)) {
-    if (!status) continue
-    next[name] = status
-  }
-  target.registryStatus = {
-    ...next,
-  }
-  sweepRegistryStatus(target)
-})
-
-receive('market/registry-status/clear', () => {
-  const target = store as MarketStore
-  target.registryStatus = {}
-})
 
 export default (ctx: Context) => {
   registerMarketNextI18n(ctx)
@@ -258,7 +171,6 @@ export default (ctx: Context) => {
     console.warn('[market-next] failed to initialize console extensions', error)
   }
 
-  const config = useConfig()
   const refreshingMarket = ref(false)
   const refreshingDependencies = ref(false)
   const pendingMarketRefreshFeedback = ref(false)
