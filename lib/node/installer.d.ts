@@ -1,157 +1,45 @@
-import { Context, Dict, HTTP, Schema, Service } from 'koishi';
-import { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry';
-import { type DependencySource, type RegistryStatus } from '../shared';
+import { Context, Dict, Schema, Service } from 'koishi';
+import { RemotePackage } from '@koishijs/registry';
 import { type LocalPackageUploadChunkRequest, type LocalPackageUploadCommitResult, type LocalPackageUploadFinishRequest, type LocalPackageUploadPreview, type LocalPackageUploadProgress, type LocalPackageUploadStartRequest, type LocalPackageUploadStartResult } from './local-upload';
 import { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
-export interface InstallOptions {
-    installEndpoint?: string;
-}
-export interface InstallFallbackCandidate {
-    endpoint: string;
-    label: string;
-    reason: string;
-}
-export type InstallHistoryStatus = 'running' | 'success' | 'error' | 'unknown';
-export interface InstallHistoryChange {
-    name: string;
-    beforeRequest: string | null;
-    beforeResolved: string | null;
-    afterRequest: string | null;
-    afterResolved: string | null;
-}
-export interface InstallHistoryEntry {
-    id: string;
-    startedAt: number;
-    finishedAt?: number;
-    duration?: number;
-    status: InstallHistoryStatus;
-    deps: string;
-    forced: boolean;
-    installEndpoint?: string;
-    size: number;
-    changes: InstallHistoryChange[];
-}
-export interface LocalBindingResult {
-    request: string;
-    filename: string;
-    size: number;
-}
-export interface InstallLogDetail extends InstallHistoryEntry {
-    content: string;
-    truncated: boolean;
-}
-export interface Dependency {
-    /**
-     * requested semver range
-     * @example `^1.2.3` -> `1.2.3`
-     */
-    request: string;
-    /**
-     * installed package version
-     * @example `1.2.5`
-     */
-    resolved?: string;
-    /** whether it is a workspace package */
-    workspace?: boolean;
-    /** dependency origin used to decide whether npm may manage it */
-    source?: DependencySource;
-    /** whether this dependency is supplied by a local source */
-    local?: boolean;
-    /** whether package.json contains a reproducible local source */
-    bound?: boolean;
-    /** valid (unsupported) syntax */
-    invalid?: boolean;
-    /** latest version */
-    latest?: string;
-}
-export interface YarnLog {
-    type: 'warning' | 'info' | 'error' | string;
-    name: number | null;
-    displayName: string;
-    indent?: string;
-    data: string;
-}
-export interface LocalPackage extends PackageJson {
-    private?: boolean;
-    $workspace?: boolean;
-}
-export declare function loadManifest(name: string, baseDir?: string): LocalPackage;
+import { type InstallHistoryEntry, type InstallLogDetail } from './install-history';
+import { type Dependency, type InstallerConfig, type InstallerGetDepsOptions, type InstallFallbackCandidate, type InstallOptions, type LocalBindingResult } from './installer-types';
+export { loadManifest } from './installer-types';
+export type { Dependency, InstallFallbackCandidate, InstallOptions, LocalBindingResult, LocalPackage, YarnLog, } from './installer-types';
+export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail, } from './install-history';
 declare class Installer extends Service {
     ctx: Context;
     config: Installer.Config;
-    http: HTTP;
-    endpoint: string;
-    fullCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>;
-    tempCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>>;
-    registryStatus: Dict<RegistryStatus>;
-    private pkgTasks;
     private agent;
     private manifest;
     private depCache;
     private depTask?;
     private depMetadataFresh;
-    private metadataEndpoint;
-    private routeProbeTask?;
-    private routeProbeResult?;
-    private registryRouteStats;
-    private notFoundCache;
-    private statsFile;
-    private statsWriteTimer?;
-    private flushData;
-    private tempRegistryStatus;
-    private flushRegistryStatus;
-    private pendingControllers;
     private installTask;
     private installActive;
-    private installLogFile?;
-    private installLogMetadataFile?;
-    private installLogMetadata?;
-    private installLogWriteTask;
-    private installLogCleanupTask?;
+    private metadata;
+    private installHistory;
     private environmentSnapshots;
     private localPackageUploads;
-    private serial;
     constructor(ctx: Context, config?: Installer.Config);
     get cwd(): string;
     get isInstalling(): boolean;
+    get http(): import("koishi").HTTP;
+    get endpoint(): string;
+    get fullCache(): Dict<Dict<Pick<RemotePackage, import("@koishijs/registry").DependencyMetaKey>>>;
+    get tempCache(): Dict<Dict<Pick<RemotePackage, import("@koishijs/registry").DependencyMetaKey>>>;
+    get registryStatus(): Dict<import(".").RegistryStatus>;
     start(): Promise<void>;
-    private createHttp;
-    private loadRouteStats;
-    private scheduleStatsWrite;
-    private resetEndpoint;
     resolveName(name: string): string[];
     findVersion(names: string[]): Promise<{
         [x: string]: string;
     }>;
-    private getRegistryEndpoints;
-    private getPreferredMetadataEndpoint;
-    private getRegistryEndpointCandidates;
-    private getRouteProbeEndpoints;
-    private ensureMetadataEndpoint;
-    private raceEndpoints;
-    private probeMetadataEndpoint;
-    private fetchRegistryEndpoint;
-    private applyRouteProbeResult;
-    private waitRouteTurn;
-    private getRegistryRouteScore;
-    private recordRegistryRouteSuccess;
-    private recordRegistryRouteFailure;
-    private getFallbackDelay;
-    private getRegistryRouteScores;
     getInstallFallbackCandidate(failedEndpoint?: string): InstallFallbackCandidate | undefined;
-    private fetchRegistryByRoute;
-    private isStale;
-    private trackController;
-    private untrackControllers;
-    private abortPendingRequests;
-    private isInternalAbort;
-    private setRegistryStatus;
-    private clearRegistryStatus;
-    getRegistry(name: string, serial?: number): Promise<Registry>;
-    private formatRegistryError;
-    private _getPackage;
+    getRegistry(name: string, serial?: number): Promise<import("@koishijs/registry").Registry>;
     setPackage(name: string, versions: RemotePackage[]): void;
     getPackage(name: string): Promise<any>;
+    private formatRegistryError;
+    private isStale;
     private markRegistryNotFoundDependency;
     private getLocalDepsSnapshot;
     private _refreshDependencyMetadata;
@@ -160,20 +48,9 @@ declare class Installer extends Service {
     getDeps(options?: Installer.GetDepsOptions): Dict<Dependency> | Promise<Dict<Dependency>>;
     refreshData(): Promise<void>;
     refresh(refresh?: boolean, waitMetadata?: boolean): Promise<void>;
-    private getInstallLogDir;
-    private getInstallLogRetention;
-    private cleanupInstallLogs;
-    private writeInstallLogMetadata;
     private startInstallLog;
     private emitInstallLog;
-    private writeInstallLog;
     private finishInstallLog;
-    private getInstallLogPath;
-    private readInstallLogMetadata;
-    private readInstallLog;
-    private parseLegacyInstallLog;
-    private createInstallHistoryEntry;
-    private getInstallHistoryEntry;
     getInstallHistory(limit?: number): Promise<InstallHistoryEntry[]>;
     getInstallLogDetail(id: string): Promise<InstallLogDetail>;
     getEnvironmentSnapshots(): Promise<EnvironmentSnapshotSummary[]>;
@@ -201,19 +78,9 @@ declare class Installer extends Service {
     isSelfUpdate(deps: Dict<string>): boolean;
 }
 declare namespace Installer {
-    interface GetDepsOptions {
-        metadata?: boolean;
-        background?: boolean;
+    interface GetDepsOptions extends InstallerGetDepsOptions {
     }
-    interface Config {
-        endpoint?: string;
-        timeout?: number;
-        autoRoute?: boolean;
-        retry?: number;
-        concurrency?: number;
-        installLogRetentionHours?: number;
-        /** @deprecated use installLogRetentionHours */
-        installLogRetention?: number;
+    interface Config extends InstallerConfig {
     }
     const Config: Schema<Config>;
 }
