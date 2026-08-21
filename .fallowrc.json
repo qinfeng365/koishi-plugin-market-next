@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "src/node/index.ts",
+    "src/browser/index.ts",
+    "src/shared/index.ts",
+    "src/shared/bundle.ts",
+    "client/index.ts",
+    "scripts/*.mjs"
+  ],
+  "ignorePatterns": [
+    "lib/**",
+    "dist/**",
+    "client/tsconfig.tsbuildinfo"
+  ]
+}
