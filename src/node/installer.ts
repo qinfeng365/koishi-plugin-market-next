@@ -1,35 +1,22 @@
-import { Context, defineProperty, Dict, HTTP, Logger, pick, Schema, Service, Time, valueMap } from 'koishi'
-import Scanner, { DependencyMetaKey, PackageJson, Registry, RemotePackage } from '@koishijs/registry'
-import { basename, dirname, relative, resolve } from 'path'
-import { promises as fsp, readFileSync } from 'fs'
-import { createHash } from 'crypto'
-import { createRequire } from 'module'
-import { compare, satisfies, valid } from 'semver'
+import { Context, Dict, Logger, Schema, Service, Time, valueMap } from 'koishi'
+import Scanner, { PackageJson, RemotePackage } from '@koishijs/registry'
+import { resolve } from 'path'
+import { promises as fsp } from 'fs'
+import { satisfies, valid } from 'semver'
 import {} from '@koishijs/console'
 import {} from '@koishijs/loader'
-import getRegistry from 'get-registry'
 import which from 'which-pm-runs'
 import spawn from 'execa'
 import pMap from 'p-map'
 import {
-  allRegistryAttemptsNotFound,
   classifyDependencySource,
   classifyRegistryNotFoundDependency,
   findDependenciesNeedingSourceCheck,
   findUnboundLocalDependencies,
-  getRegistryAttemptReasons,
   reuseConfirmedDependencySource,
-  shouldPenalizeRegistryRoute,
-  type DependencySource,
-  type RegistryStatus,
 } from '../shared'
 import {} from '.'
-import {
-  createHashedLocalBindingFilename,
-  createLocalBindingRequest,
-  MAX_LOCAL_BINDING_PACK_SIZE,
-  parseNpmPackOutput,
-} from './local-binding'
+import { prepareLocalBindingPackage } from './local-binding'
 import {
   getLocalPackageOperation,
   LocalPackageUploadStore,
@@ -53,240 +40,70 @@ import {
   type EnvironmentDependencySnapshot,
   type EnvironmentSnapshotSource,
 } from './environment'
+import { RegistryMetadata } from './registry-metadata'
+import {
+  InstallHistoryStore,
+  createInstallHistoryChanges,
+  type InstallHistoryChange,
+  type InstallHistoryEntry,
+  type InstallHistoryStatus,
+  type InstallLogDetail,
+} from './install-history'
+import {
+  FULL_RELOAD_DELAY,
+  SELF_PACKAGE,
+  formatDeps,
+  formatLocalDeps,
+  levelMap,
+  loadManifest,
+  pickMetadataProbe,
+  type Dependency,
+  type InstallerConfig,
+  type InstallerGetDepsOptions,
+  type InstallFallbackCandidate,
+  type InstallOptions,
+  type LocalBindingResult,
+  type LocalPackage,
+  type PackageManifestSnapshot,
+  type YarnLog,
+} from './installer-types'
+
+export { loadManifest } from './installer-types'
+export type {
+  Dependency,
+  InstallFallbackCandidate,
+  InstallOptions,
+  LocalBindingResult,
+  LocalPackage,
+  YarnLog,
+} from './installer-types'
+export type {
+  InstallHistoryChange,
+  InstallHistoryEntry,
+  InstallHistoryStatus,
+  InstallLogDetail,
+} from './install-history'
 
 const logger = new Logger('market')
-const REGISTRY_FALLBACK_ENDPOINTS = [
-  'https://registry.npmmirror.com',
-  'https://mirrors.cloud.tencent.com/npm',
-  'https://mirrors.huaweicloud.com/repository/npm',
-  'https://registry.npmjs.org',
-  'https://r.cnpmjs.org',
-]
-const REGISTRY_ROUTE_STAGGER = 120
-const REGISTRY_FAST_ROUTE_THRESHOLD = Time.second * 0.8
-const REGISTRY_STATS_TTL = Time.day * 30
-const NOT_FOUND_CACHE_TTL = Time.minute * 5
-const FULL_RELOAD_DELAY = Time.second
-const SELF_PACKAGE = 'koishi-plugin-market-next'
-const DEFAULT_INSTALL_LOG_RETENTION = Time.day * 3
-const INSTALL_LOG_DIR = 'market-next-install-logs'
-const INSTALL_LOG_DETAIL_LIMIT = 512 * 1024
-const INSTALL_LOG_HEAD_LIMIT = 8 * 1024
-const INSTALL_LOG_TAIL_LIMIT = 32 * 1024
-
-interface PersistedRegistryStats {
-  score: number
-  successes?: number
-  failures?: number
-  consecutiveFailures?: number
-  averageElapsed?: number
-  lastSuccess?: number
-  lastFailure?: number
-  lastFailureReason?: RegistryStatus['reason']
-  contentEncoding?: string
-}
-
-interface RegistryStatsStore {
-  version: 1
-  stats: Dict<PersistedRegistryStats>
-  savedAt: number
-}
-
-interface RouteStats {
-  score: number
-  successes: number
-  failures: number
-  consecutiveFailures?: number
-  averageElapsed?: number
-  lastSuccess?: number
-  lastFailure?: number
-  lastFailureReason?: RegistryStatus['reason']
-}
-
-interface RegistryEndpointResult {
-  endpoint: string
-  registry: Registry
-  elapsed: number
-  fallbackReason?: 'primary-failed' | 'primary-slow'
-}
-
-interface RegistryRouteResult extends RegistryEndpointResult {
-  attempts: number
-  lastEndpoint: string
-}
-
-interface PackageManifestSnapshot {
-  manifest: PackageJson
-  content: string
-  dependencies: Dict<string>
-}
-
-export interface InstallOptions {
-  installEndpoint?: string
-}
-
-export interface InstallFallbackCandidate {
-  endpoint: string
-  label: string
-  reason: string
-}
-
-export type InstallHistoryStatus = 'running' | 'success' | 'error' | 'unknown'
-
-export interface InstallHistoryChange {
-  name: string
-  beforeRequest: string | null
-  beforeResolved: string | null
-  afterRequest: string | null
-  afterResolved: string | null
-}
-
-export interface InstallHistoryEntry {
-  id: string
-  startedAt: number
-  finishedAt?: number
-  duration?: number
-  status: InstallHistoryStatus
-  deps: string
-  forced: boolean
-  installEndpoint?: string
-  size: number
-  changes: InstallHistoryChange[]
-}
-
-export interface LocalBindingResult {
-  request: string
-  filename: string
-  size: number
-}
-
-export interface InstallLogDetail extends InstallHistoryEntry {
-  content: string
-  truncated: boolean
-}
-
-interface InstallHistoryMetadata {
-  version: 1
-  id: string
-  startedAt: number
-  finishedAt?: number
-  status: InstallHistoryStatus
-  deps: string
-  forced: boolean
-  installEndpoint?: string
-  changes: InstallHistoryChange[]
-}
-
-export interface Dependency {
-  /**
-   * requested semver range
-   * @example `^1.2.3` -> `1.2.3`
-   */
-  request: string
-  /**
-   * installed package version
-   * @example `1.2.5`
-   */
-  resolved?: string
-  /** whether it is a workspace package */
-  workspace?: boolean
-  /** dependency origin used to decide whether npm may manage it */
-  source?: DependencySource
-  /** whether this dependency is supplied by a local source */
-  local?: boolean
-  /** whether package.json contains a reproducible local source */
-  bound?: boolean
-  /** valid (unsupported) syntax */
-  invalid?: boolean
-  /** latest version */
-  latest?: string
-}
-
-export interface YarnLog {
-  type: 'warning' | 'info' | 'error' | string
-  name: number | null
-  displayName: string
-  indent?: string
-  data: string
-}
-
-const levelMap = {
-  'info': 'info',
-  'warning': 'debug',
-  'error': 'warn',
-}
-
-export interface LocalPackage extends PackageJson {
-  private?: boolean
-  $workspace?: boolean
-}
-
-export function loadManifest(name: string, baseDir?: string) {
-  const resolver = baseDir ? createRequire(resolve(baseDir, 'package.json')) : require
-  const filename = resolver.resolve(name + '/package.json')
-  const meta: LocalPackage = JSON.parse(readFileSync(filename, 'utf8'))
-  meta.dependencies ||= {}
-  defineProperty(meta, '$workspace', !filename.includes('node_modules'))
-  return meta
-}
-
-function resolvePackageManifest(name: string, baseDir: string) {
-  const resolver = createRequire(resolve(baseDir, 'package.json'))
-  return resolver.resolve(name + '/package.json')
-}
-
-function getVersions(versions: RemotePackage[]) {
-  return Object.fromEntries(versions
-    .map(item => [item.version, pick(item, ['peerDependencies', 'peerDependenciesMeta', 'deprecated'])] as const)
-    .sort(([a], [b]) => compare(b, a)))
-}
 
 class Installer extends Service {
-  public http: HTTP
-  public endpoint: string
-  public fullCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>> = {}
-  public tempCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>> = {}
-  public registryStatus: Dict<RegistryStatus> = {}
-
-  private pkgTasks: Dict<Promise<Dict<Pick<RemotePackage, DependencyMetaKey>>>> = {}
   private agent = which()
   private manifest: PackageJson
   private depCache: Dict<Dependency> = {}
   private depTask?: Promise<Dict<Dependency>>
   private depMetadataFresh = false
-  private metadataEndpoint: string
-  private routeProbeTask?: Promise<void>
-  private routeProbeResult?: {
-    serial: number
-    name: string
-    endpoint: string
-    registry: Registry
-    elapsed: number
-    fallbackReason?: RegistryEndpointResult['fallbackReason']
-  }
-  private registryRouteStats: Dict<RouteStats> = {}
-  private notFoundCache: Dict<number> = {}
-  private statsFile: string
-  private statsWriteTimer?: ReturnType<typeof setTimeout>
-  private flushData: () => void
-  private tempRegistryStatus: Dict<RegistryStatus> = {}
-  private flushRegistryStatus: () => void
-  private pendingControllers = new Set<AbortController>()
   private installTask = Promise.resolve()
   private installActive = false
-  private installLogFile?: string
-  private installLogMetadataFile?: string
-  private installLogMetadata?: InstallHistoryMetadata
-  private installLogWriteTask = Promise.resolve()
-  private installLogCleanupTask?: Promise<void>
+  private metadata: RegistryMetadata
+  private installHistory: InstallHistoryStore
   private environmentSnapshots: EnvironmentSnapshotStore
   private localPackageUploads: LocalPackageUploadStore
-  private serial = 0
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
     super(ctx, 'installer')
     this.manifest = loadManifest(this.cwd)
-    this.statsFile = resolve(ctx.baseDir, 'cache', 'market-next-registry-stats.json')
+    this.metadata = new RegistryMetadata(ctx, config)
+    this.installHistory = new InstallHistoryStore(ctx, config, name => this.depCache[name]?.resolved)
     this.environmentSnapshots = new EnvironmentSnapshotStore(
       resolve(ctx.baseDir, 'data', 'market-next-environment-snapshots.json'),
       message => logger.warn(message),
@@ -296,18 +113,9 @@ class Installer extends Service {
       void this.localPackageUploads.pruneExpired()
     }, Time.minute * 5)
     ctx.effect(() => () => {
-      clearTimeout(this.statsWriteTimer)
-      this.abortPendingRequests('installer disposed')
+      this.metadata.dispose()
       void this.localPackageUploads.dispose()
     })
-    this.flushData = ctx.throttle(() => {
-      ctx.get('console')?.broadcast('market/registry', this.tempCache)
-      this.tempCache = {}
-    }, 500)
-    this.flushRegistryStatus = ctx.throttle(() => {
-      ctx.get('console')?.broadcast('market/registry-status', { ...this.tempRegistryStatus })
-      this.tempRegistryStatus = {}
-    }, 200)
   }
 
   get cwd() {
@@ -318,10 +126,30 @@ class Installer extends Service {
     return this.installActive
   }
 
+  get http() {
+    return this.metadata.http
+  }
+
+  get endpoint() {
+    return this.metadata.endpoint
+  }
+
+  get fullCache() {
+    return this.metadata.fullCache
+  }
+
+  get tempCache() {
+    return this.metadata.tempCache
+  }
+
+  get registryStatus() {
+    return this.metadata.registryStatus
+  }
+
   async start() {
-    await this.loadRouteStats()
-    await this.cleanupInstallLogs()
-    await this.resetEndpoint()
+    await this.metadata.restoreRouteStats()
+    await this.installHistory.cleanup()
+    await this.metadata.initializeEndpoint()
     logger.debug(`registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
     logger.info(`npm registry endpoint initialized: ${this.endpoint}, timeout=${this.config.timeout ?? 'default'}, autoRoute=${this.config.autoRoute !== false}`)
 
@@ -332,84 +160,6 @@ class Installer extends Service {
     const dependencies = this.getDeps({ background: false })
     logger.info(`dependency startup metadata probe scheduled: deps=${Object.keys(dependencies).length}`)
     this.refreshDependencyMetadata(false)
-  }
-
-  private createHttp(endpoint: string): HTTP {
-    const { timeout } = this.config
-    return this.ctx.http.extend({
-      endpoint,
-      timeout,
-    })
-  }
-
-  private async loadRouteStats() {
-    try {
-      const content = await fsp.readFile(this.statsFile, 'utf8')
-      const store: RegistryStatsStore = JSON.parse(content)
-      if (store?.version !== 1 || !store.stats) return
-      if (Date.now() - store.savedAt > REGISTRY_STATS_TTL) return
-      for (const [endpoint, stats] of Object.entries(store.stats)) {
-        if (!stats) continue
-        const successes = Math.max(0, Number(stats.successes) || 0)
-        const failures = Math.max(0, Number(stats.failures) || 0)
-        const hasRecentSuccess = Number(stats.lastSuccess) && Date.now() - Number(stats.lastSuccess) < Time.day
-        this.registryRouteStats[endpoint] = {
-          score: hasRecentSuccess ? clamp(stats.score, -1, 3) : clamp(stats.score, -4, 3),
-          successes,
-          failures: hasRecentSuccess ? Math.min(failures, Math.max(2, Math.ceil(successes / 2))) : Math.min(failures, 12),
-          consecutiveFailures: hasRecentSuccess ? 0 : Math.max(0, Number(stats.consecutiveFailures) || 0),
-          averageElapsed: stats.averageElapsed,
-          lastSuccess: stats.lastSuccess,
-          lastFailure: stats.lastFailure,
-          lastFailureReason: stats.lastFailureReason,
-        }
-      }
-      logger.debug(`npm registry route stats restored from disk: ${Object.keys(store.stats).join(', ')}`)
-    } catch (error) {
-      if ((error as any)?.code !== 'ENOENT') logger.debug(`failed to load registry route stats: ${error instanceof Error ? error.message : error}`)
-    }
-  }
-
-  private scheduleStatsWrite() {
-    clearTimeout(this.statsWriteTimer)
-    this.statsWriteTimer = setTimeout(async () => {
-      this.statsWriteTimer = undefined
-      if (!this.ctx.scope.isActive) return
-      const stats: Dict<PersistedRegistryStats> = {}
-      for (const [endpoint, s] of Object.entries(this.registryRouteStats)) {
-        if (!s) continue
-        stats[endpoint] = {
-          score: clamp(s.score, -6, 3),
-          successes: s.successes,
-          failures: s.failures,
-          consecutiveFailures: s.consecutiveFailures,
-          averageElapsed: s.averageElapsed,
-          lastSuccess: s.lastSuccess,
-          lastFailure: s.lastFailure,
-          lastFailureReason: s.lastFailureReason,
-        }
-      }
-      try {
-        await fsp.mkdir(resolve(this.statsFile, '..'), { recursive: true })
-        await fsp.writeFile(this.statsFile, JSON.stringify({ version: 1, stats, savedAt: Date.now() } satisfies RegistryStatsStore))
-      } catch (error) {
-        logger.debug(`failed to write registry route stats: ${error instanceof Error ? error.message : error}`)
-      }
-    }, 2000)
-  }
-
-  private async resetEndpoint() {
-    const endpoint = this.config.endpoint || await getRegistry()
-    const previous = this.endpoint
-    this.endpoint = endpoint
-    this.metadataEndpoint = endpoint
-    this.routeProbeTask = undefined
-    this.routeProbeResult = undefined
-    this.http = this.createHttp(endpoint)
-    if (previous && previous !== endpoint) {
-      this.registryRouteStats = {}
-      logger.info(`npm registry endpoint changed: previous=${previous}, current=${endpoint}, routeStats=reset`)
-    }
   }
 
   resolveName(name: string) {
@@ -426,511 +176,36 @@ class Installer extends Service {
   async findVersion(names: string[]) {
     const entries = await Promise.all(names.map(async (name) => {
       try {
-        const versions = Object.entries(await this.getPackage(name))
+        const versions = Object.entries(await this.getPackage(name) ?? {})
         if (!versions.length) return
         return { [name]: versions[0][0] }
-      } catch (e) {}
+      } catch {}
     }))
     return entries.find(Boolean)
   }
 
-  private getRegistryEndpoints() {
-    const preferred = this.getPreferredMetadataEndpoint()
-    return [preferred, ...this.getRouteProbeEndpoints()]
-      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
-  }
-
-  private getPreferredMetadataEndpoint() {
-    const endpoint = this.metadataEndpoint || this.endpoint
-    if (endpoint === this.endpoint) return endpoint
-    const stats = this.registryRouteStats[endpoint]
-    if (!stats) return endpoint
-    const primaryScore = this.getRegistryRouteScore(this.endpoint)
-    const selectedScore = this.getRegistryRouteScore(endpoint)
-    if (stats.failures >= 2 && selectedScore + 1 < primaryScore) {
-      logger.debug(`demote npm metadata endpoint: selected=${endpoint}, selectedScore=${selectedScore.toFixed(1)}, primary=${this.endpoint}, primaryScore=${primaryScore.toFixed(1)}, failures=${stats.failures}, lastFailure=${stats.lastFailureReason ?? '-'}`)
-      return this.endpoint
-    }
-    return endpoint
-  }
-
-  private getRegistryEndpointCandidates() {
-    return [this.endpoint, ...(this.config.autoRoute === false ? [] : REGISTRY_FALLBACK_ENDPOINTS)]
-      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
-  }
-
-  private getRouteProbeEndpoints() {
-    const endpoints = this.getRegistryEndpointCandidates()
-    if (this.config.autoRoute === false) return endpoints
-    const [primary, ...fallbacks] = endpoints
-    const originalIndex = new Map(fallbacks.map((endpoint, index) => [endpoint, index]))
-    return [primary, ...fallbacks.sort((a, b) => {
-      const delta = this.getRegistryRouteScore(b) - this.getRegistryRouteScore(a)
-      if (delta) return delta
-      return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0)
-    })]
-  }
-
-  private async ensureMetadataEndpoint(name: string, serial = this.serial) {
-    const endpoints = this.getRouteProbeEndpoints()
-    if (!name || endpoints.length <= 1) return
-    if (!this.routeProbeTask) {
-      this.routeProbeTask = this.probeMetadataEndpoint(name, endpoints, serial)
-    }
-    await this.routeProbeTask
-  }
-
-  private raceEndpoints(name: string, endpoints: string[], serial: number, onAttempt?: (endpoint: string) => void): Promise<RegistryEndpointResult> {
-    const fallbackDelay = this.getFallbackDelay(endpoints[0])
-    if (endpoints.length === 1 || this.config.autoRoute === false) {
-      const controller = this.trackController(new AbortController())
-      onAttempt?.(endpoints[0])
-      return this.fetchRegistryEndpoint(name, endpoints[0], serial, controller.signal)
-        .then(r => { this.recordRegistryRouteSuccess(r); return r })
-        .catch(e => {
-          if (!this.isStale(serial) && !this.isInternalAbort(e)) {
-            const reason = this.formatRegistryError(e).reason
-            if (shouldPenalizeRegistryRoute(reason)) this.recordRegistryRouteFailure(endpoints[0], reason)
-            attachRegistryAttemptReasons(e, [reason])
-          }
-          throw e
-        })
-        .finally(() => this.untrackControllers([controller]))
-    }
-    return new Promise<RegistryEndpointResult>((resolve, reject) => {
-      let settled = false, failed = 0, lastError: any, fallbackStarted = false
-      const failureReasons: RegistryStatus['reason'][] = []
-      let fallbackReason: RegistryEndpointResult['fallbackReason']
-      const controllers = endpoints.map(() => this.trackController(new AbortController()))
-      const timer = setTimeout(() => startFallback('primary-slow'), fallbackDelay)
-
-      const finish = () => {
-        clearTimeout(timer)
-        this.untrackControllers(controllers)
-      }
-
-      const settle = (result: RegistryEndpointResult, index: number) => {
-        if (settled) return
-        settled = true
-        finish()
-        controllers.forEach((c, i) => { if (i !== index) c.abort(new Error('race settled')) })
-        if (result.endpoint !== endpoints[0]) result.fallbackReason = fallbackReason
-        this.recordRegistryRouteSuccess(result)
-        resolve(result)
-      }
-      const fail = (endpoint: string, index: number, error: any) => {
-        if (settled) return
-        if (this.isStale(serial) || this.isInternalAbort(error)) {
-          settled = true
-          controllers.forEach(controller => controller.abort(new Error('npm registry race cancelled')))
-          finish()
-          reject(error)
-          return
-        }
-        const reason = this.formatRegistryError(error).reason
-        failureReasons.push(reason)
-        if (shouldPenalizeRegistryRoute(reason)) this.recordRegistryRouteFailure(endpoint, reason)
-        lastError = error
-        if (index === 0) startFallback('primary-failed')
-        if (++failed < endpoints.length) return
-        settled = true
-        finish()
-        attachRegistryAttemptReasons(lastError, failureReasons)
-        reject(lastError)
-      }
-      const startEndpoint = (endpoint: string, index: number, waitIndex = 0) => {
-        const signal = controllers[index].signal
-        this.waitRouteTurn(waitIndex, signal).then(() => {
-          if (settled) throw new Error('race settled before request')
-          onAttempt?.(endpoint)
-          return this.fetchRegistryEndpoint(name, endpoint, serial, signal)
-        }).then(r => settle(r, index)).catch(e => fail(endpoint, index, e))
-      }
-      const startFallback = (reason: NonNullable<typeof fallbackReason>) => {
-        if (settled || fallbackStarted) return
-        fallbackStarted = true; fallbackReason = reason
-        logger.info(`npm registry fallback race started: probe=${name}, reason=${reason}, count=${endpoints.length - 1}`)
-        endpoints.slice(1).forEach((ep, i) => startEndpoint(ep, i + 1, i))
-      }
-      startEndpoint(endpoints[0], 0)
-    })
-  }
-
-  private async probeMetadataEndpoint(name: string, endpoints: string[], serial: number) {
-    const start = Date.now()
-    logger.info(`npm registry route probe started: probe=${name}, primary=${endpoints[0]}, fallbackCount=${Math.max(0, endpoints.length - 1)}, slowThreshold=${this.getFallbackDelay(endpoints[0])}ms`)
-    try {
-      const result = await this.raceEndpoints(name, endpoints, serial)
-      if (this.isStale(serial)) return
-      this.applyRouteProbeResult(name, result, serial, start)
-    } catch (error) {
-      if (this.isStale(serial)) return
-      logger.warn(`npm registry route probe failed: probe=${name}, candidates=${endpoints.length}, elapsed=${Date.now() - start}ms`)
-    }
-  }
-
-  private async fetchRegistryEndpoint(name: string, endpoint: string, serial: number, signal?: AbortSignal): Promise<RegistryEndpointResult> {
-    const attemptStart = Date.now()
-    try {
-      logger.debug(`fetch npm registry endpoint: package=${name}, endpoint=${endpoint}`)
-      const registry = await this.createHttp(endpoint).get(`/${name}`, { signal }) as Registry
-      if (this.isStale(serial)) throw new Error('npm registry route probe stale')
-      if (!registry?.versions || typeof registry.versions !== 'object') {
-        throw new Error(`invalid registry metadata for ${name}`)
-      }
-      const elapsed = Date.now() - attemptStart
-      logger.debug(`fetch npm registry endpoint succeeded: package=${name}, endpoint=${endpoint}, elapsed=${elapsed}ms, versions=${Object.keys(registry.versions).length}`)
-      return { endpoint, registry, elapsed }
-    } catch (error) {
-      const detail = this.formatRegistryError(error)
-      logger.debug(`fetch npm registry endpoint failed: package=${name}, endpoint=${endpoint}, elapsed=${Date.now() - attemptStart}ms, reason=${detail.reason}, error=${detail.error}`)
-      throw error
-    }
-  }
-
-  private applyRouteProbeResult(name: string, result: RegistryEndpointResult, serial: number, start: number) {
-    const previous = this.metadataEndpoint
-    this.metadataEndpoint = result.endpoint
-    this.routeProbeResult = { serial, name, ...result }
-    if (result.endpoint === this.endpoint) {
-      logger.info(`npm registry primary selected: probe=${name}, endpoint=${result.endpoint}, elapsed=${result.elapsed}ms, total=${Date.now() - start}ms`)
-    } else {
-      logger.info(`npm registry fallback selected: probe=${name}, endpoint=${result.endpoint}, previous=${previous}, reason=${result.fallbackReason ?? 'unknown'}, elapsed=${result.elapsed}ms, total=${Date.now() - start}ms`)
-    }
-    logger.debug(`npm registry route scores after probe: ${formatRouteScores(this.getRegistryRouteScores())}`)
-  }
-
-  private waitRouteTurn(index: number, signal?: AbortSignal) {
-    if (!index) return Promise.resolve()
-    return new Promise<void>((resolve, reject) => {
-      if (signal?.aborted) return reject(signal.reason)
-      const timer = setTimeout(resolve, index * REGISTRY_ROUTE_STAGGER)
-      signal?.addEventListener('abort', () => {
-        clearTimeout(timer)
-        reject(signal.reason)
-      }, { once: true })
-    })
-  }
-
-  private getRegistryRouteScore(endpoint: string) {
-    const stats = this.registryRouteStats[endpoint]
-    let score = endpoint === this.endpoint ? 1 : 0
-    if (!stats) return score
-
-    const total = stats.successes + stats.failures
-    if (total) {
-      const successRate = stats.successes / total
-      score += (successRate - 0.5) * 6
-      if (total >= 3 && successRate >= 0.8) score += 1.5
-      if (total >= 3 && successRate < 0.35) score -= 2
-    }
-    score += stats.score
-    score += Math.min(2, stats.successes * 0.25)
-    score -= Math.min(2, stats.failures * 0.2)
-    if (stats.averageElapsed != null) {
-      if (stats.averageElapsed <= 300) score += 1.5
-      else if (stats.averageElapsed <= REGISTRY_FAST_ROUTE_THRESHOLD) score += 1
-      else if (stats.averageElapsed <= 1200) score += 0.5
-      else if (stats.averageElapsed <= 2500) score -= 0.3
-      else if (stats.averageElapsed <= 4000) score -= 1
-      else score -= 2
-    }
-    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 1.5
-    score -= Math.min(5, (stats.consecutiveFailures ?? 0) * 1.5)
-    return score
-  }
-
-  private recordRegistryRouteSuccess(result: RegistryEndpointResult) {
-    const stats = this.registryRouteStats[result.endpoint] ||= { score: 0, successes: 0, failures: 0 }
-    stats.successes++
-    stats.consecutiveFailures = 0
-    stats.failures = Math.max(0, Math.floor(stats.failures * 0.6))
-    stats.score = clamp(stats.score + (result.elapsed <= REGISTRY_FAST_ROUTE_THRESHOLD ? 0.4 : 0.1), -6, 3)
-    stats.lastSuccess = Date.now()
-    stats.averageElapsed = stats.averageElapsed == null
-      ? result.elapsed
-      : Math.round(stats.averageElapsed * 0.7 + result.elapsed * 0.3)
-    this.scheduleStatsWrite()
-  }
-
-  private recordRegistryRouteFailure(endpoint: string, reason?: RegistryStatus['reason']) {
-    const stats = this.registryRouteStats[endpoint] ||= { score: 0, successes: 0, failures: 0 }
-    stats.failures++
-    stats.consecutiveFailures = (stats.consecutiveFailures ?? 0) + 1
-    stats.lastFailure = Date.now()
-    stats.lastFailureReason = reason
-    stats.score = clamp(stats.score - Math.min(1.5, getFailurePenalty(stats.lastFailureReason)), -8, 3)
-    this.scheduleStatsWrite()
-  }
-
-  private getFallbackDelay(endpoint: string) {
-    const stats = this.registryRouteStats[endpoint]
-    if (!stats) return REGISTRY_FAST_ROUTE_THRESHOLD
-    const recentSuccess = stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10
-    if (!recentSuccess && stats.failures >= 3) return 200
-    if (!recentSuccess && stats.failures >= 2) return 400
-    if (stats.averageElapsed != null) {
-      if (stats.averageElapsed > 4000) return 400
-      if (stats.averageElapsed > 2500) return 600
-    }
-    return REGISTRY_FAST_ROUTE_THRESHOLD
-  }
-
-  private getRegistryRouteScores() {
-    return this.getRegistryEndpointCandidates().map(endpoint => ({
-      endpoint,
-      score: this.getRegistryRouteScore(endpoint),
-      fallbackDelay: endpoint === this.endpoint ? this.getFallbackDelay(endpoint) : undefined,
-      ...this.registryRouteStats[endpoint],
-    }))
-  }
-
   getInstallFallbackCandidate(failedEndpoint?: string): InstallFallbackCandidate | undefined {
-    if (this.config.autoRoute === false) return
-    const normalize = (endpoint?: string) => endpoint?.replace(/\/+$/, '')
-    const failed = normalize(failedEndpoint || this.endpoint)
-    const candidates = this.getRegistryEndpointCandidates()
-      .filter(endpoint => normalize(endpoint) !== failed)
-      .filter(endpoint => normalize(endpoint) !== normalize(this.config.endpoint))
-      .map((endpoint, index) => ({
-        endpoint,
-        index,
-        score: this.getRegistryRouteScore(endpoint),
-        stats: this.registryRouteStats[endpoint],
-      }))
-      .sort((a, b) => {
-        const delta = b.score - a.score
-        if (delta) return delta
-        const successDelta = (b.stats?.lastSuccess ?? 0) - (a.stats?.lastSuccess ?? 0)
-        if (successDelta) return successDelta
-        return a.index - b.index
-      })
-    const candidate = candidates[0]
-    if (!candidate) return
-    return {
-      endpoint: candidate.endpoint,
-      label: formatEndpointHost(candidate.endpoint),
-      reason: candidate.stats?.lastSuccess ? '最近可用的备用 npm 源' : '备用 npm 源',
-    }
+    return this.metadata.getInstallFallbackCandidate(failedEndpoint)
   }
 
-  private async fetchRegistryByRoute(name: string, endpoints: string[], serial: number, onAttempt?: (endpoint: string, attempts: number) => void): Promise<RegistryRouteResult> {
-    let attempts = 0, lastEndpoint = endpoints[0]
-    const result = await this.raceEndpoints(name, endpoints, serial, (endpoint) => {
-      lastEndpoint = endpoint
-      onAttempt?.(endpoint, ++attempts)
-    })
-    return { ...result, attempts, lastEndpoint }
-  }
-
-  private isStale(serial: number) {
-    return serial !== this.serial || !this.ctx.scope.isActive
-  }
-
-  private trackController(controller: AbortController) {
-    this.pendingControllers.add(controller)
-    return controller
-  }
-
-  private untrackControllers(controllers: AbortController[]) {
-    for (const controller of controllers) {
-      this.pendingControllers.delete(controller)
-    }
-  }
-
-  private abortPendingRequests(reason: string) {
-    for (const controller of this.pendingControllers) {
-      controller.abort(new Error(reason))
-    }
-    this.pendingControllers.clear()
-  }
-
-  private isInternalAbort(error: any) {
-    const message = error instanceof Error ? error.message : String(error)
-    return /race settled|stale|disposed|aborted|abort/i.test(message)
-  }
-
-  private setRegistryStatus(name: string, status: RegistryStatus, serial = this.serial) {
-    if (this.isStale(serial)) return
-    const value = {
-      ...this.registryStatus[name],
-      ...status,
-      updatedAt: Date.now(),
-    }
-    this.registryStatus[name] = this.tempRegistryStatus[name] = value
-    this.flushRegistryStatus()
-  }
-
-  private clearRegistryStatus() {
-    this.registryStatus = {}
-    this.tempRegistryStatus = {}
-    this.ctx.get('console')?.broadcast('market/registry-status/clear' as any, {})
-  }
-
-  async getRegistry(name: string, serial = this.serial) {
-    const start = Date.now()
-    const maxRetry = Math.max(0, this.config.retry ?? 1)
-    let attempts = 0
-    let lastError: any
-    let lastEndpoint = this.metadataEndpoint || this.endpoint
-    const failureReasons: RegistryStatus['reason'][] = []
-    this.setRegistryStatus(name, {
-      loading: true,
-      error: undefined,
-      reason: undefined,
-      endpoint: lastEndpoint,
-      attempts,
-      elapsed: undefined,
-    }, serial)
-
-    await this.ensureMetadataEndpoint(name, serial)
-    if (this.isStale(serial)) return
-
-    const probe = this.routeProbeResult
-    if (probe?.serial === serial && probe.name === name && probe.endpoint === this.metadataEndpoint) {
-      attempts = 1
-      this.setRegistryStatus(name, {
-        loading: false,
-        error: undefined,
-        reason: undefined,
-        endpoint: probe.endpoint,
-        attempts,
-        elapsed: Date.now() - start,
-      }, serial)
-      logger.debug(`reuse npm registry route probe payload for ${name}: endpoint=${probe.endpoint}, probeElapsed=${probe.elapsed}ms`)
-      return probe.registry
-    }
-
-    for (let retry = 0; retry <= maxRetry; retry++) {
-      const endpoints = this.getRegistryEndpoints()
-      logger.debug(`registry metadata candidates for ${name}: endpoints=${endpoints.join(', ')}, retry=${retry + 1}/${maxRetry + 1}, concurrency=${this.config.concurrency ?? 4}`)
-      try {
-        const result = await this.fetchRegistryByRoute(name, endpoints, serial, (endpoint) => {
-          attempts++
-          lastEndpoint = endpoint
-          this.setRegistryStatus(name, { loading: true, endpoint, attempts }, serial)
-        })
-        if (this.isStale(serial)) return
-        if (result.endpoint !== this.metadataEndpoint) {
-          logger.debug(`routed npm registry endpoint for ${name}: ${result.endpoint}`)
-          logger.info(`npm registry route selected for ${name}: endpoint=${result.endpoint}, previous=${this.metadataEndpoint}, reason=${result.fallbackReason ?? 'same-priority'}, elapsed=${result.elapsed}ms`)
-          this.metadataEndpoint = result.endpoint
-        }
-        this.setRegistryStatus(name, {
-          loading: false,
-          error: undefined,
-          reason: undefined,
-          endpoint: result.endpoint,
-          attempts,
-          elapsed: Date.now() - start,
-        }, serial)
-        logger.debug(`loaded registry metadata for ${name} from ${result.endpoint} in ${result.elapsed}ms, attempts=${attempts}, versions=${Object.keys(result.registry.versions).length}`)
-        return result.registry
-      } catch (error) {
-        lastError = error
-        const detail = this.formatRegistryError(error)
-        failureReasons.push(...getRegistryAttemptReasons(error, detail.reason) as RegistryStatus['reason'][])
-        logger.debug(`failed routed registry metadata for ${name}, attempt=${retry + 1}/${maxRetry + 1}, endpoint=${lastEndpoint}, attempts=${attempts}: ${detail.error}`)
-        if (retry < maxRetry) await sleep(300 * (retry + 1))
-      }
-    }
-
-    const detail = this.formatRegistryError(lastError)
-    const finalDetail = allRegistryAttemptsNotFound(failureReasons)
-      ? detail
-      : failureReasons.some(reason => reason !== 'not-found')
-        ? { reason: failureReasons.find(reason => reason !== 'not-found')!, error: detail.error }
-        : detail
-    this.setRegistryStatus(name, {
-      loading: false,
-      reason: finalDetail.reason,
-      error: finalDetail.error,
-      endpoint: lastEndpoint,
-      attempts,
-      elapsed: Date.now() - start,
-    }, serial)
-    logger.warn(`failed to fetch registry metadata for ${name}: ${detail.error}`)
-    if (lastError && typeof lastError === 'object') {
-      Object.defineProperty(lastError, 'marketNextReason', {
-        value: finalDetail.reason,
-        configurable: true,
-      })
-      Object.defineProperty(lastError, 'marketNextReasons', {
-        value: failureReasons,
-        configurable: true,
-      })
-    }
-    throw lastError ?? Object.assign(new Error(finalDetail.error), { marketNextReason: finalDetail.reason })
-  }
-
-  private formatRegistryError(error: any): Required<Pick<RegistryStatus, 'reason' | 'error'>> {
-    if (error?.marketNextReason) {
-      return {
-        reason: error.marketNextReason,
-        error: error instanceof Error ? error.message : String(error),
-      }
-    }
-    const message = error instanceof Error ? error.message : String(error)
-    if (this.ctx.http.isError(error)) {
-      const status = (error as any).response?.status
-      if (status === 404) return { reason: 'not-found', error: 'npm 元数据不存在，或当前镜像尚未同步该包。' }
-      if (status) return { reason: 'http', error: `npm 元数据请求失败，HTTP ${status}。` }
-    }
-    if (/timeout|ETIMEDOUT|ECONNABORTED/i.test(message)) {
-      return { reason: 'timeout', error: 'npm 元数据请求超时。' }
-    }
-    if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|EAI_AGAIN|fetch failed|network/i.test(message)) {
-      return { reason: 'network', error: 'npm 元数据请求网络失败。' }
-    }
-    if (/invalid registry metadata/i.test(message)) {
-      return { reason: 'invalid', error: 'npm 元数据格式异常。' }
-    }
-    return { reason: 'unknown', error: message || 'npm 元数据请求失败。' }
-  }
-
-  private async _getPackage(name: string, serial = this.serial) {
-    try {
-      const registry = await this.getRegistry(name, serial)
-      if (this.isStale(serial)) return
-      if (!registry) return
-      this.fullCache[name] = this.tempCache[name] = getVersions(Object.values(registry.versions).filter((remote) => {
-        if (name === 'koishi') return satisfies(remote.version, '4')
-        return !Scanner.isPlugin(name) || Scanner.isCompatible('4', remote)
-      }))
-      this.flushData()
-      return this.fullCache[name]
-    } catch (e) {
-      logger.warn(e instanceof Error ? e.message : e)
-      throw e
-    }
+  getRegistry(name: string, serial = this.metadata.serial) {
+    return this.metadata.getRegistry(name, serial)
   }
 
   setPackage(name: string, versions: RemotePackage[]) {
-    this.fullCache[name] = this.tempCache[name] = getVersions(versions)
-    this.flushData()
-    this.pkgTasks[name] = Promise.resolve(this.fullCache[name])
+    this.metadata.setPackage(name, versions)
   }
 
   getPackage(name: string) {
-    const notFoundAt = this.notFoundCache[name]
-    if (notFoundAt && Date.now() - notFoundAt < NOT_FOUND_CACHE_TTL) {
-      return Promise.resolve(undefined)
-    }
-    if (notFoundAt) delete this.notFoundCache[name]
-    if (!this.pkgTasks[name]) {
-      const task = this._getPackage(name, this.serial)
-      this.pkgTasks[name] = task
-      task.then((versions) => {
-        if (this.pkgTasks[name] !== task) return
-        if (!versions) delete this.pkgTasks[name]
-      }, (error) => {
-        if (this.pkgTasks[name] !== task) return
-        delete this.pkgTasks[name]
-        const reason = this.formatRegistryError(error).reason
-        if (reason === 'not-found') this.notFoundCache[name] = Date.now()
-      })
-    }
-    return this.pkgTasks[name]
+    return this.metadata.getPackage(name)
+  }
+
+  private formatRegistryError(error: any) {
+    return this.metadata.formatError(error)
+  }
+
+  private isStale(serial: number) {
+    return this.metadata.isStale(serial)
   }
 
   private markRegistryNotFoundDependency(name: string, dependency = this.depCache[name]) {
@@ -971,11 +246,11 @@ class Installer extends Service {
       }
 
       const previous = this.depCache?.[name]
-      const notFoundAt = this.notFoundCache[name]
+      const notFound = this.metadata.hasRecentNotFound(name)
       const preserved = reuseConfirmedDependencySource(
         previous,
         result[name],
-        !!notFoundAt && Date.now() - notFoundAt < NOT_FOUND_CACHE_TTL,
+        notFound,
       )
       if (preserved) Object.assign(result[name], preserved)
       if (previous?.latest && previous.request === result[name].request && previous.resolved === result[name].resolved) {
@@ -988,14 +263,14 @@ class Installer extends Service {
     return result
   }
 
-  private async _refreshDependencyMetadata(result = this.depCache, serial = this.serial) {
+  private async _refreshDependencyMetadata(result = this.depCache, serial = this.metadata.serial) {
     const start = Date.now()
     const names = Object.keys(result)
     const targets = names.filter((name) => !result[name].local && !result[name].invalid)
     logger.debug(`refresh dependency metadata started: total=${names.length}, targets=${targets.length}, concurrency=${this.config.concurrency ?? 4}, registry=${this.endpoint}, autoRoute=${this.config.autoRoute !== false}`)
     const probeName = pickMetadataProbe(targets)
-    if (probeName) await this.ensureMetadataEndpoint(probeName, this.serial)
-    logger.debug(`refresh dependency metadata route ready: probe=${probeName ?? '-'}, selected=${this.metadataEndpoint}, configured=${this.endpoint}, probed=${!!this.routeProbeResult}`)
+    if (probeName) await this.metadata.ensureEndpoint(probeName, this.metadata.serial)
+    logger.debug(`refresh dependency metadata route ready: probe=${probeName ?? '-'}, selected=${this.metadata.selectedEndpoint}, configured=${this.endpoint}, probed=${this.metadata.hasRouteProbeResult}`)
     await pMap(targets, async (name) => {
       if (this.isStale(serial)) return
       try {
@@ -1004,7 +279,7 @@ class Installer extends Service {
         if (versions) {
           result[name].latest = Object.keys(versions)[0]
           logger.debug(`dependency latest resolved: ${name}, resolved=${result[name].resolved ?? '-'}, latest=${result[name].latest}, versions=${Object.keys(versions).length}`)
-        } else if (!versions && this.notFoundCache[name] && this.markRegistryNotFoundDependency(name, result[name])) {
+        } else if (!versions && this.metadata.hasRecentNotFound(name) && this.markRegistryNotFoundDependency(name, result[name])) {
           logger.debug(`dependency npm not-found result reused from cache: ${name}`)
         } else {
           logger.debug(`dependency latest unresolved: ${name}, resolved=${result[name].resolved ?? '-'}, request=${result[name].request}`)
@@ -1019,7 +294,7 @@ class Installer extends Service {
         }
       }
     }, { concurrency: this.config.concurrency ?? 4 })
-    logger.info(`dependency metadata refresh completed: total=${names.length}, targets=${targets.length}, registry=${this.metadataEndpoint}, elapsed=${Date.now() - start}ms`)
+    logger.info(`dependency metadata refresh completed: total=${names.length}, targets=${targets.length}, registry=${this.metadata.selectedEndpoint}, elapsed=${Date.now() - start}ms`)
     if (!this.isStale(serial)) {
       this.depMetadataFresh = true
       this.ctx.get('console')?.refresh('dependencies')
@@ -1030,7 +305,7 @@ class Installer extends Service {
   refreshDependencyMetadata(wait = false) {
     if (this.depMetadataFresh) return wait ? Promise.resolve(this.depCache) : undefined
     if (!this.depTask) {
-      const task = this._refreshDependencyMetadata(this.depCache, this.serial)
+      const task = this._refreshDependencyMetadata(this.depCache, this.metadata.serial)
       this.depTask = task
       task.then(() => {
         if (this.depTask === task) this.depTask = undefined
@@ -1051,14 +326,8 @@ class Installer extends Service {
       logger.info(`dependency ${reason} probe reused running metadata task: elapsed=${Date.now() - start}ms`)
       return
     }
-    this.serial++
-    this.abortPendingRequests(`dependency ${reason} probe superseded`)
-    await this.resetEndpoint()
+    await this.metadata.reset(`dependency ${reason} probe superseded`)
     this.manifest = loadManifest(this.cwd)
-    this.pkgTasks = {}
-    this.fullCache = {}
-    this.tempCache = {}
-    this.clearRegistryStatus()
     this.depTask = undefined
     this.depMetadataFresh = false
     this.depCache = this.getLocalDepsSnapshot()
@@ -1088,14 +357,8 @@ class Installer extends Service {
 
   async refresh(refresh = false, waitMetadata = false) {
     const start = Date.now()
-    this.serial++
-    this.abortPendingRequests('dependency refresh superseded')
-    await this.resetEndpoint()
+    await this.metadata.reset('dependency refresh superseded')
     this.manifest = loadManifest(this.cwd)
-    this.pkgTasks = {}
-    this.fullCache = {}
-    this.tempCache = {}
-    this.clearRegistryStatus()
     this.depTask = undefined
     this.depMetadataFresh = false
     this.depCache = this.getLocalDepsSnapshot()
@@ -1106,286 +369,29 @@ class Installer extends Service {
     logger.info(`dependency refresh requested by console: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, waitMetadata=${waitMetadata}, elapsed=${Date.now() - start}ms`)
   }
 
-  private getInstallLogDir() {
-    return resolve(this.cwd, 'data', INSTALL_LOG_DIR)
-  }
-
-  private getInstallLogRetention() {
-    const hours = Number(this.config.installLogRetentionHours)
-    if (Number.isFinite(hours) && hours > 0) return Math.max(1, hours) * Time.hour
-    const legacyRetention = Number(this.config.installLogRetention)
-    return Number.isFinite(legacyRetention) && legacyRetention > 0
-      ? Math.max(Time.hour, legacyRetention)
-      : DEFAULT_INSTALL_LOG_RETENTION
-  }
-
-  private async cleanupInstallLogs() {
-    if (this.installLogCleanupTask) return this.installLogCleanupTask
-    this.installLogCleanupTask = (async () => {
-      const dir = this.getInstallLogDir()
-      try {
-        const entries = await fsp.readdir(dir, { withFileTypes: true })
-        const now = Date.now()
-        await Promise.all(entries
-          .filter(entry => entry.isFile() && (entry.name.endsWith('.log') || entry.name.endsWith('.log.json')))
-          .map(async (entry) => {
-            const path = resolve(dir, entry.name)
-            if (path === this.installLogFile || path === this.installLogMetadataFile) return
-            try {
-              const stat = await fsp.stat(path)
-              if (now - stat.mtimeMs <= this.getInstallLogRetention()) return
-              await fsp.rm(path, { force: true })
-            } catch (error) {
-              logger.debug(`failed to cleanup install log ${path}: ${error instanceof Error ? error.message : error}`)
-            }
-          }))
-      } catch (error: any) {
-        if (error?.code !== 'ENOENT') {
-          logger.debug(`failed to cleanup install logs: ${error instanceof Error ? error.message : error}`)
-        }
-      }
-    })().finally(() => {
-      this.installLogCleanupTask = undefined
-    })
-    return this.installLogCleanupTask
-  }
-
-  private async writeInstallLogMetadata() {
-    if (!this.installLogMetadataFile || !this.installLogMetadata) return
-    await fsp.writeFile(this.installLogMetadataFile, JSON.stringify(this.installLogMetadata, null, 2) + '\n')
-  }
-
-  private async startInstallLog(deps: Dict<string>, forced?: boolean, options: InstallOptions = {}, changes: InstallHistoryChange[] = []) {
-    await this.cleanupInstallLogs()
-    const dir = this.getInstallLogDir()
-    await fsp.mkdir(dir, { recursive: true })
-    const now = Date.now()
-    const suffix = sanitizeLogSegment(formatDeps(deps) || 'noop')
-    const file = resolve(dir, `${formatLogTimestamp(now)}-${suffix}.log`)
-    const id = basename(file)
-    await fsp.writeFile(file, [
-      `market-next dependency operation log`,
-      `startedAt: ${new Date(now).toISOString()}`,
-      `cwd: ${this.cwd}`,
-      `deps: ${formatDeps(deps) || '(none)'}`,
-      `forced: ${!!forced}`,
-      `installEndpoint: ${options.installEndpoint || '(default)'}`,
-      '',
-    ].join('\n'))
-    this.installLogFile = file
-    this.installLogMetadataFile = file + '.json'
-    this.installLogMetadata = {
-      version: 1,
-      id,
-      startedAt: now,
-      status: 'running',
-      deps: formatDeps(deps) || '(none)',
-      forced: !!forced,
-      installEndpoint: options.installEndpoint || undefined,
-      changes,
-    }
-    this.installLogWriteTask = Promise.resolve()
-    await this.writeInstallLogMetadata().catch((error) => {
-      logger.debug(`failed to write install log metadata ${this.installLogMetadataFile}: ${error instanceof Error ? error.message : error}`)
-    })
-    logger.info(`dependency install log started: ${file}`)
+  private startInstallLog(
+    deps: Dict<string>,
+    forced?: boolean,
+    options: InstallOptions = {},
+    changes: InstallHistoryChange[] = [],
+  ) {
+    return this.installHistory.start(deps, forced, options, changes)
   }
 
   private emitInstallLog(type: 'stdout' | 'stderr', line: string) {
-    const cleanLine = sanitizeInstallLogText(line)
-    this.ctx.get('console')?.broadcast('market/install-log', { type, line: cleanLine })
-    this.writeInstallLog(type, cleanLine)
+    this.installHistory.emit(type, line)
   }
 
-  private writeInstallLog(type: string, line: string) {
-    const file = this.installLogFile
-    if (!file) return
-    const text = `[${new Date().toISOString()}] [${type}] ${line}\n`
-    this.installLogWriteTask = this.installLogWriteTask
-      .then(() => fsp.appendFile(file, text))
-      .catch((error) => {
-        logger.debug(`failed to write install log ${file}: ${error instanceof Error ? error.message : error}`)
-      })
+  private finishInstallLog(result?: { code?: number | null, failed?: boolean, reason?: string }) {
+    return this.installHistory.finish(result)
   }
 
-  private async finishInstallLog(result?: { code?: number | null, failed?: boolean, reason?: string }) {
-    if (!this.installLogFile) return
-    if (result?.failed) {
-      // Failure detail is already emitted by the catch path; only close the session.
-    } else if (result?.code == null) {
-      this.writeInstallLog('stderr', 'dependency operation ended without a package manager exit code')
-    } else if (result.code) {
-      this.writeInstallLog('stderr', `dependency operation finished with code ${result.code}`)
-    } else {
-      this.writeInstallLog('stdout', 'dependency operation finished with code 0')
-    }
-    await this.installLogWriteTask
-    if (this.installLogMetadata) {
-      const success = !result?.failed && result?.code === 0
-      this.installLogMetadata.status = success ? 'success' : 'error'
-      this.installLogMetadata.finishedAt = Date.now()
-      if (success) {
-        this.installLogMetadata.changes = this.installLogMetadata.changes.map(change => ({
-          ...change,
-          afterResolved: this.depCache[change.name]?.resolved ?? null,
-        }))
-      }
-      await this.writeInstallLogMetadata().catch((error) => {
-        logger.debug(`failed to finish install log metadata ${this.installLogMetadataFile}: ${error instanceof Error ? error.message : error}`)
-      })
-    }
-    logger.info(`dependency install log saved: ${this.installLogFile}`)
-    this.installLogFile = undefined
-    this.installLogMetadataFile = undefined
-    this.installLogMetadata = undefined
-    this.installLogWriteTask = Promise.resolve()
+  getInstallHistory(limit = 20) {
+    return this.installHistory.getHistory(limit)
   }
 
-  private getInstallLogPath(id: string) {
-    if (!id || basename(id) !== id || !id.endsWith('.log')) return
-    return resolve(this.getInstallLogDir(), id)
-  }
-
-  private async readInstallLogMetadata(id: string) {
-    const file = this.getInstallLogPath(id)
-    if (!file) return
-    try {
-      const metadata: InstallHistoryMetadata = JSON.parse(await fsp.readFile(file + '.json', 'utf8'))
-      if (metadata?.version !== 1 || metadata.id !== id || !Array.isArray(metadata.changes)) return
-      return metadata
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
-        logger.debug(`failed to read install log metadata ${id}: ${error instanceof Error ? error.message : error}`)
-      }
-    }
-  }
-
-  private async readInstallLog(file: string, limit: number, headLimit: number, tailLimit: number) {
-    const stat = await fsp.stat(file)
-    if (stat.size <= limit) {
-      return {
-        content: await fsp.readFile(file, 'utf8'),
-        truncated: false,
-        size: stat.size,
-      }
-    }
-    const handle = await fsp.open(file, 'r')
-    try {
-      const headSize = Math.min(headLimit, stat.size)
-      const tailSize = Math.min(tailLimit, Math.max(0, stat.size - headSize))
-      const head = Buffer.alloc(headSize)
-      const tail = Buffer.alloc(tailSize)
-      if (headSize) await handle.read(head, 0, headSize, 0)
-      if (tailSize) await handle.read(tail, 0, tailSize, stat.size - tailSize)
-      return {
-        content: `${head.toString('utf8')}\n\n... ${stat.size - headSize - tailSize} bytes omitted ...\n\n${tail.toString('utf8')}`,
-        truncated: true,
-        size: stat.size,
-      }
-    } finally {
-      await handle.close()
-    }
-  }
-
-  private parseLegacyInstallLog(id: string, content: string, size: number): InstallHistoryEntry {
-    const startedText = content.match(/^startedAt:\s*(.+)$/m)?.[1]?.trim()
-    const startedAt = Date.parse(startedText || '') || 0
-    const deps = content.match(/^deps:\s*(.*)$/m)?.[1]?.trim() || '(unknown)'
-    const forced = content.match(/^forced:\s*(true|false)$/m)?.[1] === 'true'
-    const endpointText = content.match(/^installEndpoint:\s*(.*)$/m)?.[1]?.trim()
-    const active = basename(this.installLogFile || '') === id
-    const status = active
-      ? 'running'
-      : /dependency operation finished with code 0\s*$/m.test(content)
-        ? 'success'
-        : /dependency operation (?:failed|finished with code|ended without)|package manager (?:terminated|failed to start)/m.test(content)
-          ? 'error'
-          : 'unknown'
-    const timestamps = [...content.matchAll(/^\[([^\]]+)\]/gm)]
-    const finishedAt = status === 'running' ? undefined : Date.parse(timestamps.at(-1)?.[1] || '') || undefined
-    return {
-      id,
-      startedAt,
-      finishedAt,
-      duration: startedAt && finishedAt ? Math.max(0, finishedAt - startedAt) : undefined,
-      status,
-      deps,
-      forced,
-      installEndpoint: endpointText && endpointText !== '(default)' ? endpointText : undefined,
-      size,
-      changes: [],
-    }
-  }
-  private createInstallHistoryEntry(metadata: InstallHistoryMetadata, size: number): InstallHistoryEntry {
-    const status = metadata.status === 'running' && basename(this.installLogFile || '') !== metadata.id
-      ? 'unknown'
-      : metadata.status
-    return {
-      id: metadata.id,
-      startedAt: metadata.startedAt,
-      finishedAt: metadata.finishedAt,
-      duration: metadata.finishedAt ? Math.max(0, metadata.finishedAt - metadata.startedAt) : undefined,
-      status,
-      deps: metadata.deps,
-      forced: metadata.forced,
-      installEndpoint: metadata.installEndpoint,
-      size,
-      changes: metadata.changes,
-    }
-  }
-
-  private async getInstallHistoryEntry(id: string) {
-    const file = this.getInstallLogPath(id)
-    if (!file) return
-    if (file === this.installLogFile) await this.installLogWriteTask
-    let stat
-    try {
-      stat = await fsp.stat(file)
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT') throw error
-      return
-    }
-    const metadata = await this.readInstallLogMetadata(id)
-    if (metadata) return this.createInstallHistoryEntry(metadata, stat.size)
-    const preview = await this.readInstallLog(file, INSTALL_LOG_HEAD_LIMIT + INSTALL_LOG_TAIL_LIMIT, INSTALL_LOG_HEAD_LIMIT, INSTALL_LOG_TAIL_LIMIT)
-    return this.parseLegacyInstallLog(id, preview.content, stat.size)
-  }
-
-  async getInstallHistory(limit = 20) {
-    await this.cleanupInstallLogs()
-    const count = clamp(Math.floor(Number(limit) || 20), 1, 50)
-    const dir = this.getInstallLogDir()
-    let files: Array<{ id: string, mtime: number }> = []
-    try {
-      const entries = await fsp.readdir(dir, { withFileTypes: true })
-      files = (await Promise.all(entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.log'))
-        .map(async entry => ({
-          id: entry.name,
-          mtime: (await fsp.stat(resolve(dir, entry.name))).mtimeMs,
-        }))))
-        .sort((a, b) => b.mtime - a.mtime)
-        .slice(0, count)
-    } catch (error: any) {
-      if (error?.code === 'ENOENT') return []
-      throw error
-    }
-    const records = await Promise.all(files.map(file => this.getInstallHistoryEntry(file.id)))
-    return records.filter(Boolean) as InstallHistoryEntry[]
-  }
-
-  async getInstallLogDetail(id: string) {
-    const file = this.getInstallLogPath(id)
-    if (!file) return
-    if (file === this.installLogFile) await this.installLogWriteTask
-    const entry = await this.getInstallHistoryEntry(id)
-    if (!entry) return
-    const result = await this.readInstallLog(file, INSTALL_LOG_DETAIL_LIMIT, 128 * 1024, 384 * 1024)
-    return {
-      ...entry,
-      content: sanitizeInstallLogText(result.content),
-      truncated: result.truncated,
-    } as InstallLogDetail
+  getInstallLogDetail(id: string) {
+    return this.installHistory.getDetail(id)
   }
 
   async getEnvironmentSnapshots(): Promise<EnvironmentSnapshotSummary[]> {
@@ -1644,10 +650,7 @@ class Installer extends Service {
       logger.warn(`failed to record pre-operation environment snapshot: ${error instanceof Error ? error.message : error}`)
     })
     await this.startInstallLog(deps, forced, options, changes).catch((error) => {
-      this.installLogFile = undefined
-      this.installLogMetadataFile = undefined
-      this.installLogMetadata = undefined
-      this.installLogWriteTask = Promise.resolve()
+      this.installHistory.resetCurrent()
       logger.warn(`failed to start dependency install log: ${error instanceof Error ? error.message : error}`)
     })
     logger.info(`dependency install requested: deps=${formatDeps(deps)}, forced=${!!forced}, installEndpoint=${options.installEndpoint || '(default)'}`)
@@ -1674,7 +677,7 @@ class Installer extends Service {
             try {
               const versions = await this.getPackage(name)
               if (versions) return
-              if (this.notFoundCache[name]) {
+              if (this.metadata.hasRecentNotFound(name)) {
                 sourceStateChanged = this.markRegistryNotFoundDependency(name) || sourceStateChanged
                 return
               }
@@ -1751,7 +754,7 @@ class Installer extends Service {
         await beforeReload()
       }
       await this.refreshData()
-      await this.recordCurrentEnvironmentSnapshot('operation', this.installLogMetadata?.id).catch((error) => {
+      await this.recordCurrentEnvironmentSnapshot('operation', this.installHistory.currentId).catch((error) => {
         logger.warn(`failed to record dependency environment snapshot: ${error instanceof Error ? error.message : error}`)
       })
       logger.info(`dependency install completed: deps=${formatDeps(deps)}, forced=${!!needsPackageManager}, fullReload=${shouldReload}, elapsed=${Date.now() - start}ms`)
@@ -1848,101 +851,13 @@ class Installer extends Service {
 
   async prepareLocalBinding(name: string): Promise<LocalBindingResult> {
     const packageSnapshot = await this.snapshotPackageManifest()
-    if (!Scanner.isPlugin(name) || !Object.prototype.hasOwnProperty.call(packageSnapshot.dependencies, name)) {
-      throw new Error('只能绑定当前 package.json 中的 Koishi 插件依赖。')
-    }
-    const dependency = this.depCache[name]
-    if (!dependency?.resolved || dependency.source !== 'unbound') {
-      throw new Error('该插件不是来源未绑定的本地插件。')
-    }
-    const currentRequest = packageSnapshot.dependencies[name].replace(/^[~^]/, '')
-    if (dependency.request !== currentRequest) {
-      throw new Error('package.json 已发生变化，请刷新依赖后重试。')
-    }
-
-    let manifestFile: string
-    try {
-      manifestFile = resolvePackageManifest(name, this.cwd)
-    } catch {
-      throw new Error('无法定位本地插件目录；请确认插件仍可被当前 Koishi 实例加载。')
-    }
-    const sourceDir = dirname(manifestFile)
-    const manifest = JSON.parse(await fsp.readFile(manifestFile, 'utf8')) as PackageJson
-    if (manifest.name !== name || manifest.version !== dependency.resolved) {
-      throw new Error('本地插件清单与当前依赖状态不一致，请刷新依赖后重试。')
-    }
-
-    const destination = resolve(this.cwd, '.yarn', 'local')
-    await fsp.mkdir(destination, { recursive: true })
-    const temporary = await fsp.mkdtemp(resolve(destination, '.market-next-pack-'))
-    try {
-      const child = await spawn('npm', [
-        'pack', sourceDir,
-        '--ignore-scripts',
-        '--json',
-        '--pack-destination', temporary,
-      ], {
-        cwd: this.cwd,
-        timeout: Math.max(Time.minute, this.config.timeout ?? 0),
-      })
-      const pack = parseNpmPackOutput(child.stdout)
-      if (pack.name && pack.name !== name || pack.version && pack.version !== dependency.resolved) {
-        throw new Error('本地插件打包结果与当前依赖不一致。')
-      }
-      const packedFile = resolve(temporary, pack.filename)
-      if (dirname(packedFile) !== temporary || relative(temporary, packedFile).startsWith('..')) {
-        throw new Error('本地插件打包路径无效。')
-      }
-      const stat = await fsp.stat(packedFile)
-      if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_LOCAL_BINDING_PACK_SIZE || stat.size !== pack.size) {
-        throw new Error('本地插件打包文件无效或过大。')
-      }
-      const content = await fsp.readFile(packedFile)
-      const hash = createHash('sha256').update(content).digest('hex')
-      const filename = createHashedLocalBindingFilename(pack.filename, hash.slice(0, 12))
-      const target = resolve(destination, filename)
-      if (dirname(target) !== destination || relative(destination, target).startsWith('..')) {
-        throw new Error('本地插件目标路径无效。')
-      }
-
-      const validateExistingTarget = async () => {
-        let targetStat
-        try {
-          targetStat = await fsp.stat(target)
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-          throw error
-        }
-        if (!targetStat.isFile() || targetStat.size !== stat.size) {
-          throw new Error('同名本地插件归档已存在，但文件状态不一致。')
-        }
-        const targetHash = createHash('sha256').update(await fsp.readFile(target)).digest('hex')
-        if (targetHash !== hash) {
-          throw new Error('同名本地插件归档已存在，但文件内容不一致。')
-        }
-        return true
-      }
-
-      if (!await validateExistingTarget()) {
-        try {
-          // The npm output already lives on the destination volume, so rename publishes it atomically.
-          await fsp.rename(packedFile, target)
-        } catch (error) {
-          // A concurrent binding may have published the same content first.
-          if (!await validateExistingTarget()) throw error
-        }
-      }
-      logger.info(`local plugin source prepared: ${name}@${dependency.resolved}, file=${filename}, size=${pack.size}`)
-      return {
-        request: createLocalBindingRequest(filename),
-        filename,
-        size: pack.size,
-      }
-    } finally {
-      await fsp.rm(temporary, { recursive: true, force: true }).catch((error) => {
-        logger.debug(`failed to remove local binding temp directory ${temporary}: ${error instanceof Error ? error.message : error}`)
-      })
-    }
+    return prepareLocalBindingPackage(
+      this.cwd,
+      name,
+      this.depCache[name],
+      packageSnapshot.dependencies,
+      this.config.timeout,
+    )
   }
 
   async applyEnvironmentSnapshot(id: string, options: InstallOptions = {}) {
@@ -1972,21 +887,9 @@ class Installer extends Service {
 }
 
 namespace Installer {
-  export interface GetDepsOptions {
-    metadata?: boolean
-    background?: boolean
-  }
+  export interface GetDepsOptions extends InstallerGetDepsOptions {}
 
-  export interface Config {
-    endpoint?: string
-    timeout?: number
-    autoRoute?: boolean
-    retry?: number
-    concurrency?: number
-    installLogRetentionHours?: number
-    /** @deprecated use installLogRetentionHours */
-    installLogRetention?: number
-  }
+  export interface Config extends InstallerConfig {}
 
   export const Config: Schema<Config> = Schema.object({
     endpoint: Schema.string().role('link'),
@@ -1996,100 +899,6 @@ namespace Installer {
     concurrency: Schema.number().min(1).max(16).step(1).default(4),
     installLogRetentionHours: Schema.number().min(1).max(24 * 365).step(1).default(72),
   }) // TODO .hidden()
-}
-
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function attachRegistryAttemptReasons(error: unknown, reasons: RegistryStatus['reason'][]) {
-  if (!error || typeof error !== 'object') return
-  Object.defineProperty(error, 'marketNextReasons', {
-    value: [...reasons],
-    configurable: true,
-  })
-}
-
-function formatDeps(deps: Dict<string>) {
-  const entries = Object.entries(deps)
-  if (!entries.length) return '(none)'
-  return entries.map(([name, version]) => `${name}@${version || '(remove)'}`).join(', ')
-}
-
-function createInstallHistoryChanges(before: Dict<string>, after: Dict<string>, localDeps: Dict<Dependency>): InstallHistoryChange[] {
-  return Object.keys(after).map(name => ({
-    name,
-    beforeRequest: Object.prototype.hasOwnProperty.call(before, name) ? before[name] : null,
-    beforeResolved: localDeps[name]?.resolved ?? null,
-    afterRequest: after[name] || null,
-    afterResolved: null,
-  }))
-}
-
-function formatLogTimestamp(value: number) {
-  return new Date(value).toISOString().replace(/[:.]/g, '-')
-}
-
-function sanitizeLogSegment(value: string) {
-  return value
-    .replace(/[^a-z0-9@._+-]+/gi, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'operation'
-}
-
-function sanitizeInstallLogText(value: string) {
-  return value
-    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, '')
-    .replace(/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g, '')
-    .replace(/\r(?!\n)/g, '')
-}
-
-function formatLocalDeps(deps: Dict<Dependency>) {
-  const entries = Object.entries(deps)
-  if (!entries.length) return '(none)'
-  return entries.map(([name, dep]) => `${name}{request=${dep.request || '-'},resolved=${dep.resolved ?? '-'},source=${dep.source ?? '-'},local=${!!dep.local}}`).join(', ')
-}
-
-function pickMetadataProbe(names: string[]) {
-  return names.find(name => name === 'koishi')
-    || names.find(name => name === '@koishijs/plugin-console')
-    || names.find(name => Scanner.isPlugin(name))
-    || names[0]
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
-
-function getFailurePenalty(reason?: RegistryStatus['reason']) {
-  switch (reason) {
-    case 'not-found':
-      return 0.4
-    case 'invalid':
-      return 0.8
-    case 'http':
-      return 1.2
-    case 'timeout':
-    case 'network':
-      return 1.8
-    default:
-      return 1.5
-  }
-}
-
-function formatRouteScores(routes: Array<{ endpoint: string, score: number, successes?: number, failures?: number, averageElapsed?: number, fallbackDelay?: number, lastFailureReason?: RegistryStatus['reason'] }>) {
-  if (!routes.length) return '(none)'
-  return routes
-    .map(route => `${route.endpoint} score=${route.score.toFixed(1)} ok=${route.successes ?? 0} fail=${route.failures ?? 0} avg=${route.averageElapsed ?? '-'} delay=${route.fallbackDelay ?? '-'} last=${route.lastFailureReason ?? '-'}`)
-    .join(' | ')
-}
-
-function formatEndpointHost(endpoint: string) {
-  try {
-    return new URL(endpoint).host
-  } catch {
-    return endpoint
-  }
 }
 
 export default Installer
