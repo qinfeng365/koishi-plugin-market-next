@@ -16,6 +16,7 @@ import {
   type InstallFallbackCandidate,
   type InstallerConfig,
 } from './installer-types'
+import { scoreRouteHealth } from './route-health'
 
 const logger = new Logger('market')
 const REGISTRY_FALLBACK_ENDPOINTS = [
@@ -287,13 +288,14 @@ export class RegistryMetadata {
     if (this.config.autoRoute === false) return
     const normalize = (endpoint?: string) => endpoint?.replace(/\/+$/, '')
     const failed = normalize(failedEndpoint || this.endpoint)
+    const now = Date.now()
     const candidates = this.getRegistryEndpointCandidates()
       .filter(endpoint => normalize(endpoint) !== failed)
       .filter(endpoint => normalize(endpoint) !== normalize(this.config.endpoint))
       .map((endpoint, index) => ({
         endpoint,
         index,
-        score: this.getRouteScore(endpoint),
+        score: this.getRouteScore(endpoint, now),
         stats: this.routeStats[endpoint],
       }))
       .sort((a, b) => {
@@ -429,8 +431,9 @@ export class RegistryMetadata {
     if (endpoint === this.endpoint) return endpoint
     const stats = this.routeStats[endpoint]
     if (!stats) return endpoint
-    const primaryScore = this.getRouteScore(this.endpoint)
-    const selectedScore = this.getRouteScore(endpoint)
+    const now = Date.now()
+    const primaryScore = this.getRouteScore(this.endpoint, now)
+    const selectedScore = this.getRouteScore(endpoint, now)
     if (stats.failures >= 2 && selectedScore + 1 < primaryScore) {
       logger.debug(`demote npm metadata endpoint: selected=${endpoint}, selectedScore=${selectedScore.toFixed(1)}, primary=${this.endpoint}, primaryScore=${primaryScore.toFixed(1)}, failures=${stats.failures}, lastFailure=${stats.lastFailureReason ?? '-'}`)
       return this.endpoint
@@ -448,8 +451,9 @@ export class RegistryMetadata {
     if (this.config.autoRoute === false) return endpoints
     const [primary, ...fallbacks] = endpoints
     const originalIndex = new Map(fallbacks.map((endpoint, index) => [endpoint, index]))
+    const now = Date.now()
     return [primary, ...fallbacks.sort((a, b) => {
-      const delta = this.getRouteScore(b) - this.getRouteScore(a)
+      const delta = this.getRouteScore(b, now) - this.getRouteScore(a, now)
       if (delta) return delta
       return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0)
     })]
@@ -597,31 +601,13 @@ export class RegistryMetadata {
     })
   }
 
-  private getRouteScore(endpoint: string) {
+  private getRouteScore(endpoint: string, now = Date.now()) {
     const stats = this.routeStats[endpoint]
-    let score = endpoint === this.endpoint ? 1 : 0
-    if (!stats) return score
-    const total = stats.successes + stats.failures
-    if (total) {
-      const successRate = stats.successes / total
-      score += (successRate - 0.5) * 6
-      if (total >= 3 && successRate >= 0.8) score += 1.5
-      if (total >= 3 && successRate < 0.35) score -= 2
-    }
-    score += stats.score
-    score += Math.min(2, stats.successes * 0.25)
-    score -= Math.min(2, stats.failures * 0.2)
-    if (stats.averageElapsed != null) {
-      if (stats.averageElapsed <= 300) score += 1.5
-      else if (stats.averageElapsed <= REGISTRY_FAST_ROUTE_THRESHOLD) score += 1
-      else if (stats.averageElapsed <= 1200) score += 0.5
-      else if (stats.averageElapsed <= 2500) score -= 0.3
-      else if (stats.averageElapsed <= 4000) score -= 1
-      else score -= 2
-    }
-    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 1.5
-    score -= Math.min(5, (stats.consecutiveFailures ?? 0) * 1.5)
-    return score
+    return scoreRouteHealth(stats, {
+      baseScore: endpoint === this.endpoint ? 1 : 0,
+      fastThreshold: REGISTRY_FAST_ROUTE_THRESHOLD,
+      now,
+    })
   }
 
   private recordRouteSuccess(result: RegistryEndpointResult) {
@@ -661,9 +647,10 @@ export class RegistryMetadata {
   }
 
   private getRouteScores() {
+    const now = Date.now()
     return this.getRegistryEndpointCandidates().map(endpoint => ({
       endpoint,
-      score: this.getRouteScore(endpoint),
+      score: this.getRouteScore(endpoint, now),
       fallbackDelay: endpoint === this.endpoint ? this.getFallbackDelay(endpoint) : undefined,
       ...this.routeStats[endpoint],
     }))

@@ -18,7 +18,7 @@ export declare class MarketRouter {
     fetchIndex(serial: number): Promise<EndpointResult>;
     getEndpointCandidates(): string[];
     getPreferredEndpoint(): string;
-    getScore(endpoint: string): number;
+    getScore(endpoint: string, now?: number): number;
     getScores(endpoints?: string[]): {
         endpoint: string;
         score: number;

@@ -21,6 +21,7 @@ import {
   type RouteStats,
 } from './market-internals'
 import { MarketDiskCache } from './market-cache'
+import { scoreRouteHealth } from './route-health'
 
 interface MarketRouterOptions {
   isStale: (serial: number) => boolean
@@ -64,7 +65,7 @@ export class MarketRouter {
     return this.config.endpoint!
   }
 
-  getScore(endpoint: string) {
+  getScore(endpoint: string, now = Date.now()) {
     const stats = this.stats[endpoint]
     const cached = this.cache.entries[endpoint]
     let score = endpoint === this.config.endpoint ? 1 : 0
@@ -72,40 +73,22 @@ export class MarketRouter {
       const age = Date.now() - cached.fetchedAt
       score += age <= Time.day ? 1.5 : 0.5
     }
-    if (!stats) return score
-
-    const total = stats.successes + stats.failures
-    if (total) {
-      const successRate = stats.successes / total
-      score += (successRate - 0.5) * 6
-      if (total >= 3 && successRate >= 0.8) score += 1.5
-      if (total >= 3 && successRate < 0.35) score -= 2
-    }
-    score += stats.score
-    score += Math.min(2, stats.successes * 0.25)
-    score -= Math.min(2, stats.failures * 0.2)
-    if (stats.averageElapsed != null) {
-      if (stats.averageElapsed <= 300) score += 1.5
-      else if (stats.averageElapsed <= FAST_ROUTE_THRESHOLD) score += 1
-      else if (stats.averageElapsed <= 1200) score += 0.5
-      else if (stats.averageElapsed <= 2500) score -= 0.3
-      else if (stats.averageElapsed <= 4000) score -= 1
-      else score -= 2
-    }
-    if (stats.contentEncoding === 'br') score += 0.5
-    if (stats.contentEncoding === 'gzip') score += 0.2
-    if (stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10) score += 1.5
-    score -= Math.min(5, (stats.consecutiveFailures ?? 0) * 1.5)
-    return score
+    return scoreRouteHealth(stats, {
+      baseScore: score,
+      fastThreshold: FAST_ROUTE_THRESHOLD,
+      now,
+      compressionBonus: true,
+    })
   }
 
   getScores(endpoints = this.getEndpointCandidates()) {
+    const now = Date.now()
     return endpoints.map((endpoint) => {
       const stats = this.stats[endpoint]
       const cache = this.cache.entries[endpoint]
       return {
         endpoint,
-        score: Math.round(this.getScore(endpoint) * 10) / 10,
+        score: Math.round(this.getScore(endpoint, now) * 10) / 10,
         successes: stats?.successes,
         failures: stats?.failures,
         consecutiveFailures: stats?.consecutiveFailures,
@@ -301,8 +284,9 @@ export class MarketRouter {
       return false
     })
     const originalIndex = new Map(fallbacks.map((endpoint, index) => [endpoint, index]))
+    const now = Date.now()
     return [primary, ...availableFallbacks.sort((a, b) => {
-      const delta = this.getScore(b) - this.getScore(a)
+      const delta = this.getScore(b, now) - this.getScore(a, now)
       if (delta) return delta
       return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0)
     })]
