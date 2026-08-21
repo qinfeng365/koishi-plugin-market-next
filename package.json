@@ -21,7 +21,7 @@
     "build:js": "node build.mjs",
     "check:i18n": "node scripts/check-i18n.mjs && node scripts/check-i18n-lifecycle.mjs",
     "check:package": "node scripts/check-package.mjs && npm run check:i18n",
-    "test:dependency-source": "tsx --test scripts/dependency-source.test.mjs scripts/environment-local.test.mjs scripts/local-package-upload.test.mjs scripts/market-snapshot.test.mjs",
+    "test:dependency-source": "tsx --test scripts/chatluna-search.test.mjs scripts/dependency-source.test.mjs scripts/environment-local.test.mjs scripts/installer-transaction.test.mjs scripts/local-package-upload.test.mjs scripts/market-internals.test.mjs scripts/market-result.test.mjs scripts/market-router.test.mjs scripts/market-snapshot.test.mjs scripts/package-manager.test.mjs scripts/registry-router.test.mjs scripts/route-health.test.mjs",
     "deploy:local": "powershell -ExecutionPolicy Bypass -File scripts/deploy-local-koishi.ps1"
   },
   "exports": {
@@ -75,13 +75,12 @@
   "peerDependencies": {
     "@koishijs/plugin-console": "^5.30.11",
     "koishi": "^4.18.11",
-    "koishi-plugin-chatluna": "^1.4.0-alpha.20"
+    "vue": "^3.5.12",
+    "vue-i18n": "^9.10.2",
+    "vue-router": "^4.4.5"
   },
   "peerDependenciesMeta": {
     "@koishijs/plugin-console": {
-      "optional": true
-    },
-    "koishi-plugin-chatluna": {
       "optional": true
     }
   },
@@ -102,10 +101,10 @@
     "@koishijs/console": "^5.30.11",
     "@koishijs/registry": "^7.0.3",
     "@langchain/core": "^1.1.48",
+    "@vueuse/core": "^11.1.0",
     "cosmokit": "^1.8.1",
     "execa": "^5.1.1",
     "get-registry": "^1.2.0",
-    "ns-require": "^1.1.4",
     "p-map": "^4.0.0",
     "semver": "^7.6.3",
     "spark-md5": "^3.0.2",

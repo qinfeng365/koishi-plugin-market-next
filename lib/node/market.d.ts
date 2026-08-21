@@ -89,6 +89,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private createPayload;
     private refreshAfterPrepare;
     private applyIndex;
+    private applyEndpointResult;
     private applyDiskCache;
     private warmDiskCache;
     private loadDiskCache;

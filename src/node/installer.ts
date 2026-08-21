@@ -2,11 +2,10 @@ import { Context, Dict, Logger, Schema, Service, Time, valueMap } from 'koishi'
 import Scanner, { PackageJson, RemotePackage } from '@koishijs/registry'
 import { resolve } from 'path'
 import { promises as fsp } from 'fs'
-import { satisfies, valid } from 'semver'
+import { valid } from 'semver'
 import {} from '@koishijs/console'
 import {} from '@koishijs/loader'
 import which from 'which-pm-runs'
-import spawn from 'execa'
 import pMap from 'p-map'
 import {
   classifyDependencySource,
@@ -54,7 +53,6 @@ import {
   SELF_PACKAGE,
   formatDeps,
   formatLocalDeps,
-  levelMap,
   loadManifest,
   pickMetadataProbe,
   type Dependency,
@@ -65,8 +63,9 @@ import {
   type LocalBindingResult,
   type LocalPackage,
   type PackageManifestSnapshot,
-  type YarnLog,
 } from './installer-types'
+import { hasDependencyRuntimeChange, requiresPackageManager } from './installer-transaction'
+import { PackageManagerRunner } from './package-manager'
 
 export { loadManifest } from './installer-types'
 export type {
@@ -87,7 +86,6 @@ export type {
 const logger = new Logger('market')
 
 class Installer extends Service {
-  private agent = which()
   private manifest: PackageJson
   private depCache: Dict<Dependency> = {}
   private depTask?: Promise<Dict<Dependency>>
@@ -98,6 +96,7 @@ class Installer extends Service {
   private installHistory: InstallHistoryStore
   private environmentSnapshots: EnvironmentSnapshotStore
   private localPackageUploads: LocalPackageUploadStore
+  private packageManager: PackageManagerRunner
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
     super(ctx, 'installer')
@@ -109,6 +108,9 @@ class Installer extends Service {
       message => logger.warn(message),
     )
     this.localPackageUploads = new LocalPackageUploadStore(ctx.baseDir, message => logger.warn(message))
+    this.packageManager = new PackageManagerRunner(this.cwd, which(), (type, line) => {
+      this.emitInstallLog(type, line)
+    })
     ctx.setInterval(() => {
       void this.localPackageUploads.pruneExpired()
     }, Time.minute * 5)
@@ -418,93 +420,7 @@ class Installer extends Service {
   }
 
   async exec(args: string[]) {
-    const name = this.agent?.name ?? 'npm'
-    const useJson = name === 'yarn' && this.agent.version >= '2'
-    if (name !== 'yarn') args.unshift('install')
-    const start = Date.now()
-    logger.info(`run package manager: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}, args=${args.join(' ') || '(none)'}, cwd=${this.cwd}, json=${useJson}`)
-    return new Promise<number>((resolve) => {
-      if (useJson) args.push('--json')
-      const child = spawn(name, args, { cwd: this.cwd })
-      this.emitInstallLog('stdout', `package manager started: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}`)
-
-      let stderr = ''
-      let stdout = ''
-      let settled = false
-
-      const emitStdoutLine = (line: string) => {
-        if (!line) return
-        if (!useJson || line[0] !== '{') {
-          logger.info(line)
-          this.emitInstallLog('stdout', line)
-          return
-        }
-        try {
-          const { type, data } = JSON.parse(line) as YarnLog
-          logger[levelMap[type] ?? 'info'](data)
-          this.emitInstallLog('stdout', data)
-        } catch (error) {
-          logger.warn(line)
-          logger.warn(error)
-          this.emitInstallLog('stderr', line)
-        }
-      }
-
-      const flushBuffers = () => {
-        if (stderr) {
-          logger.warn(stderr)
-          this.emitInstallLog('stderr', stderr)
-          stderr = ''
-        }
-        if (stdout) {
-          emitStdoutLine(stdout)
-          stdout = ''
-        }
-      }
-
-      const settle = (code: number) => {
-        if (settled) return
-        settled = true
-        flushBuffers()
-        resolve(code)
-      }
-
-      child.on('exit', (code, signal) => {
-        logger.info(`package manager exited: code=${code}, signal=${signal ?? '-'}, elapsed=${Date.now() - start}ms`)
-        if (code == null) {
-          const message = signal
-            ? `package manager terminated by signal ${signal}`
-            : 'package manager exited without an exit code'
-          this.emitInstallLog('stderr', message)
-          settle(-1)
-          return
-        }
-        this.emitInstallLog(code ? 'stderr' : 'stdout', code ? `package manager exited with code ${code}` : 'package manager finished successfully')
-        settle(code)
-      })
-      child.on('error', (error) => {
-        logger.warn(`package manager failed to start: ${error instanceof Error ? error.message : String(error)}`)
-        this.emitInstallLog('stderr', `package manager failed to start: ${error instanceof Error ? error.message : String(error)}`)
-        settle(-1)
-      })
-
-      child.stderr.on('data', (data) => {
-        data = stderr + data.toString()
-        const lines = data.split('\n')
-        stderr = lines.pop()!
-        for (const line of lines) {
-          logger.warn(line)
-          this.emitInstallLog('stderr', line)
-        }
-      })
-
-      child.stdout.on('data', (data) => {
-        data = stdout + data.toString()
-        const lines = data.split('\n')
-        stdout = lines.pop()!
-        for (const line of lines) emitStdoutLine(line)
-      })
-    })
+    return this.packageManager.exec(args)
   }
 
   async override(deps: Dict<string>) {
@@ -585,28 +501,6 @@ class Installer extends Service {
     })
   }
 
-  private requiresPackageManager(deps: Dict<string>, localDeps: Dict<Dependency>, forced?: boolean) {
-    if (forced) return true
-    for (const name in deps) {
-      const nextRequest = deps[name]
-      const currentRequest = this.manifest.dependencies?.[name]
-      const currentSource = classifyDependencySource(currentRequest ?? '', {
-        workspace: this.depCache[name]?.workspace,
-        installed: !!this.depCache[name]?.resolved,
-      })
-      const nextSource = classifyDependencySource(nextRequest ?? '', {
-        workspace: localDeps[name]?.workspace,
-        installed: !!localDeps[name]?.resolved,
-      })
-      if (!nextRequest) return true
-      if (currentRequest !== nextRequest && (currentSource.local || nextSource.local)) return true
-      const { resolved, local } = localDeps[name] || {}
-      if (local || resolved && satisfies(resolved, nextRequest, { includePrerelease: true })) continue
-      return true
-    }
-    return false
-  }
-
   private async captureCurrentEnvironmentSnapshot(source: EnvironmentSnapshotSource, operationId?: string): Promise<EnvironmentSnapshot> {
     const manifest = await this.snapshotPackageManifest()
     const local = this._getLocalDeps(manifest.dependencies)
@@ -662,7 +556,13 @@ class Installer extends Service {
       if (snapshotError) throw snapshotError
       if (!snapshot) throw new Error('failed to snapshot package.json before dependency operation')
       logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
-      const needsPackageManager = this.requiresPackageManager(deps, localDeps, forced)
+      const needsPackageManager = requiresPackageManager({
+        changes: deps,
+        currentDependencies: this.manifest.dependencies ?? {},
+        currentLocalDeps: this.depCache,
+        nextLocalDeps: localDeps,
+        forced,
+      })
 
       if (needsPackageManager) {
         let sourceStateChanged = false
@@ -731,14 +631,13 @@ class Installer extends Service {
       const newDeps = await this.getDeps()
       let shouldReload = false
       for (const name in localDeps) {
-        const { resolved } = localDeps[name]
-        if (!newDeps[name]) continue
-        const requestChanged = snapshot.dependencies[name] !== deps[name]
-        const localRequestChanged = requestChanged && classifyDependencySource(deps[name] ?? '', {
-          workspace: newDeps[name].workspace,
-          installed: !!newDeps[name].resolved,
-        }).local
-        if (newDeps[name].resolved === resolved && !localRequestChanged) continue
+        if (!hasDependencyRuntimeChange({
+          name,
+          changes: deps,
+          previousDependencies: snapshot.dependencies,
+          previousLocalDeps: localDeps,
+          nextLocalDeps: newDeps,
+        })) continue
         try {
           if (!(require.resolve(name) in require.cache)) continue
         } catch (error) {
@@ -747,7 +646,7 @@ class Installer extends Service {
           logger.error(error)
         }
         shouldReload = true
-        logger.debug(`dependency changed may require full reload: ${name}, previous=${resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
+        logger.debug(`dependency changed may require full reload: ${name}, previous=${localDeps[name]?.resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
       }
       if (beforeReload) {
         logger.debug('run pre-reload dependency hook')

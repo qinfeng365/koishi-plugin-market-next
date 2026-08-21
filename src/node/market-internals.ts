@@ -139,7 +139,7 @@ export function formatBytes(value?: number) {
 export function parseContentLength(value?: string | null) {
   if (!value) return
   const size = Number(value)
-  return Number.isFinite(size) && size >= 0 ? size : undefined
+  return Number.isFinite(size) && size > 0 ? size : undefined
 }
 
 export function normalizeWireSize(wireSize: number | undefined, decodedSize: number) {

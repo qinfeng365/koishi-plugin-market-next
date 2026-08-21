@@ -113,7 +113,7 @@ export const Config: Schema<Config> = Schema.object({
   collapsedGroups: Schema.dict(Boolean).hidden(),
   registry: Installer.Config,
   search: MarketProvider.Config,
-  chatlunaTool: Schema.boolean().default(false).description('Enable ChatLuna plugin market query tool.'),
+  chatlunaTool: Schema.boolean().default(false).description('Enable the ChatLuna plugin market query tool. Requires ChatLuna to be installed and enabled separately.'),
   marketSilentFilters: Schema.string().role('textarea').hidden().description('Legacy permanent silent filters.'),
   marketSilentStatusRules: Schema.array(Schema.any()).hidden(),
   marketSilentDateRules: Schema.array(Schema.any()).hidden(),

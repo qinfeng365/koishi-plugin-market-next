@@ -67,14 +67,6 @@ export class MarketDiskCache {
     return this.loadedMeta
   }
 
-  get currentMeta() {
-    return this.conditionMeta
-  }
-
-  get currentResult() {
-    return this.result
-  }
-
   dispose() {
     clearTimeout(this.writeTimer)
     clearTimeout(this.routeStatsWriteTimer)
