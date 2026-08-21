@@ -10,5 +10,5 @@ export declare class PackageManagerRunner {
     private emit;
     private spawnProcess;
     constructor(cwd: string, agent: PackageManagerAgent | undefined, emit: PackageManagerLogEmitter, spawnProcess?: typeof spawn);
-    exec(args: string[]): Promise<number>;
+    exec(args: readonly string[]): Promise<number>;
 }

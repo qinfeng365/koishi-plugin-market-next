@@ -31,7 +31,7 @@ updateIgnoredPackages: 不检测更新的依赖名。每行一个包名，也可
 updateIgnoreDuration: 点击“忽略此次更新”后的默认忽略时长。0 表示不按时间过期。
 updateIgnoreVersions: 点击“忽略此次更新”后连续忽略几个新版本。1 表示只忽略当前最新版本。
 updateIgnorePrerelease: 手动开启后，alpha / beta / rc 等预发布版本不会被视为可更新版本。
-chatlunaTool: 启用 ChatLuna 插件市场查询工具。启用后，若当前 Koishi 同时安装了 ChatLuna，会注册只读工具 koishi_plugin_market_search。
+chatlunaTool: 启用 ChatLuna 插件市场查询工具。此功能需要另行安装并启用 ChatLuna；满足条件后会注册只读工具 koishi_plugin_market_search。未安装 ChatLuna 不影响插件市场的其他功能。
 
 frontendMode:
   $description: 前端显示模式。性能模式保持低动效；精致模式启用更细腻的动效和高级样式。

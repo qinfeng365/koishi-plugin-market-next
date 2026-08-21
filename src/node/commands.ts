@@ -37,10 +37,13 @@ export function setupCommands(
         ...pick(session, ['sid', 'channelId', 'guildId', 'isDirect']),
         content: session.text('.success'),
       }
-      await ctx.installer.install(result, undefined, () => ensurePluginConfigs(ctx, Object.keys(result)))
-      await ensurePluginConfigs(ctx, Object.keys(result))
-      ctx.loader.envData.message = null
-      return session.text('.success')
+      try {
+        await ctx.installer.install(result, undefined, () => ensurePluginConfigs(ctx, Object.keys(result)))
+        await ensurePluginConfigs(ctx, Object.keys(result))
+        return session.text('.success')
+      } finally {
+        ctx.loader.envData.message = null
+      }
     })
 
   ctx.command('plugin.uninstall <name>', { authority: 4 })

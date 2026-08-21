@@ -48,7 +48,7 @@ export declare const searchSchema: z.ZodObject<{
     requirements: z.ZodOptional<z.ZodString>;
     names: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodString, "many">>, string[], unknown>;
     category: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodString, "many">>, string[], unknown>;
-    status: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodEnum<["verified", "insecure", "preview", "portable", "deprecated"]>, "many">>, ("deprecated" | "verified" | "insecure" | "preview" | "portable")[], unknown>;
+    status: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodEnum<["verified", "insecure", "preview", "portable", "deprecated"]>, "many">>, ("deprecated" | "preview" | "insecure" | "verified" | "portable")[], unknown>;
     createdAfter: z.ZodOptional<z.ZodString>;
     createdBefore: z.ZodOptional<z.ZodString>;
     updatedAfter: z.ZodOptional<z.ZodString>;
@@ -61,12 +61,12 @@ export declare const searchSchema: z.ZodObject<{
     includeHidden: z.ZodOptional<z.ZodBoolean>;
     includeDeprecated: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    sort?: "relevance" | "downloads" | "created" | "updated";
-    status?: ("deprecated" | "verified" | "insecure" | "preview" | "portable")[];
+    sort?: "created" | "updated" | "relevance" | "downloads";
+    names?: string[];
+    status?: ("deprecated" | "preview" | "insecure" | "verified" | "portable")[];
     intent?: "search" | "recommend" | "recent" | "popular" | "risk" | "compare";
     query?: string;
     requirements?: string;
-    names?: string[];
     category?: string[];
     createdAfter?: string;
     createdBefore?: string;
@@ -79,12 +79,12 @@ export declare const searchSchema: z.ZodObject<{
     includeHidden?: boolean;
     includeDeprecated?: boolean;
 }, {
-    sort?: "relevance" | "downloads" | "created" | "updated";
+    sort?: "created" | "updated" | "relevance" | "downloads";
+    names?: unknown;
     status?: unknown;
     intent?: "search" | "recommend" | "recent" | "popular" | "risk" | "compare";
     query?: string;
     requirements?: string;
-    names?: unknown;
     category?: unknown;
     createdAfter?: string;
     createdBefore?: string;

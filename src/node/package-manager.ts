@@ -1,5 +1,6 @@
 import { Logger } from 'koishi'
 import spawn from 'execa'
+import { coerce, gte } from 'semver'
 import { levelMap, type YarnLog } from './installer-types'
 
 const logger = new Logger('market')
@@ -70,15 +71,17 @@ export class PackageManagerRunner {
     private spawnProcess: typeof spawn = spawn,
   ) {}
 
-  async exec(args: string[]) {
+  async exec(args: readonly string[]) {
     const name = this.agent?.name ?? 'npm'
-    const useJson = name === 'yarn' && this.agent.version >= '2'
-    if (name !== 'yarn') args.unshift('install')
+    const version = this.agent?.version ? coerce(this.agent.version) : null
+    const useJson = name === 'yarn' && !!version && gte(version, '2.0.0')
+    const finalArgs = [...args]
+    if (name !== 'yarn') finalArgs.unshift('install')
     const start = Date.now()
-    logger.info(`run package manager: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}, args=${args.join(' ') || '(none)'}, cwd=${this.cwd}, json=${useJson}`)
+    logger.info(`run package manager: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}, args=${finalArgs.join(' ') || '(none)'}, cwd=${this.cwd}, json=${useJson}`)
     return new Promise<number>((resolve) => {
-      if (useJson) args.push('--json')
-      const child = this.spawnProcess(name, args, { cwd: this.cwd })
+      if (useJson) finalArgs.push('--json')
+      const child = this.spawnProcess(name, finalArgs, { cwd: this.cwd })
       this.emit('stdout', `package manager started: agent=${name}${this.agent?.version ? '@' + this.agent.version : ''}`)
 
       const output = new PackageManagerOutput(useJson, this.emit)

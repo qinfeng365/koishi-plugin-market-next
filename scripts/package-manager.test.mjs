@@ -34,10 +34,10 @@ test('runs npm install and flushes complete and trailing output lines', async ()
   const args = ['--registry', 'https://registry.example']
 
   assert.equal(await runner.exec(args), 2)
-  assert.deepEqual(args, ['install', '--registry', 'https://registry.example'])
+  assert.deepEqual(args, ['--registry', 'https://registry.example'])
   assert.deepEqual(state.invocations, [{
     name: 'npm',
-    args,
+    args: ['install', '--registry', 'https://registry.example'],
     options: { cwd: 'C:/koishi' },
   }])
   assert.deepEqual(logs, [
@@ -66,7 +66,7 @@ test('parses Yarn JSON output and preserves malformed lines as stderr', async ()
   const args = []
 
   assert.equal(await runner.exec(args), 0)
-  assert.deepEqual(args, ['--json'])
+  assert.deepEqual(args, [])
   assert.deepEqual(state.invocations[0], {
     name: 'yarn',
     args: ['--json'],
@@ -78,6 +78,25 @@ test('parses Yarn JSON output and preserves malformed lines as stderr', async ()
     { type: 'stderr', line: '{broken}' },
     { type: 'stdout', line: 'plain output' },
     { type: 'stdout', line: 'package manager finished successfully' },
+  ])
+})
+
+test('uses Yarn JSON output for multi-digit major versions without mutating reused args', async () => {
+  const state = createSpawn((child) => child.emit('exit', 0, null))
+  const runner = new PackageManagerRunner(
+    'C:/koishi',
+    { name: 'yarn', version: '10.0.0' },
+    () => {},
+    state.spawn,
+  )
+  const args = ['--immutable']
+
+  assert.equal(await runner.exec(args), 0)
+  assert.equal(await runner.exec(args), 0)
+  assert.deepEqual(args, ['--immutable'])
+  assert.deepEqual(state.invocations.map(({ name, args }) => ({ name, args })), [
+    { name: 'yarn', args: ['--immutable', '--json'] },
+    { name: 'yarn', args: ['--immutable', '--json'] },
   ])
 })
 
