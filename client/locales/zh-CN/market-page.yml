@@ -86,6 +86,7 @@ debug:
   sourceLegacy: 旧索引
   unknown: 未知
   request: 请求
+  versionProbe: 版本确认
   parse: JSON
   apply: 索引
   total: 总计
@@ -98,6 +99,7 @@ debug:
   frontendVirtual: 虚拟滚动
   primaryFailed: 主源失败
   primarySlow: 主源慢
+  primaryStale: 主源版本滞后
   rescue: 冷却源救援
   uncompressed: 未压缩
 actions:

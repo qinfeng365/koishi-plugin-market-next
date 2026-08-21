@@ -15,8 +15,12 @@ export declare class MarketRouter {
     private stats;
     private pendingControllers;
     private fetcher;
+    private versionResolver;
     constructor(ctx: Context, config: MarketProviderConfig, cache: MarketDiskCache, options: MarketRouterOptions);
     fetchIndex(serial: number): Promise<EndpointResult>;
+    private fetchDirectIndex;
+    private fetchVersionedIndex;
+    private startSpeculativeIndex;
     getEndpointCandidates(): string[];
     getPreferredEndpoint(): string;
     getScore(endpoint: string, now?: number): number;
@@ -42,6 +46,9 @@ export declare class MarketRouter {
     private getRescueEndpoints;
     private getEndpoints;
     private waitRouteTurn;
+    private bindAbort;
+    private commitResult;
+    private assertGeneration;
     private recordSuccess;
     private recordFailure;
     private isCoolingDown;

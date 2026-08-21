@@ -88,6 +88,7 @@ debug:
   sourceLegacy: Legacy index
   unknown: Unknown
   request: Request
+  versionProbe: Version check
   parse: JSON
   apply: Index
   total: Total
@@ -100,6 +101,7 @@ debug:
   frontendVirtual: Virtual list
   primaryFailed: Primary source failed
   primarySlow: Primary source was slow
+  primaryStale: Primary source was stale
   rescue: Cooling-source rescue
   uncompressed: Uncompressed
 actions:
