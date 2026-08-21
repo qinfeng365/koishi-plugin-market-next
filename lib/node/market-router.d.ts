@@ -14,6 +14,7 @@ export declare class MarketRouter {
     private options;
     private stats;
     private pendingControllers;
+    private fetcher;
     constructor(ctx: Context, config: MarketProviderConfig, cache: MarketDiskCache, options: MarketRouterOptions);
     fetchIndex(serial: number): Promise<EndpointResult>;
     getEndpointCandidates(): string[];
@@ -44,7 +45,6 @@ export declare class MarketRouter {
     private recordSuccess;
     private recordFailure;
     private isCoolingDown;
-    private fetchEndpoint;
     private trackController;
     private untrackControllers;
     private isInternalAbort;
