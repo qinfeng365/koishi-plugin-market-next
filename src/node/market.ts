@@ -13,11 +13,13 @@ import {
   logLevels,
   shortHash,
   waitFor,
+  type EndpointResult,
   type LogLevel,
   type MarketProviderConfig,
 } from './market-internals'
 import { MarketDiskCache } from './market-cache'
 import { MarketRouter } from './market-router'
+import { createMarketResultSnapshot } from './market-result'
 
 export const DEFAULT_ENDPOINT = 'https://registry.koishi.t4wefan.pub/index.json'
 
@@ -157,45 +159,9 @@ class MarketProvider extends BaseMarketProvider {
         this.log('debug', `drop fetched market index because provider is stale, serial=${serial}`)
         return null
       }
-      const applyStart = Date.now()
-      this.applyIndex(result.result, result.endpoint, result.hash)
-      result.timings.apply = Date.now() - applyStart
-      result.timings.total = Date.now() - start
-      this.cache.updateFromEndpoint(result)
-      if (result.source !== 'disk-cache') this.cache.scheduleWrite(result.result)
-      this.cache.clearDiskMeta()
-      this.updateDebugInfo({
-        source: result.source,
-        endpoint: result.endpoint,
-        preferredEndpoint: result.preferredEndpoint,
-        fallbackReason: result.fallbackReason,
-        candidates: result.candidates,
-        size: result.size,
-        wireSize: result.wireSize,
-        contentEncoding: result.contentEncoding,
-        objects: this.scanner.total,
-        hash: shortHash(result.hash),
-        etag: result.etag,
-        lastModified: result.lastModified,
-        cachedAt: result.cachedAt,
-        validatedAt: result.validatedAt,
-        timings: result.timings,
-      }, 'initial')
+      const snapshot = this.applyEndpointResult(result, start, { phase: 'initial' })
       this.log('debug', `loaded market index from ${this.endpoint}: ${this.scanner.total}/${result.result.objects.length} objects, source=${result.source}, version=${this.scanner.version ?? 'legacy'}, elapsed=${Date.now() - start}ms`)
-      this.log('info', `market index ready: ${formatSnapshot({
-        source: result.source,
-        endpoint: result.endpoint,
-        preferredEndpoint: result.preferredEndpoint,
-        fallbackReason: result.fallbackReason,
-        candidates: result.candidates,
-        objects: this.scanner.total,
-        size: result.size,
-        wireSize: result.wireSize,
-        contentEncoding: result.contentEncoding,
-        cachedAt: result.cachedAt,
-        validatedAt: result.validatedAt,
-        timings: result.timings,
-      })}`)
+      this.log('info', `market index ready: ${formatSnapshot(snapshot)}`)
     } else {
       this.indexMode = 'legacy'
       this.log('debug', `collect legacy registry index via scanner, registryEndpoint=${registry?.config.endpoint}`)
@@ -504,6 +470,29 @@ class MarketProvider extends BaseMarketProvider {
     this.log('debug', `market index applied: endpoint=${endpoint}, version=${result.version ?? 'legacy'}, rawObjects=${result.objects.length}, ignored=${ignored}, visible=${this.scanner.total}`)
   }
 
+  private applyEndpointResult(
+    result: EndpointResult,
+    startedAt: number,
+    options: {
+      phase: 'initial' | 'refresh'
+      clearError?: boolean
+      invalidatePayload?: boolean
+    },
+  ) {
+    const applyStart = Date.now()
+    this.applyIndex(result.result, result.endpoint, result.hash)
+    result.timings.apply = Date.now() - applyStart
+    result.timings.total = Date.now() - startedAt
+    this.cache.updateFromEndpoint(result)
+    if (result.source !== 'disk-cache') this.cache.scheduleWrite(result.result)
+    if (options.clearError) this._error = null
+    this.cache.clearDiskMeta()
+    if (options.invalidatePayload) this.payload = undefined
+    const snapshot = createMarketResultSnapshot(result, this.scanner.total)
+    this.updateDebugInfo(snapshot, options.phase)
+    return snapshot
+  }
+
   private async applyDiskCache(serial: number) {
     const warmTask = this.warmDiskCacheTask
     if (warmTask) {
@@ -601,48 +590,14 @@ class MarketProvider extends BaseMarketProvider {
     try {
       const result = await this.router.fetchIndex(serial)
       if (this.isStale(serial)) return
-      const applyStart = Date.now()
-      this.applyIndex(result.result, result.endpoint, result.hash)
-      result.timings.apply = Date.now() - applyStart
-      result.timings.total = Date.now() - start
-      this.cache.updateFromEndpoint(result)
-      if (result.source !== 'disk-cache') this.cache.scheduleWrite(result.result)
-      this._error = null
-      this.cache.clearDiskMeta()
-      this.payload = undefined
-      this.updateDebugInfo({
-        source: result.source,
-        endpoint: result.endpoint,
-        preferredEndpoint: result.preferredEndpoint,
-        fallbackReason: result.fallbackReason,
-        candidates: result.candidates,
-        size: result.size,
-        wireSize: result.wireSize,
-        contentEncoding: result.contentEncoding,
-        objects: this.scanner.total,
-        hash: shortHash(result.hash),
-        etag: result.etag,
-        lastModified: result.lastModified,
-        cachedAt: result.cachedAt,
-        validatedAt: result.validatedAt,
-        timings: result.timings,
-      }, 'refresh')
+      const snapshot = this.applyEndpointResult(result, start, {
+        phase: 'refresh',
+        clearError: true,
+        invalidatePayload: true,
+      })
       await this.ctx.get('console')?.refresh('market')
       this.log('debug', `background market refresh completed in ${Date.now() - start}ms, endpoint=${this.endpoint}, source=${result.source}, objects=${this.scanner.total}`)
-      this.log('info', `background market refresh completed: ${formatSnapshot({
-        source: result.source,
-        endpoint: result.endpoint,
-        preferredEndpoint: result.preferredEndpoint,
-        fallbackReason: result.fallbackReason,
-        candidates: result.candidates,
-        objects: this.scanner.total,
-        size: result.size,
-        wireSize: result.wireSize,
-        contentEncoding: result.contentEncoding,
-        cachedAt: result.cachedAt,
-        validatedAt: result.validatedAt,
-        timings: result.timings,
-      })}`)
+      this.log('info', `background market refresh completed: ${formatSnapshot(snapshot)}`)
     } catch (error) {
       if (this.isStale(serial)) return
       this._error = error
@@ -664,46 +619,12 @@ class MarketProvider extends BaseMarketProvider {
     try {
       const result = await this.router.fetchIndex(serial)
       if (this.isStale(serial)) return false
-      const applyStart = Date.now()
-      this.applyIndex(result.result, result.endpoint, result.hash)
-      result.timings.apply = Date.now() - applyStart
-      result.timings.total = Date.now() - start
-      this.cache.updateFromEndpoint(result)
-      if (result.source !== 'disk-cache') this.cache.scheduleWrite(result.result)
-      this.cache.clearDiskMeta()
-      this.payload = undefined
-      this.updateDebugInfo({
-        source: result.source,
-        endpoint: result.endpoint,
-        preferredEndpoint: result.preferredEndpoint,
-        fallbackReason: result.fallbackReason,
-        candidates: result.candidates,
-        size: result.size,
-        wireSize: result.wireSize,
-        contentEncoding: result.contentEncoding,
-        objects: this.scanner.total,
-        hash: shortHash(result.hash),
-        etag: result.etag,
-        lastModified: result.lastModified,
-        cachedAt: result.cachedAt,
-        validatedAt: result.validatedAt,
-        timings: result.timings,
-      }, 'refresh')
+      const snapshot = this.applyEndpointResult(result, start, {
+        phase: 'refresh',
+        invalidatePayload: true,
+      })
       await this.notifyMarketRefresh()
-      this.log('info', `${reason} market probe completed: ${formatSnapshot({
-        source: result.source,
-        endpoint: result.endpoint,
-        preferredEndpoint: result.preferredEndpoint,
-        fallbackReason: result.fallbackReason,
-        candidates: result.candidates,
-        objects: this.scanner.total,
-        size: result.size,
-        wireSize: result.wireSize,
-        contentEncoding: result.contentEncoding,
-        cachedAt: result.cachedAt,
-        validatedAt: result.validatedAt,
-        timings: result.timings,
-      })}`)
+      this.log('info', `${reason} market probe completed: ${formatSnapshot(snapshot)}`)
       return true
     } catch (error) {
       if (this.isStale(serial)) return false
