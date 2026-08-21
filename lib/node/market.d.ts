@@ -1,9 +1,8 @@
 import { Context, Dict, Schema } from 'koishi';
 import { SearchObject } from '@koishijs/registry';
 import { MarketPerformance, MarketProvider as BaseMarketProvider } from '../shared';
+import { type MarketProviderConfig } from './market-internals';
 export declare const DEFAULT_ENDPOINT = "https://registry.koishi.t4wefan.pub/index.json";
-declare const logLevels: readonly ["silent", "error", "warn", "info", "debug"];
-type LogLevel = typeof logLevels[number];
 declare class MarketProvider extends BaseMarketProvider {
     config: MarketProvider.Config;
     private http;
@@ -19,21 +18,13 @@ declare class MarketProvider extends BaseMarketProvider {
     private contentHash?;
     private forceRefresh;
     private indexMode;
-    private cacheFile;
-    private cacheDir;
-    private cacheEntries;
-    private cacheMeta?;
-    private conditionMeta?;
-    private cacheResult?;
+    private cache;
+    private router;
     private debugInfo?;
-    private routeStats;
     private backgroundTask?;
     private backgroundSerial?;
     private pendingRefreshTask?;
-    private cacheWriteTimer?;
-    private routeStatsWriteTimer?;
     private warmDiskCacheTask?;
-    private pendingControllers;
     private flushData;
     constructor(ctx: Context, config?: MarketProvider.Config);
     start(refresh?: boolean): Promise<void>;
@@ -41,22 +32,6 @@ declare class MarketProvider extends BaseMarketProvider {
     private createScanner;
     private hasCurrentMarketData;
     private startSoftRefresh;
-    private fetchIndex;
-    private fetchIndexFromEndpoints;
-    private getRescueEndpoints;
-    private getEndpointCandidates;
-    private getEndpoints;
-    private getPreferredEndpoint;
-    private waitRouteTurn;
-    private getRouteScore;
-    private recordRouteSuccess;
-    private recordRouteFailure;
-    private getRouteScores;
-    private isRouteCoolingDown;
-    private clearRouteCooldowns;
-    private getConditionalHeaders;
-    private updateCacheState;
-    private fetchEndpoint;
     get(): Promise<{
         registry: string;
         failed: number;
@@ -115,19 +90,6 @@ declare class MarketProvider extends BaseMarketProvider {
     private applyDiskCache;
     private warmDiskCache;
     private loadDiskCache;
-    private pickDiskCache;
-    private loadCacheEntryResult;
-    private getCacheScore;
-    private getCacheEntryFilename;
-    private createSplitCacheEntry;
-    private writeCacheEntryFile;
-    private pruneSplitCacheFiles;
-    private scheduleDiskCacheWrite;
-    private scheduleRouteStatsWrite;
-    private writeRouteStatsCache;
-    private serializeRouteStats;
-    private pruneCacheEntries;
-    private writeDiskCache;
     private refreshInBackground;
     private notifyMarketRefresh;
     private refreshIndexInBackground;
@@ -136,19 +98,10 @@ declare class MarketProvider extends BaseMarketProvider {
     private updateDebugInfo;
     private getDebugInfo;
     private isStale;
-    private trackController;
-    private untrackControllers;
-    private abortPendingRequests;
-    private isInternalAbort;
     private log;
 }
 declare namespace MarketProvider {
-    interface Config {
-        endpoint?: string;
-        timeout?: number;
-        proxyAgent?: string;
-        autoRoute?: boolean;
-        logLevel?: LogLevel;
+    interface Config extends MarketProviderConfig {
     }
     const Config: Schema<Config>;
 }
