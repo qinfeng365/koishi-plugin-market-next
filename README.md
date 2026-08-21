@@ -433,4 +433,6 @@ npm run deploy:local -- -InstancePath 'C:\path\to\koishi-instance'
 
 ## 许可证
 
-本项目在 `package.json` 中声明为 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html)。
+Copyright (c) 2026 [qinfeng365](https://github.com/qinfeng365)。
+
+本项目采用 [GNU Affero General Public License v3.0](./LICENSE) 开源，并包含源自 [Koishi WebUI](https://github.com/koishijs/webui) 的代码。详细来源声明见 [NOTICE](./NOTICE)。
