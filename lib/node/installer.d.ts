@@ -61,7 +61,6 @@ declare class Installer extends Service {
     private restorePackageManifest;
     private _install;
     private _getLocalDeps;
-    private requiresPackageManager;
     private captureCurrentEnvironmentSnapshot;
     private recordCurrentEnvironmentSnapshot;
     private _installLocked;

@@ -2,7 +2,7 @@ import { Context, Dict, Logger, Schema, Service, Time, valueMap } from 'koishi'
 import Scanner, { PackageJson, RemotePackage } from '@koishijs/registry'
 import { resolve } from 'path'
 import { promises as fsp } from 'fs'
-import { satisfies, valid } from 'semver'
+import { valid } from 'semver'
 import {} from '@koishijs/console'
 import {} from '@koishijs/loader'
 import which from 'which-pm-runs'
@@ -67,6 +67,7 @@ import {
   type PackageManifestSnapshot,
   type YarnLog,
 } from './installer-types'
+import { hasDependencyRuntimeChange, requiresPackageManager } from './installer-transaction'
 
 export { loadManifest } from './installer-types'
 export type {
@@ -585,28 +586,6 @@ class Installer extends Service {
     })
   }
 
-  private requiresPackageManager(deps: Dict<string>, localDeps: Dict<Dependency>, forced?: boolean) {
-    if (forced) return true
-    for (const name in deps) {
-      const nextRequest = deps[name]
-      const currentRequest = this.manifest.dependencies?.[name]
-      const currentSource = classifyDependencySource(currentRequest ?? '', {
-        workspace: this.depCache[name]?.workspace,
-        installed: !!this.depCache[name]?.resolved,
-      })
-      const nextSource = classifyDependencySource(nextRequest ?? '', {
-        workspace: localDeps[name]?.workspace,
-        installed: !!localDeps[name]?.resolved,
-      })
-      if (!nextRequest) return true
-      if (currentRequest !== nextRequest && (currentSource.local || nextSource.local)) return true
-      const { resolved, local } = localDeps[name] || {}
-      if (local || resolved && satisfies(resolved, nextRequest, { includePrerelease: true })) continue
-      return true
-    }
-    return false
-  }
-
   private async captureCurrentEnvironmentSnapshot(source: EnvironmentSnapshotSource, operationId?: string): Promise<EnvironmentSnapshot> {
     const manifest = await this.snapshotPackageManifest()
     const local = this._getLocalDeps(manifest.dependencies)
@@ -662,7 +641,13 @@ class Installer extends Service {
       if (snapshotError) throw snapshotError
       if (!snapshot) throw new Error('failed to snapshot package.json before dependency operation')
       logger.debug(`dependency install local state: ${formatLocalDeps(localDeps)}`)
-      const needsPackageManager = this.requiresPackageManager(deps, localDeps, forced)
+      const needsPackageManager = requiresPackageManager({
+        changes: deps,
+        currentDependencies: this.manifest.dependencies ?? {},
+        currentLocalDeps: this.depCache,
+        nextLocalDeps: localDeps,
+        forced,
+      })
 
       if (needsPackageManager) {
         let sourceStateChanged = false
@@ -731,14 +716,13 @@ class Installer extends Service {
       const newDeps = await this.getDeps()
       let shouldReload = false
       for (const name in localDeps) {
-        const { resolved } = localDeps[name]
-        if (!newDeps[name]) continue
-        const requestChanged = snapshot.dependencies[name] !== deps[name]
-        const localRequestChanged = requestChanged && classifyDependencySource(deps[name] ?? '', {
-          workspace: newDeps[name].workspace,
-          installed: !!newDeps[name].resolved,
-        }).local
-        if (newDeps[name].resolved === resolved && !localRequestChanged) continue
+        if (!hasDependencyRuntimeChange({
+          name,
+          changes: deps,
+          previousDependencies: snapshot.dependencies,
+          previousLocalDeps: localDeps,
+          nextLocalDeps: newDeps,
+        })) continue
         try {
           if (!(require.resolve(name) in require.cache)) continue
         } catch (error) {
@@ -747,7 +731,7 @@ class Installer extends Service {
           logger.error(error)
         }
         shouldReload = true
-        logger.debug(`dependency changed may require full reload: ${name}, previous=${resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
+        logger.debug(`dependency changed may require full reload: ${name}, previous=${localDeps[name]?.resolved ?? '-'}, current=${newDeps[name]?.resolved ?? '-'}`)
       }
       if (beforeReload) {
         logger.debug('run pre-reload dependency hook')
