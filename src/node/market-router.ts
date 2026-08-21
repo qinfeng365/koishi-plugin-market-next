@@ -2,11 +2,13 @@ import { Context, Dict, Time } from 'koishi'
 import {
   FALLBACK_ENDPOINTS,
   FAST_ROUTE_THRESHOLD,
+  MARKET_GENERATION_TOLERANCE,
   ROUTE_STAGGER,
   clamp,
   formatError,
   formatRouteScores,
   formatTime,
+  getMarketGenerationTime,
   getRouteCooldown,
   type EndpointResult,
   type LogLevel,
@@ -16,7 +18,14 @@ import {
 } from './market-internals'
 import { MarketDiskCache } from './market-cache'
 import { MarketEndpointFetcher } from './market-fetcher'
+import {
+  MarketVersionResolver,
+  getVersionedMarketIndexUrl,
+  getVersionedMarketSource,
+} from './market-version'
 import { scoreRouteHealth } from './route-health'
+
+class StaleMarketIndexError extends Error {}
 
 interface MarketRouterOptions {
   isStale: (serial: number) => boolean
@@ -25,10 +34,19 @@ interface MarketRouterOptions {
   log: (level: Exclude<LogLevel, 'silent'>, message: string) => void
 }
 
+interface SpeculativeMarketFetch {
+  controller: AbortController
+  task: Promise<void>
+  done: boolean
+  result?: EndpointResult
+  error?: unknown
+}
+
 export class MarketRouter {
   private stats: Dict<RouteStats> = {}
   private pendingControllers = new Set<AbortController>()
   private fetcher: MarketEndpointFetcher
+  private versionResolver: MarketVersionResolver
 
   constructor(
     private ctx: Context,
@@ -40,21 +58,156 @@ export class MarketRouter {
       isStale: options.isStale,
       log: options.log,
     })
+    this.versionResolver = new MarketVersionResolver(ctx, config, options.log)
   }
 
   async fetchIndex(serial: number): Promise<EndpointResult> {
     const endpoints = this.getEndpoints()
+    if (this.config.autoRoute !== false && getVersionedMarketSource(this.config.endpoint!)) {
+      const versioned = await this.fetchVersionedIndex(serial, endpoints)
+      if (versioned) return versioned
+    }
+    return this.fetchDirectIndex(serial, endpoints)
+  }
+
+  private async fetchDirectIndex(serial: number, endpoints: string[]) {
     const rescueEndpoints = this.getRescueEndpoints(endpoints)
+    const minimumGeneration = await this.cache.getLatestGeneration(this.getEndpointCandidates())
     try {
-      return await this.fetchIndexFromEndpoints(serial, endpoints)
+      return await this.fetchIndexFromEndpoints(serial, endpoints, { minimumGeneration })
     } catch (error) {
       if (!rescueEndpoints.length || this.options.isStale(serial) || this.isInternalAbort(error)) throw error
       this.options.log('warn', `market active endpoints failed; retry cooled endpoints as rescue: active=${endpoints.join(', ')}, rescue=${rescueEndpoints.join(', ')}, error=${formatError(error)}`)
-      const result = await this.fetchIndexFromEndpoints(serial, rescueEndpoints, { rescue: true })
+      const result = await this.fetchIndexFromEndpoints(serial, rescueEndpoints, { rescue: true, minimumGeneration })
       result.preferredEndpoint = this.config.endpoint
       result.fallbackReason = 'rescue'
       return result
     }
+  }
+
+  private async fetchVersionedIndex(serial: number, endpoints: string[]) {
+    const versionedEndpoints = endpoints.filter(endpoint => !!getVersionedMarketSource(endpoint))
+    if (!versionedEndpoints.length) return
+    const hasCache = this.getEndpointCandidates().some(endpoint => !!this.cache.entries[endpoint])
+    const speculative = hasCache ? undefined : this.startSpeculativeIndex(serial, versionedEndpoints)
+    const controller = this.trackController(new AbortController())
+    let resolution
+    try {
+      resolution = await this.versionResolver.resolve(versionedEndpoints, controller.signal)
+    } catch (error) {
+      speculative?.controller.abort(new Error('market version discovery failed'))
+      throw error
+    } finally {
+      this.untrackControllers([controller])
+    }
+    if (this.options.isStale(serial)) {
+      speculative?.controller.abort(new Error('market version discovery unavailable'))
+      return
+    }
+    if (!resolution) {
+      if (speculative && !speculative.done) {
+        await Promise.race([
+          speculative.task,
+          new Promise(resolve => setTimeout(resolve, 300)),
+        ])
+      }
+      if (speculative?.result) {
+        this.commitResult(speculative.result)
+        this.options.log('warn', `market version witnesses unavailable; use speculative direct index: endpoint=${speculative.result.endpoint}, hash=${speculative.result.hash?.slice(0, 12) ?? '-'}`)
+        return speculative.result
+      }
+      speculative?.controller.abort(new Error('market version discovery unavailable'))
+      return
+    }
+
+    if (speculative && !speculative.done) {
+      await Promise.race([
+        speculative.task,
+        new Promise(resolve => setTimeout(resolve, 150)),
+      ])
+    }
+    if (speculative?.result?.hash === resolution.hash) {
+      speculative.result.timings.version = resolution.elapsed
+      this.commitResult(speculative.result)
+      this.options.log('info', `market speculative index matched resolved version: endpoint=${speculative.result.endpoint}, hash=${resolution.hash.slice(0, 12)}, version=${resolution.elapsed}ms, request=${speculative.result.elapsed}ms`)
+      return speculative.result
+    }
+    if (speculative) {
+      speculative.controller.abort(new Error('market speculative index did not match resolved version'))
+      if (speculative.result) {
+        this.options.log('warn', `discard stale speculative market index: endpoint=${speculative.result.endpoint}, received=${speculative.result.hash?.slice(0, 12) ?? '-'}, expected=${resolution.hash.slice(0, 12)}`)
+      }
+    }
+
+    const candidates = this.getEndpointCandidates()
+    const minimumGeneration = await this.cache.getLatestGeneration(candidates)
+    const cached = await this.cache.findByHash(resolution.hash, candidates)
+    if (cached) {
+      const validatedAt = Date.now()
+      const result: EndpointResult = {
+        endpoint: cached.endpoint,
+        preferredEndpoint: this.config.endpoint,
+        result: cached.result,
+        elapsed: resolution.elapsed,
+        candidates: resolution.candidates,
+        source: 'hash-cache' as const,
+        timings: { version: resolution.elapsed, total: resolution.elapsed },
+        size: cached.size,
+        wireSize: cached.wireSize,
+        contentEncoding: cached.contentEncoding,
+        hash: cached.hash,
+        etag: cached.etag,
+        lastModified: cached.lastModified,
+        cachedAt: cached.fetchedAt,
+        validatedAt,
+      }
+      try {
+        this.assertGeneration(result, minimumGeneration)
+      } catch (error) {
+        this.options.log('warn', `ignore regressed market version witness: hash=${resolution.hash.slice(0, 12)}, endpoint=${cached.endpoint}, error=${formatError(error)}`)
+        return
+      }
+      this.options.selectEndpoint(cached.endpoint)
+      this.options.log('info', `market version cache hit: endpoint=${cached.endpoint}, hash=${resolution.hash.slice(0, 12)}, witnesses=${resolution.witnesses.join(', ')}, elapsed=${resolution.elapsed}ms`)
+      return result
+    }
+
+    try {
+      const result = await this.fetchIndexFromEndpoints(serial, versionedEndpoints, {
+        expectedHash: resolution.hash,
+        minimumGeneration,
+      })
+      result.timings.version = resolution.elapsed
+      return result
+    } catch (error) {
+      if (this.options.isStale(serial) || this.isInternalAbort(error)) throw error
+      this.options.log('warn', `market content-addressed routes failed; fall back to direct endpoints: hash=${resolution.hash.slice(0, 12)}, endpoints=${versionedEndpoints.join(', ')}, error=${formatError(error)}`)
+    }
+  }
+
+  private startSpeculativeIndex(serial: number, endpoints: string[]) {
+    const t4wefan = 'https://registry.koishi.t4wefan.pub/index.json'
+    const candidates = [endpoints[0], endpoints.includes(t4wefan) ? t4wefan : undefined]
+      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
+    const controller = this.trackController(new AbortController())
+    const state: SpeculativeMarketFetch = {
+      controller,
+      task: Promise.resolve(),
+      done: false,
+    }
+    state.task = this.fetchIndexFromEndpoints(serial, candidates, {
+      deferCommit: true,
+      suppressStats: true,
+      signal: controller.signal,
+    }).then((result) => {
+      state.result = result
+    }, (error) => {
+      state.error = error
+    }).finally(() => {
+      state.done = true
+      this.untrackControllers([controller])
+    })
+    return state
   }
 
   getEndpointCandidates() {
@@ -157,7 +310,14 @@ export class MarketRouter {
   private async fetchIndexFromEndpoints(
     serial: number,
     endpoints: string[],
-    options: { rescue?: boolean } = {},
+    options: {
+      rescue?: boolean
+      expectedHash?: string
+      minimumGeneration?: number
+      deferCommit?: boolean
+      suppressStats?: boolean
+      signal?: AbortSignal
+    } = {},
   ): Promise<EndpointResult> {
     const routeMode = options.rescue ? 'rescue' : 'active'
     this.options.log('debug', `market endpoint candidates (${routeMode}): ${endpoints.join(', ')}`)
@@ -166,26 +326,32 @@ export class MarketRouter {
 
     if (endpoints.length === 1 || this.config.autoRoute === false) {
       const controller = this.trackController(new AbortController())
+      const unbindAbort = this.bindAbort(options.signal, [controller])
       try {
         const result = await this.fetcher.fetch({
           endpoint: endpoints[0],
+          requestUrl: options.expectedHash
+            ? getVersionedMarketIndexUrl(endpoints[0], options.expectedHash)
+            : undefined,
+          expectedHash: options.expectedHash,
           index: 0,
           total: endpoints.length,
           serial,
           warnFailure: true,
           signal: controller.signal,
         })
-        this.options.selectEndpoint(result.endpoint)
+        this.assertGeneration(result, options.minimumGeneration)
         result.preferredEndpoint = endpoints[0]
         if (options.rescue) result.fallbackReason = 'rescue'
-        this.recordSuccess(result)
+        if (!options.deferCommit) this.commitResult(result)
         return result
       } catch (error) {
-        if (!this.options.isStale(serial) && !this.isInternalAbort(error)) {
+        if (!options.suppressStats && !this.options.isStale(serial) && !this.isInternalAbort(error) && !(error instanceof StaleMarketIndexError)) {
           this.recordFailure(endpoints[0], { rescue: options.rescue })
         }
         throw error
       } finally {
+        unbindAbort()
         this.untrackControllers([controller])
       }
     }
@@ -199,10 +365,12 @@ export class MarketRouter {
       let fallbackStarted = false
       let fallbackReason: EndpointResult['fallbackReason']
       const controllers = endpoints.map(() => this.trackController(new AbortController()))
+      const unbindAbort = this.bindAbort(options.signal, controllers)
       const timer = setTimeout(() => startFallback('primary-slow'), FAST_ROUTE_THRESHOLD)
 
       const finish = () => {
         clearTimeout(timer)
+        unbindAbort()
         this.untrackControllers(controllers)
       }
 
@@ -211,29 +379,34 @@ export class MarketRouter {
           this.options.log('debug', `ignore slower market endpoint ${data.endpoint}, elapsed=${data.elapsed}ms`)
           return
         }
+        try {
+          this.assertGeneration(data, options.minimumGeneration)
+        } catch (error) {
+          fail(data.endpoint, index, error, false, 'primary-stale')
+          return
+        }
         settled = true
         finish()
         controllers.forEach((controller, controllerIndex) => {
           if (controllerIndex !== index) controller.abort(new Error('market endpoint race settled'))
         })
-        this.options.selectEndpoint(data.endpoint)
         data.preferredEndpoint = endpoints[0]
         if (options.rescue) {
           data.fallbackReason = 'rescue'
-          this.options.log('debug', `rescue market endpoint selected: endpoint=${data.endpoint}, elapsed=${data.elapsed}ms, configured=${this.config.endpoint}`)
-          this.options.log('info', `market rescue endpoint selected: endpoint=${data.endpoint}, elapsed=${data.elapsed}ms, configured=${this.config.endpoint}`)
         } else if (data.endpoint !== this.config.endpoint) {
           data.fallbackReason = fallbackReason
-          this.options.log('debug', `fallback endpoint selected: endpoint=${data.endpoint}, reason=${fallbackReason ?? 'unknown'}, elapsed=${data.elapsed}ms`)
-          this.options.log('info', `market fallback endpoint selected: endpoint=${data.endpoint}, reason=${fallbackReason ?? 'unknown'}, elapsed=${data.elapsed}ms, primary=${endpoints[0]}`)
-        } else {
-          this.options.log('info', `market primary endpoint selected: endpoint=${data.endpoint}, elapsed=${data.elapsed}ms, source=${data.source}`)
         }
-        this.recordSuccess(data)
+        if (!options.deferCommit) this.commitResult(data)
         resolve(data)
       }
 
-      const fail = (endpoint: string, index: number, error: any) => {
+      const fail = (
+        endpoint: string,
+        index: number,
+        error: any,
+        penalize = true,
+        primaryReason: NonNullable<EndpointResult['fallbackReason']> = 'primary-failed',
+      ) => {
         if (settled) return
         if (this.options.isStale(serial) || this.isInternalAbort(error)) {
           settled = true
@@ -242,10 +415,10 @@ export class MarketRouter {
           reject(error)
           return
         }
-        this.recordFailure(endpoint, { rescue: options.rescue })
+        if (penalize && !options.suppressStats) this.recordFailure(endpoint, { rescue: options.rescue })
         lastError = error
         failed++
-        if (index === 0) startFallback('primary-failed')
+        if (index === 0) startFallback(primaryReason)
         if (failed < endpoints.length) return
         settled = true
         finish()
@@ -259,6 +432,10 @@ export class MarketRouter {
           if (settled) throw new Error('market endpoint race settled before request')
           return this.fetcher.fetch({
             endpoint,
+            requestUrl: options.expectedHash
+              ? getVersionedMarketIndexUrl(endpoint, options.expectedHash)
+              : undefined,
+            expectedHash: options.expectedHash,
             index,
             total: endpoints.length,
             serial,
@@ -319,6 +496,42 @@ export class MarketRouter {
     })
   }
 
+  private bindAbort(signal: AbortSignal | undefined, controllers: AbortController[]) {
+    if (!signal) return () => {}
+    const abort = () => {
+      for (const controller of controllers) {
+        controller.abort(signal.reason ?? new Error('market endpoint request aborted'))
+      }
+    }
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
+    return () => signal.removeEventListener('abort', abort)
+  }
+
+  private commitResult(result: EndpointResult) {
+    this.options.selectEndpoint(result.endpoint)
+    if (result.fallbackReason === 'rescue') {
+      this.options.log('debug', `rescue market endpoint selected: endpoint=${result.endpoint}, elapsed=${result.elapsed}ms, configured=${this.config.endpoint}`)
+      this.options.log('info', `market rescue endpoint selected: endpoint=${result.endpoint}, elapsed=${result.elapsed}ms, configured=${this.config.endpoint}`)
+    } else if (result.endpoint !== this.config.endpoint) {
+      this.options.log('debug', `fallback endpoint selected: endpoint=${result.endpoint}, reason=${result.fallbackReason ?? 'unknown'}, elapsed=${result.elapsed}ms`)
+      this.options.log('info', `market fallback endpoint selected: endpoint=${result.endpoint}, reason=${result.fallbackReason ?? 'unknown'}, elapsed=${result.elapsed}ms, primary=${result.preferredEndpoint ?? this.config.endpoint}`)
+    } else {
+      this.options.log('info', `market primary endpoint selected: endpoint=${result.endpoint}, elapsed=${result.elapsed}ms, source=${result.source}`)
+    }
+    this.recordSuccess(result)
+  }
+
+  private assertGeneration(result: EndpointResult, minimumGeneration?: number) {
+    if (minimumGeneration == null) return
+    const generation = getMarketGenerationTime(result.result)
+    if (generation != null && generation + MARKET_GENERATION_TOLERANCE >= minimumGeneration) return
+    const actual = generation == null ? 'unknown' : formatTime(generation)
+    const minimum = formatTime(minimumGeneration)
+    this.options.log('warn', `reject stale market index: endpoint=${result.endpoint}, generation=${actual}, minimum=${minimum}, hash=${result.hash?.slice(0, 12) ?? '-'}`)
+    throw new StaleMarketIndexError(`market index from ${result.endpoint} is stale (${actual} < ${minimum})`)
+  }
+
   private recordSuccess(result: EndpointResult) {
     const stats = this.stats[result.endpoint] ||= { score: 0, successes: 0, failures: 0 }
     stats.successes++
@@ -366,6 +579,7 @@ export class MarketRouter {
   }
 
   private isInternalAbort(error: any) {
+    if (error instanceof StaleMarketIndexError) return false
     const message = error instanceof Error ? error.message : String(error)
     return /race settled|stale|disposed|aborted|abort/i.test(message)
   }

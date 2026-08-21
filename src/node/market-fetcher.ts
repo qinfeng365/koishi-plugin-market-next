@@ -23,6 +23,8 @@ interface MarketEndpointFetcherOptions {
 
 interface MarketEndpointRequest {
   endpoint: string
+  requestUrl?: string
+  expectedHash?: string
   index: number
   total: number
   serial: number
@@ -70,6 +72,9 @@ export class MarketEndpointFetcher {
       }
 
       const decoded = this.decodeResponse(endpoint, response, cached)
+      if (request.expectedHash && decoded.hash !== request.expectedHash) {
+        throw new Error(`market index hash mismatch from ${endpoint}: expected ${shortHash(request.expectedHash)}, received ${shortHash(decoded.hash)}`)
+      }
       const hashCache = await this.reuseHashCache(endpoint, total, start, response, decoded, cached)
       if (hashCache) return hashCache
       if (cached && cached.hash === decoded.hash) {
@@ -85,19 +90,19 @@ export class MarketEndpointFetcher {
   }
 
   private async requestEndpoint(request: MarketEndpointRequest): Promise<MarketEndpointResponse> {
-    const { endpoint, index, total, signal } = request
+    const { endpoint, requestUrl = endpoint, expectedHash, index, total, signal } = request
     const http: HTTP = this.ctx.http.extend({
       ...this.config,
-      endpoint,
+      endpoint: requestUrl,
     })
-    const conditional = this.cache.getConditionalHeaders(endpoint)
+    const conditional = expectedHash ? {} : this.cache.getConditionalHeaders(endpoint)
     const headers = {
       'accept-encoding': 'br,gzip,deflate',
       ...conditional,
     }
     const requestStart = Date.now()
-    this.options.log('debug', `fetch market index from ${endpoint} (${index + 1}/${total}), timeout=${this.config.timeout ?? 'default'}, proxy=${this.config.proxyAgent ? 'yes' : 'no'}, compression=yes, conditional=${Object.keys(conditional).length ? 'yes' : 'no'}`)
-    this.options.log('debug', `market request headers: endpoint=${endpoint}, acceptEncoding=br,gzip,deflate, etag=${conditional['if-none-match'] ?? '-'}, lastModified=${conditional['if-modified-since'] ?? '-'}`)
+    this.options.log('debug', `fetch market index from ${endpoint} (${index + 1}/${total}), requestUrl=${requestUrl}, expectedHash=${shortHash(expectedHash) ?? '-'}, timeout=${this.config.timeout ?? 'default'}, proxy=${this.config.proxyAgent ? 'yes' : 'no'}, compression=yes, conditional=${Object.keys(conditional).length ? 'yes' : 'no'}`)
+    this.options.log('debug', `market request headers: endpoint=${endpoint}, requestUrl=${requestUrl}, acceptEncoding=br,gzip,deflate, etag=${conditional['if-none-match'] ?? '-'}, lastModified=${conditional['if-modified-since'] ?? '-'}`)
     const response = await http<string>('', {
       responseType: 'text',
       headers,

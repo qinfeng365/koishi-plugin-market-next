@@ -5,7 +5,6 @@ import type { MarketPerformance, MarketPerformanceSnapshot } from '../shared'
 export const FALLBACK_ENDPOINTS = [
   'https://registry.koishi.t4wefan.pub/index.json',
   'https://gitee.com/shangxueink/koishi-registry-aggregator/raw/gh-pages/market.json',
-  'https://koi.nyan.zone/registry/index.json',
   'https://kp.itzdrli.cc',
   'https://koishi.itzdrli.cc',
   'https://registry.koishi.chat/index.json',
@@ -19,6 +18,7 @@ export const FALLBACK_ENDPOINTS = [
 export const ROUTE_STAGGER = 80
 export const FIRST_PAYLOAD_TIMEOUT = Time.second * 1.5
 export const FAST_ROUTE_THRESHOLD = Time.second * 0.5
+export const MARKET_GENERATION_TOLERANCE = Time.minute * 2
 export const MAX_CACHE_ENTRIES = 3
 export const CACHE_ENTRY_TTL = Time.day * 30
 export const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
@@ -37,6 +37,7 @@ export interface MarketProviderConfig {
 export interface CacheFile {
   endpoint: string
   fetchedAt: number
+  generation?: number
   validatedAt?: number
   etag?: string
   lastModified?: string
@@ -74,7 +75,7 @@ export type CacheMeta = Omit<CacheFile, 'result'>
 export interface EndpointResult {
   endpoint: string
   preferredEndpoint?: string
-  fallbackReason?: 'primary-failed' | 'primary-slow' | 'rescue'
+  fallbackReason?: 'primary-failed' | 'primary-slow' | 'primary-stale' | 'rescue'
   result: SearchResult
   elapsed: number
   candidates: number
@@ -140,6 +141,13 @@ export function parseContentLength(value?: string | null) {
   if (!value) return
   const size = Number(value)
   return Number.isFinite(size) && size > 0 ? size : undefined
+}
+
+export function getMarketGenerationTime(result?: Pick<SearchResult, 'forceTime' | 'time'>) {
+  const forceTime = Number(result?.forceTime)
+  if (Number.isFinite(forceTime) && forceTime > 0) return forceTime
+  const time = Date.parse(result?.time ?? '')
+  return Number.isFinite(time) && time > 0 ? time : undefined
 }
 
 export function normalizeWireSize(wireSize: number | undefined, decodedSize: number) {

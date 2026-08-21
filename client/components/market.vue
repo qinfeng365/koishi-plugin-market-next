@@ -418,6 +418,7 @@ function formatSource(source?: string) {
 function formatTimingName(name: string) {
   const labels: Record<string, string> = {
     request: t('marketPage.debug.request'),
+    version: t('marketPage.debug.versionProbe'),
     hash: 'Hash',
     parse: t('marketPage.debug.parse'),
     apply: t('marketPage.debug.apply'),
@@ -460,6 +461,7 @@ function formatFallbackReason(value?: string) {
   switch (value) {
     case 'primary-failed': return t('marketPage.debug.primaryFailed')
     case 'primary-slow': return t('marketPage.debug.primarySlow')
+    case 'primary-stale': return t('marketPage.debug.primaryStale')
     case 'rescue': return t('marketPage.debug.rescue')
     default: return '-'
   }

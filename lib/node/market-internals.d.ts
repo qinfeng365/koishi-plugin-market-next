@@ -5,6 +5,7 @@ export declare const FALLBACK_ENDPOINTS: string[];
 export declare const ROUTE_STAGGER = 80;
 export declare const FIRST_PAYLOAD_TIMEOUT: number;
 export declare const FAST_ROUTE_THRESHOLD: number;
+export declare const MARKET_GENERATION_TOLERANCE: number;
 export declare const MAX_CACHE_ENTRIES = 3;
 export declare const CACHE_ENTRY_TTL: number;
 export declare const logLevels: readonly ["silent", "error", "warn", "info", "debug"];
@@ -20,6 +21,7 @@ export interface MarketProviderConfig {
 export interface CacheFile {
     endpoint: string;
     fetchedAt: number;
+    generation?: number;
     validatedAt?: number;
     etag?: string;
     lastModified?: string;
@@ -52,7 +54,7 @@ export type CacheMeta = Omit<CacheFile, 'result'>;
 export interface EndpointResult {
     endpoint: string;
     preferredEndpoint?: string;
-    fallbackReason?: 'primary-failed' | 'primary-slow' | 'rescue';
+    fallbackReason?: 'primary-failed' | 'primary-slow' | 'primary-stale' | 'rescue';
     result: SearchResult;
     elapsed: number;
     candidates: number;
@@ -84,6 +86,7 @@ export declare function formatTime(value?: number): string;
 export declare function formatAge(age?: number): string;
 export declare function formatBytes(value?: number): string;
 export declare function parseContentLength(value?: string | null): number;
+export declare function getMarketGenerationTime(result?: Pick<SearchResult, 'forceTime' | 'time'>): number;
 export declare function normalizeWireSize(wireSize: number | undefined, decodedSize: number): number;
 export declare function getRouteCooldown(failures?: number): number;
 export declare function formatSnapshot(snapshot?: MarketPerformanceSnapshot): string;

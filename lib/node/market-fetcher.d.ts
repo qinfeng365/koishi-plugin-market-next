@@ -7,6 +7,8 @@ interface MarketEndpointFetcherOptions {
 }
 interface MarketEndpointRequest {
     endpoint: string;
+    requestUrl?: string;
+    expectedHash?: string;
     index: number;
     total: number;
     serial: number;

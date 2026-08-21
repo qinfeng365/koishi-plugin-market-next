@@ -37,6 +37,8 @@ export declare class MarketDiskCache {
     updateFromEndpoint(result: EndpointResult): void;
     load(serial: number): Promise<LoadedMarketDiskCache | undefined>;
     loadEntry(entry: CacheEntry): Promise<CacheFile | undefined>;
+    findByHash(hash: string, endpoints: string[]): Promise<CacheFile>;
+    getLatestGeneration(endpoints: string[]): Promise<number>;
     scheduleWrite(result: SearchResult, meta?: CacheMeta): void;
     scheduleRouteStatsWrite(): void;
     activate(entry: CacheFile): void;

@@ -11,6 +11,7 @@ import {
   formatCacheEntries,
   formatError,
   formatTime,
+  getMarketGenerationTime,
   hasCacheResultReference,
   isLegacyInlineCacheStore,
   normalizeCacheStore,
@@ -97,6 +98,7 @@ export class MarketDiskCache {
       fetchedAt: result.source === 'network'
         ? Date.now()
         : result.cachedAt ?? cached?.fetchedAt ?? this.conditionMeta?.fetchedAt ?? Date.now(),
+      generation: getMarketGenerationTime(result.result),
       validatedAt: result.validatedAt,
       etag: result.etag ?? (sameEndpoint ? this.conditionMeta?.etag : undefined),
       lastModified: result.lastModified ?? (sameEndpoint ? this.conditionMeta?.lastModified : undefined),
@@ -193,6 +195,33 @@ export class MarketDiskCache {
     }
   }
 
+  async findByHash(hash: string, endpoints: string[]) {
+    for (const endpoint of endpoints) {
+      const entry = this.entries[endpoint]
+      if (!entry || entry.hash !== hash) continue
+      const cache = await this.loadEntry(entry)
+      if (!cache) continue
+      this.options.log('debug', `market cache content hash hit: endpoint=${endpoint}, hash=${shortHash(hash)}, objects=${cache.result.objects.length}`)
+      return cache
+    }
+  }
+
+  async getLatestGeneration(endpoints: string[]) {
+    let latest: number | undefined
+    for (const endpoint of endpoints) {
+      const entry = this.entries[endpoint]
+      if (!entry || !hasCacheResultReference(entry)) continue
+      let generation = entry.generation
+      if (generation == null) {
+        const cache = await this.loadEntry(entry)
+        generation = getMarketGenerationTime(cache?.result)
+        if (cache && generation != null) cache.generation = generation
+      }
+      if (generation != null && (latest == null || generation > latest)) latest = generation
+    }
+    return latest
+  }
+
   scheduleWrite(result: SearchResult, meta = this.conditionMeta) {
     if (!meta) return
     clearTimeout(this.writeTimer)
@@ -230,6 +259,7 @@ export class MarketDiskCache {
     const meta: CacheMeta = {
       endpoint: entry.endpoint,
       fetchedAt: entry.fetchedAt,
+      generation: entry.generation ?? getMarketGenerationTime(entry.result),
       validatedAt: entry.validatedAt,
       etag: entry.etag,
       lastModified: entry.lastModified,
