@@ -6,6 +6,14 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const pkg = require('../package.json')
 
+const hostFrontendPeers = ['vue', 'vue-i18n', 'vue-router']
+const publishedHostFrontendPeers = hostFrontendPeers.filter(name => pkg.peerDependencies?.[name])
+if (publishedHostFrontendPeers.length) {
+  throw new Error(
+    `Host-provided frontend packages must not be published as peer dependencies: ${publishedHostFrontendPeers.join(', ')}`,
+  )
+}
+
 const npm = 'npm'
 const requiredFiles = [
   'dist/index.js',
