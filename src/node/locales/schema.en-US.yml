@@ -12,8 +12,9 @@ search:
   timeout: Timeout for searching the plugin market.
   proxyAgent: Proxy used to search the plugin market.
   autoRoute: Automatically try fallback market sources when the current source fails.
-  logLevel: Plugin market log level. silent disables logs; debug enables detailed logs.
+  logLevel: Plugin market log level (legacy setting).
 
+logLevel: Log level for market and package operations. silent disables logs; debug enables detailed logs.
 marketSilentFilters: Legacy permanent silent filters.
 idleProbe: Automatically probes dependency versions and market data while Console is idle. It only runs when no browser console is connected, and page reloads do not trigger it.
 idleProbeDelay: How long Console must stay idle before the background probe starts.

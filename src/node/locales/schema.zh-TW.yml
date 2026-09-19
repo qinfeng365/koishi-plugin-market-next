@@ -12,4 +12,6 @@ search:
   timeout: 搜尋外掛程式市場的超時時間。
   proxyAgent: 用於搜尋外掛程式市場的代理。
   autoRoute: 目前市場源失敗時自動嘗試備用市場源。
-  logLevel: 外掛程式市場調試日誌級別。silent 關閉日誌，debug 輸出最詳細。
+  logLevel: 外掛程式市場調試日誌級別（相容舊版設定）。
+
+logLevel: 外掛程式市場與依賴操作日誌級別。silent 關閉日誌，debug 輸出最詳細。

@@ -4,6 +4,7 @@ import { lookup } from 'dns/promises'
 import { promises as fsp } from 'fs'
 import { isIP } from 'net'
 import { resolve } from 'path'
+import { logger } from './logger'
 
 export interface AvatarFetchResult {
   data: string
@@ -90,7 +91,7 @@ async function readAvatarDiskCache(ctx: Context, key: string): Promise<AvatarFet
     return { data: entry.data, type: entry.type, cached: true }
   } catch (error) {
     if ((error as any)?.code !== 'ENOENT') {
-      ctx.logger('market').debug(`failed to read avatar disk cache: ${error instanceof Error ? error.message : error}`)
+      logger.debug(`failed to read avatar disk cache: ${error instanceof Error ? error.message : error}`)
     }
   }
 }
@@ -110,7 +111,7 @@ async function writeAvatarDiskCache(ctx: Context, key: string, url: string, resu
     await fsp.writeFile(tempFile, JSON.stringify(entry))
     await fsp.rename(tempFile, file)
   } catch (error) {
-    ctx.logger('market').debug(`failed to write avatar disk cache: ${error instanceof Error ? error.message : error}`)
+    logger.debug(`failed to write avatar disk cache: ${error instanceof Error ? error.message : error}`)
   }
 }
 
@@ -260,7 +261,7 @@ async function checkAvatarHead(ctx: Context, url: URL): Promise<{ url?: URL, blo
       if (Number.isFinite(headLength) && headLength > AVATAR_MAX_SIZE) return { blocked: true }
       return { url: current }
     } catch (error) {
-      ctx.logger('market').debug(`avatar HEAD skipped: url=${current}, error=${error instanceof Error ? error.message : error}`)
+      logger.debug(`avatar HEAD skipped: url=${current}, error=${error instanceof Error ? error.message : error}`)
       return { url: current }
     }
   }

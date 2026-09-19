@@ -11,6 +11,7 @@ import {
   isBundlePackageName,
   parseBundleManifest,
 } from '../shared/bundle'
+import { logger } from './logger'
 
 const SELF_PACKAGE = 'koishi-plugin-market-next'
 
@@ -81,20 +82,20 @@ export async function ensurePluginConfig(ctx: Context, name: string, write = tru
   if (!Scanner.isPlugin(name)) return false
   if (name === SELF_PACKAGE) return false
   if (isPluginBundleDependency(name)) {
-    ctx.logger('market').debug(`skip default config entry for plugin bundle: ${name}`)
+    logger.debug(`skip default config entry for plugin bundle: ${name}`)
     return false
   }
 
   const shortname = getPluginShortname(name)
   if (hasPluginConfig(ctx.loader.config?.plugins, shortname)) return false
 
-  await requestPluginRuntime(ctx, name).catch(error => ctx.logger('market').warn(error))
+  await requestPluginRuntime(ctx, name).catch(error => logger.warn(error))
   if (hasPluginConfig(ctx.loader.config?.plugins, shortname)) return false
 
   const key = createDisabledPluginConfig(ctx, shortname)
   if (!key) return false
   if (write) await ctx.loader.writeConfig()
-  ctx.logger('market').info('created disabled default config entry %c for %c', key, name)
+  logger.info('created disabled default config entry %c for %c', key, name)
   return true
 }
 
@@ -113,7 +114,7 @@ export async function ensurePluginConfigs(ctx: Context, names: string[]) {
     ctx.get('console')?.refresh('config'),
     ctx.get('console')?.refresh('packages'),
   ])
-  ctx.logger('market').info(`plugin config ensure completed: checked=${checked}, elapsed=${Date.now() - start}ms`)
+  logger.info(`plugin config ensure completed: checked=${checked}, elapsed=${Date.now() - start}ms`)
   return true
 }
 
@@ -124,11 +125,11 @@ export async function ensureInstalledPluginConfigs(ctx: Context) {
     .filter(name => Scanner.isPlugin(name))
     .filter(name => !isPluginBundleDependency(name))
   const missing = names.filter(name => !hasPluginConfig(ctx.loader.config?.plugins, getPluginShortname(name)))
-  ctx.logger('market').debug(`installed plugin config repair scan: total=${names.length}, missing=${missing.length}`)
+  logger.debug(`installed plugin config repair scan: total=${names.length}, missing=${missing.length}`)
   if (!missing.length) return false
   await sleep(0)
   const changed = await ensurePluginConfigs(ctx, missing)
-  ctx.logger('market').info(`installed plugin config repair scan completed: total=${names.length}, missing=${missing.length}, changed=${changed}, elapsed=${Date.now() - start}ms`)
+  logger.info(`installed plugin config repair scan completed: total=${names.length}, missing=${missing.length}, changed=${changed}, elapsed=${Date.now() - start}ms`)
   return changed
 }
 
@@ -202,7 +203,7 @@ export async function removeBundleConfigs(ctx: Context, request: BundleConfigRem
       ctx.get('console')?.refresh('config'),
       ctx.get('console')?.refresh('packages'),
     ])
-    ctx.logger('market').info(`plugin bundle config cleanup completed: bundle=${request.package}, removed=${result.removed.length}, removedGroup=${!!result.removedGroup}`)
+    logger.info(`plugin bundle config cleanup completed: bundle=${request.package}, removed=${result.removed.length}, removedGroup=${!!result.removedGroup}`)
     if (needsFullReload) {
       setTimeout(() => {
         if (ctx.scope.isActive) ctx.loader.fullReload()

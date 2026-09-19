@@ -13,8 +13,9 @@ search:
   timeout: 搜索插件市场的超时时间。
   proxyAgent: 用于搜索插件市场的代理。
   autoRoute: 当前市场源失败时自动尝试备用市场源。
-  logLevel: 插件市场调试日志级别。silent 关闭日志，debug 输出最详细。
+  logLevel: 插件市场调试日志级别（兼容旧版设置）。
 
+logLevel: 插件市场与依赖操作日志级别。silent 关闭日志，debug 输出最详细。
 marketSilentFilters: 旧版永久静默过滤。
 idleProbe: Console 空闲时自动探测依赖版本和插件市场数据。仅在没有浏览器控制台连接时运行，不会因为刷新页面触发。
 idleProbeDelay: Console 无人在线多久后开始后台探测。

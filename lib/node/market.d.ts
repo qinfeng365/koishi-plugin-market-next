@@ -25,6 +25,7 @@ declare class MarketProvider extends BaseMarketProvider {
     private debugInfo?;
     private backgroundTask?;
     private backgroundSerial?;
+    private delayedFirstPayloadSerial;
     private pendingRefreshTask?;
     private warmDiskCacheTask?;
     private flushData;

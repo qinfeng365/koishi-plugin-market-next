@@ -1,9 +1,11 @@
 import { Context, Dict, Schema, Time } from 'koishi'
 import Installer from './installer'
 import MarketProvider from './market'
+import { logLevels, type LogLevel } from './market-internals'
 import type { PluginBundleRecord } from '../shared/bundle'
 
 export interface Config {
+  logLevel?: LogLevel
   registry?: Installer.Config
   search?: MarketProvider.Config
   chatlunaTool?: boolean
@@ -111,6 +113,7 @@ export const Config: Schema<Config> = Schema.object({
   updateIgnoreVersions: Schema.number().min(1).max(20).step(1).default(1).hidden().description('How many consecutive newer versions should be ignored after ignoring one update.'),
   updateIgnorePrerelease: Schema.boolean().default(false).hidden().description('Ignore alpha, beta, rc and other prerelease versions when checking updates.'),
   collapsedGroups: Schema.dict(Boolean).hidden(),
+  logLevel: Schema.union(logLevels.map(level => Schema.const(level))).default('warn').description('Log level for market and package operations. silent disables logs; debug enables detailed logs.'),
   registry: Installer.Config,
   search: MarketProvider.Config,
   chatlunaTool: Schema.boolean().default(false).description('Enable the ChatLuna plugin market query tool. Requires ChatLuna to be installed and enabled separately.'),
@@ -126,6 +129,7 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 const configPatchKeys: Array<keyof Config> = [
+  'logLevel',
   'frontendMode',
   'depsLayout',
   'marketSilentStatusRules',
@@ -147,6 +151,7 @@ const configPatchKeys: Array<keyof Config> = [
 ]
 
 const configReloadKeys = new Set<keyof Config>([
+  'logLevel',
   'idleProbe',
   'idleProbeDelay',
   'idleProbeBootDelay',

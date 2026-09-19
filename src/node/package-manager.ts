@@ -1,9 +1,7 @@
-import { Logger } from 'koishi'
 import spawn from 'execa'
 import { coerce, gte } from 'semver'
 import { levelMap, type YarnLog } from './installer-types'
-
-const logger = new Logger('market')
+import { logger } from './logger'
 
 export interface PackageManagerAgent {
   name: string

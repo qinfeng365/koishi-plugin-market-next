@@ -1,4 +1,4 @@
-import { Context, Dict, HTTP, Logger, Time } from 'koishi'
+import { Context, Dict, HTTP, Time } from 'koishi'
 import type { Registry } from '@koishijs/registry'
 import { promises as fsp } from 'fs'
 import { resolve } from 'path'
@@ -12,8 +12,7 @@ import {
   type InstallerConfig,
 } from './installer-types'
 import { scoreRouteHealth } from './route-health'
-
-const logger = new Logger('market')
+import { logger } from './logger'
 const REGISTRY_FALLBACK_ENDPOINTS = [
   'https://registry.npmmirror.com',
   'https://mirrors.cloud.tencent.com/npm',

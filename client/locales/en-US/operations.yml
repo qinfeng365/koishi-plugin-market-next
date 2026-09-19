@@ -167,3 +167,18 @@ history:
   uninstalled: Uninstalled
   unknownTime: Unknown time
   defaultSource: Project default
+timeline:
+  title: '{name} version history'
+  current: Current version
+  currentBadge: Current
+  loading: Reading version history…
+  empty: No version change records are available
+  loadFailed: Failed to read version history. Try again later.
+  from: Changed from {version}
+  useVersion: Set as target version
+  added: '{version} was added to pending changes'
+  close: Close
+  uninstalled: Uninstalled
+  unknownVersion: Unknown
+  unknownTime: Unknown time
+  note: Selecting a version adds it to pending changes. Confirm it from the bottom of the Dependencies page.

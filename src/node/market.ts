@@ -20,6 +20,7 @@ import {
 import { MarketDiskCache } from './market-cache'
 import { MarketRouter } from './market-router'
 import { createMarketResultSnapshot } from './market-result'
+import { logger } from './logger'
 
 export const DEFAULT_ENDPOINT = 'https://registry.koishi.t4wefan.pub/index.json'
 
@@ -44,6 +45,7 @@ class MarketProvider extends BaseMarketProvider {
   private debugInfo?: MarketPerformance
   private backgroundTask?: Promise<void>
   private backgroundSerial?: number
+  private delayedFirstPayloadSerial = -1
   private pendingRefreshTask?: Promise<any>
   private warmDiskCacheTask?: Promise<boolean>
   private flushData: () => void
@@ -328,7 +330,10 @@ class MarketProvider extends BaseMarketProvider {
       if (!ready) {
         this.refreshAfterPrepare(task)
         this.log('debug', `return loading market payload while waiting for network, elapsed=${Date.now() - start}ms`)
-        this.log('info', `market first payload still waiting for network: elapsed=${Date.now() - start}ms, endpoint=${this.endpoint || this.config.endpoint}`)
+        if (this.delayedFirstPayloadSerial !== this.serial) {
+          this.delayedFirstPayloadSerial = this.serial
+          this.log('warn', `market first payload delayed; returned loading state and continued in background: elapsed=${Date.now() - start}ms, endpoint=${this.endpoint || this.config.endpoint}`)
+        }
         return {
           registry: this.endpoint || this.config.endpoint,
           data: {},
@@ -691,15 +696,7 @@ class MarketProvider extends BaseMarketProvider {
 
   private log(level: Exclude<LogLevel, 'silent'>, message: string) {
     if (this.disposed || !this.ctx.scope.isActive) return
-    if (logLevels.indexOf(this.config.logLevel ?? 'warn') < logLevels.indexOf(level)) return
-    const logger = this.ctx.logger('market')
-    if (level === 'debug') {
-      // Koishi's global logger may hide debug records from the log page.
-      // When market debug is explicitly enabled, mirror them as info records.
-      logger.info(`[debug] ${message}`)
-    } else {
-      logger[level](message)
-    }
+    logger.log(level, message)
   }
 }
 

@@ -13,6 +13,7 @@ import {
   type MarketObject,
   type SearchInput,
 } from './chatluna-search'
+import { logger } from './logger'
 
 const CACHE_TTL = Time.minute * 10
 
@@ -63,7 +64,6 @@ Return value is JSON. The tool only reads the market registry index. It never in
 export function applyChatLunaTool(ctx: Context, config: ChatLunaToolConfig = {}) {
   if (!config.chatlunaTool) return
 
-  const logger = ctx.logger('market')
   logger.debug('ChatLuna market search tool is enabled; waiting for chatluna service')
 
   ctx.inject(['chatluna'], (ctx) => {
@@ -73,7 +73,7 @@ export function applyChatLunaTool(ctx: Context, config: ChatLunaToolConfig = {})
       const chatluna = ctx.get('chatluna') as ChatLunaService | undefined
       const registerTool = chatluna?.platform?.registerTool
       if (!registerTool) {
-        ctx.logger('market').warn('ChatLuna platform service is missing, skip market search tool')
+        logger.warn('ChatLuna platform service is missing, skip market search tool')
         return () => {}
       }
 
@@ -95,13 +95,13 @@ export function applyChatLunaTool(ctx: Context, config: ChatLunaToolConfig = {})
           createTool: () => marketTool,
         })
 
-        ctx.logger('market').info(`ChatLuna market search tool registered: ${CHATLUNA_TOOL_NAME}`)
+        logger.info(`ChatLuna market search tool registered: ${CHATLUNA_TOOL_NAME}`)
         return () => {
-          ctx.logger('market').debug(`ChatLuna market search tool disposed: ${CHATLUNA_TOOL_NAME}`)
+          logger.debug(`ChatLuna market search tool disposed: ${CHATLUNA_TOOL_NAME}`)
           dispose?.()
         }
       } catch (error) {
-        ctx.logger('market').warn(`Failed to register ChatLuna market search tool: ${formatError(error)}`)
+        logger.warn(`Failed to register ChatLuna market search tool: ${formatError(error)}`)
         return () => {}
       }
     })

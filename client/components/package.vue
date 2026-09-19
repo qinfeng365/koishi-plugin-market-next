@@ -19,6 +19,7 @@
       {{ showTargetMeta ? targetText : '—' }}
     </div>
     <div class="col-actions" @click.stop>
+      <el-button v-if="showPackageHistory" size="small" @click="showPackageHistoryDialog = true">{{ t('dependencyCard.actions.history') }}</el-button>
       <el-button v-if="showQuickUpdate" size="small" type="primary" @click="selectedVersion = latestVersion">{{ t('dependencyCard.actions.update') }}</el-button>
       <el-button v-if="showConfigure" size="small" type="primary" :loading="configuring" @click="configure">{{ t('dependencyCard.actions.configure') }}</el-button>
       <el-button v-if="showInlineIgnoreUpdate" size="small" @click="openIgnoreDialog">{{ t('dependencyCard.actions.ignore') }}</el-button>
@@ -75,6 +76,9 @@
         <span class="dep-full-name" :title="name">{{ name }}</span>
       </div>
       <div class="dep-header-actions" @click.stop>
+        <el-button v-if="showPackageHistory" size="small" @click="showPackageHistoryDialog = true">
+          {{ t('dependencyCard.actions.history') }}
+        </el-button>
         <el-button
           v-if="showInlineIgnoreUpdate"
           size="small"
@@ -260,6 +264,13 @@
     :package-name="name"
     :record="bundleRecord"
   ></bundle-uninstall>
+
+  <package-history
+    v-model="showPackageHistoryDialog"
+    :package-name="name"
+    :current-version="installedVersion"
+    @select-version="selectHistoryVersion"
+  ></package-history>
 </template>
 
 <script lang="ts" setup>
@@ -274,6 +285,7 @@ import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalled
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import BundleUninstall from './bundle-uninstall.vue'
+import PackageHistory from './package-history.vue'
 import { useMarketNextI18n } from '../i18n'
 import { getMarketObject } from '../market/state'
 
@@ -300,6 +312,7 @@ const editing = computed({
 })
 const showIgnoreDialog = ref(false)
 const showBundleUninstallDialog = ref(false)
+const showPackageHistoryDialog = ref(false)
 const showLocalBindingDialog = ref(false)
 const bindingLocal = ref(false)
 const ignoreDurationPreset = ref<'forever' | '1d' | '7d' | '30d' | 'custom'>('forever')
@@ -438,6 +451,8 @@ const currentText = computed(() => {
   if (localDependency.value) return dep.value.resolved ? `${dep.value.resolved} / ${t('dependencyCard.current.local')}` : t('dependencyCard.current.local')
   return dep.value.resolved ?? t('dependencyCard.current.installError')
 })
+
+const installedVersion = computed(() => dep.value?.resolved ?? local.value?.package.version ?? '')
 
 const targetText = computed(() => {
   if (pendingRemove.value) return t('dependencyCard.target.remove')
@@ -621,6 +636,10 @@ const showRemoveDependency = computed(() => {
     && !dep.value.invalid
 })
 
+const showPackageHistory = computed(() => {
+  return !!dep.value?.resolved && !localDependency.value && !dep.value.invalid
+})
+
 const showCardActions = computed(() => {
   return showVersionControl.value || showQuickUpdate.value || showRestoreUpdate.value || showConfigure.value || showBindLocal.value || showRemoveDependency.value || pending.value
 })
@@ -679,6 +698,11 @@ function removeDependency() {
     return
   }
   selectedVersion.value = removeValue
+}
+
+function selectHistoryVersion(version: string) {
+  if (!version || version === installedVersion.value) return
+  selectedVersion.value = version
 }
 
 function openLocalBinding() {

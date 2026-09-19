@@ -1,4 +1,4 @@
-import { Context, Dict, Logger, Time } from 'koishi'
+import { Context, Dict, Time } from 'koishi'
 import { basename, resolve } from 'path'
 import { promises as fsp } from 'fs'
 import {
@@ -7,8 +7,7 @@ import {
   type InstallerConfig,
   type InstallOptions,
 } from './installer-types'
-
-const logger = new Logger('market')
+import { logger } from './logger'
 const DEFAULT_INSTALL_LOG_RETENTION = Time.day * 3
 const INSTALL_LOG_DIR = 'market-next-install-logs'
 const INSTALL_LOG_DETAIL_LIMIT = 512 * 1024
@@ -41,6 +40,21 @@ export interface InstallHistoryEntry {
 export interface InstallLogDetail extends InstallHistoryEntry {
   content: string
   truncated: boolean
+}
+
+export interface InstallPackageHistoryEntry {
+  id: string
+  startedAt: number
+  finishedAt?: number
+  beforeVersion: string | null
+  afterVersion: string | null
+  forced: boolean
+}
+
+export interface InstallPackageHistory {
+  name: string
+  currentVersion?: string
+  entries: InstallPackageHistoryEntry[]
 }
 
 interface InstallHistoryMetadata {
@@ -222,6 +236,42 @@ export class InstallHistoryStore {
       content: sanitizeInstallLogText(result.content),
       truncated: result.truncated,
     } as InstallLogDetail
+  }
+
+  async getPackageHistory(name: string, limit = 24): Promise<InstallPackageHistory> {
+    const normalizedName = typeof name === 'string' ? name.trim() : ''
+    if (!normalizedName) return { name: '', entries: [] }
+    const entries = (await this.getHistory(50))
+      .filter(entry => entry.status === 'success')
+      .flatMap(entry => {
+        const change = entry.changes.find(change => change.name === normalizedName)
+        if (!change) return []
+        const beforeVersion = change.beforeResolved ?? change.beforeRequest ?? null
+        const afterVersion = change.afterResolved ?? change.afterRequest ?? null
+        if (beforeVersion === afterVersion) return []
+        return [{
+          id: entry.id,
+          startedAt: entry.startedAt,
+          finishedAt: entry.finishedAt,
+          beforeVersion,
+          afterVersion,
+          forced: entry.forced,
+        }]
+      })
+      .sort((left, right) => (left.finishedAt ?? left.startedAt) - (right.finishedAt ?? right.startedAt))
+
+    const compact: InstallPackageHistoryEntry[] = []
+    for (const entry of entries) {
+      const previous = compact.at(-1)
+      if (previous && previous.afterVersion === entry.afterVersion) continue
+      compact.push(entry)
+    }
+    const count = clamp(Math.floor(Number(limit) || 24), 1, 50)
+    return {
+      name: normalizedName,
+      currentVersion: this.getResolvedVersion(normalizedName),
+      entries: compact.slice(-count).reverse(),
+    }
   }
 
   private getDirectory() {

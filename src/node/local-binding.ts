@@ -1,12 +1,11 @@
-import { Dict, Logger, Time } from 'koishi'
+import { Dict, Time } from 'koishi'
 import Scanner, { PackageJson } from '@koishijs/registry'
 import { basename, dirname, relative, resolve } from 'path'
 import { promises as fsp } from 'fs'
 import { createHash } from 'crypto'
 import spawn from 'execa'
 import { resolvePackageManifest, type Dependency, type LocalBindingResult } from './installer-types'
-
-const logger = new Logger('market')
+import { logger } from './logger'
 
 export const MAX_LOCAL_BINDING_PACK_SIZE = 64 * 1024 * 1024
 

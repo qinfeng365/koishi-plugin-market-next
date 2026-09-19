@@ -2,11 +2,11 @@ import { Context, Dict, Schema, Service } from 'koishi';
 import { RemotePackage } from '@koishijs/registry';
 import { type LocalPackageUploadChunkRequest, type LocalPackageUploadCommitResult, type LocalPackageUploadFinishRequest, type LocalPackageUploadPreview, type LocalPackageUploadProgress, type LocalPackageUploadStartRequest, type LocalPackageUploadStartResult } from './local-upload';
 import { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
-import { type InstallHistoryEntry, type InstallLogDetail } from './install-history';
+import { type InstallHistoryEntry, type InstallLogDetail, type InstallPackageHistory } from './install-history';
 import { type Dependency, type InstallerConfig, type InstallerGetDepsOptions, type InstallFallbackCandidate, type InstallOptions, type LocalBindingResult } from './installer-types';
 export { loadManifest } from './installer-types';
 export type { Dependency, InstallFallbackCandidate, InstallOptions, LocalBindingResult, LocalPackage, YarnLog, } from './installer-types';
-export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail, } from './install-history';
+export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail, InstallPackageHistory, } from './install-history';
 declare class Installer extends Service {
     ctx: Context;
     config: Installer.Config;
@@ -53,6 +53,7 @@ declare class Installer extends Service {
     private finishInstallLog;
     getInstallHistory(limit?: number): Promise<InstallHistoryEntry[]>;
     getInstallLogDetail(id: string): Promise<InstallLogDetail>;
+    getPackageHistory(name: string, limit?: number): Promise<InstallPackageHistory>;
     getEnvironmentSnapshots(): Promise<EnvironmentSnapshotSummary[]>;
     getEnvironmentSnapshotPreview(id: string): Promise<EnvironmentSnapshotPreview | undefined>;
     exec(args: string[]): Promise<number>;
