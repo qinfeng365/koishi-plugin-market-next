@@ -24,6 +24,19 @@ export interface InstallLogDetail extends InstallHistoryEntry {
     content: string;
     truncated: boolean;
 }
+export interface InstallPackageHistoryEntry {
+    id: string;
+    startedAt: number;
+    finishedAt?: number;
+    beforeVersion: string | null;
+    afterVersion: string | null;
+    forced: boolean;
+}
+export interface InstallPackageHistory {
+    name: string;
+    currentVersion?: string;
+    entries: InstallPackageHistoryEntry[];
+}
 export declare class InstallHistoryStore {
     private ctx;
     private config;
@@ -46,6 +59,7 @@ export declare class InstallHistoryStore {
     }): Promise<void>;
     getHistory(limit?: number): Promise<InstallHistoryEntry[]>;
     getDetail(id: string): Promise<InstallLogDetail>;
+    getPackageHistory(name: string, limit?: number): Promise<InstallPackageHistory>;
     private getDirectory;
     private getRetention;
     private writeMetadata;

@@ -2,7 +2,7 @@ import { Context, Dict } from 'koishi';
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry';
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps';
 import { MarketDataStore, MarketDataStorePayload } from './data';
-import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, LocalBindingResult, InstallOptions } from './installer';
+import Installer, { InstallFallbackCandidate, InstallHistoryEntry, InstallLogDetail, InstallPackageHistory, LocalBindingResult, InstallOptions } from './installer';
 import type { EnvironmentSnapshotPreview, EnvironmentSnapshotSummary } from './environment';
 import type { LocalPackageUploadChunkRequest, LocalPackageUploadCommitResult, LocalPackageUploadFinishRequest, LocalPackageUploadPreview, LocalPackageUploadProgress, LocalPackageUploadStartRequest, LocalPackageUploadStartResult } from './local-upload';
 import { type AvatarFetchResult } from './avatar';
@@ -11,7 +11,7 @@ import { BundleConfigRemoveRequest, BundleConfigRemoveResult, BundleInstallReque
 export * from '../shared';
 export { Config } from './config';
 export { Installer };
-export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail } from './installer';
+export type { InstallHistoryChange, InstallHistoryEntry, InstallHistoryStatus, InstallLogDetail, InstallPackageHistory } from './installer';
 export type { LocalPackageOperation, LocalPackageUploadChunkRequest, LocalPackageUploadCommitResult, LocalPackageUploadFinishRequest, LocalPackageUploadPreview, LocalPackageUploadProgress, LocalPackageUploadStartRequest, LocalPackageUploadStartResult, } from './local-upload';
 export type { EnvironmentChangeStatus, EnvironmentDependencySnapshot, EnvironmentSnapshotChange, EnvironmentSnapshotPreview, EnvironmentSnapshotSource, EnvironmentSnapshotSummary, } from './environment';
 declare module 'koishi' {
@@ -34,6 +34,7 @@ declare module '@koishijs/console' {
         'market/install-fallback-candidate'(failedEndpoint?: string): Promise<InstallFallbackCandidate | undefined>;
         'market/install-history'(limit?: number): Promise<InstallHistoryEntry[]>;
         'market/install-history-detail'(id: string): Promise<InstallLogDetail | undefined>;
+        'market/package-history'(name: string, limit?: number): Promise<InstallPackageHistory>;
         'market/local-package-upload-start'(request: LocalPackageUploadStartRequest): Promise<LocalPackageUploadStartResult>;
         'market/local-package-upload-chunk'(request: LocalPackageUploadChunkRequest): Promise<LocalPackageUploadProgress>;
         'market/local-package-upload-finish'(request: LocalPackageUploadFinishRequest): Promise<LocalPackageUploadPreview>;

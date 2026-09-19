@@ -2,7 +2,7 @@ import { Logger } from 'koishi';
 import { type LogLevel } from './market-internals';
 export declare function setLogLevel(level?: LogLevel): void;
 export declare function getLogLevel(): LogLevel;
-export declare function shouldLog(level: LogLevel, configuredLevel?: "silent" | "error" | "warn" | "info" | "debug"): boolean;
+export declare function shouldLog(level: LogLevel, configuredLevel?: "error" | "silent" | "warn" | "info" | "debug"): boolean;
 export interface MarketLogContext {
     scope?: {
         isActive?: boolean;

@@ -61,12 +61,12 @@ export declare const searchSchema: z.ZodObject<{
     includeHidden: z.ZodOptional<z.ZodBoolean>;
     includeDeprecated: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
+    names?: string[];
     sort?: "relevance" | "downloads" | "created" | "updated";
     status?: ("deprecated" | "verified" | "insecure" | "preview" | "portable")[];
     intent?: "search" | "recommend" | "recent" | "popular" | "risk" | "compare";
     query?: string;
     requirements?: string;
-    names?: string[];
     category?: string[];
     createdAfter?: string;
     createdBefore?: string;
@@ -79,12 +79,12 @@ export declare const searchSchema: z.ZodObject<{
     includeHidden?: boolean;
     includeDeprecated?: boolean;
 }, {
+    names?: unknown;
     sort?: "relevance" | "downloads" | "created" | "updated";
     status?: unknown;
     intent?: "search" | "recommend" | "recent" | "popular" | "risk" | "compare";
     query?: string;
     requirements?: string;
-    names?: unknown;
     category?: unknown;
     createdAfter?: string;
     createdBefore?: string;
