@@ -55,6 +55,10 @@ export function setupConsoleListeners(
     return ctx.installer.getInstallLogDetail(id)
   }, { authority: 4 })
 
+  ctx.console.addListener('market/package-history', async (name, limit) => {
+    return ctx.installer.getPackageHistory(name, limit)
+  }, { authority: 4 })
+
   ctx.console.addListener('market/local-package-upload-start', async (request) => {
     return ctx.installer.startLocalPackageUpload(request)
   }, { authority: 4 })

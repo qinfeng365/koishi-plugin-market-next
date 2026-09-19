@@ -47,6 +47,7 @@ import {
   type InstallHistoryEntry,
   type InstallHistoryStatus,
   type InstallLogDetail,
+  type InstallPackageHistory,
 } from './install-history'
 import {
   FULL_RELOAD_DELAY,
@@ -81,6 +82,7 @@ export type {
   InstallHistoryEntry,
   InstallHistoryStatus,
   InstallLogDetail,
+  InstallPackageHistory,
 } from './install-history'
 import { logger } from './logger'
 
@@ -393,6 +395,10 @@ class Installer extends Service {
 
   getInstallLogDetail(id: string) {
     return this.installHistory.getDetail(id)
+  }
+
+  getPackageHistory(name: string, limit = 24): Promise<InstallPackageHistory> {
+    return this.installHistory.getPackageHistory(name, limit)
   }
 
   async getEnvironmentSnapshots(): Promise<EnvironmentSnapshotSummary[]> {

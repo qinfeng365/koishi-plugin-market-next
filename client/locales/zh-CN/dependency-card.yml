@@ -71,6 +71,7 @@ source:
   manual: 手动
   packageJson: package.json
 actions:
+  history: 历史
   update: 更新
   configure: 配置
   ignore: 忽略

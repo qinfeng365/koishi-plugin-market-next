@@ -71,6 +71,7 @@ source:
   manual: Manual
   packageJson: package.json
 actions:
+  history: History
   update: Update
   configure: Configure
   ignore: Ignore

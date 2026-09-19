@@ -42,6 +42,21 @@ export interface InstallLogDetail extends InstallHistoryEntry {
   truncated: boolean
 }
 
+export interface InstallPackageHistoryEntry {
+  id: string
+  startedAt: number
+  finishedAt?: number
+  beforeVersion: string | null
+  afterVersion: string | null
+  forced: boolean
+}
+
+export interface InstallPackageHistory {
+  name: string
+  currentVersion?: string
+  entries: InstallPackageHistoryEntry[]
+}
+
 interface InstallHistoryMetadata {
   version: 1
   id: string
@@ -221,6 +236,42 @@ export class InstallHistoryStore {
       content: sanitizeInstallLogText(result.content),
       truncated: result.truncated,
     } as InstallLogDetail
+  }
+
+  async getPackageHistory(name: string, limit = 24): Promise<InstallPackageHistory> {
+    const normalizedName = typeof name === 'string' ? name.trim() : ''
+    if (!normalizedName) return { name: '', entries: [] }
+    const entries = (await this.getHistory(50))
+      .filter(entry => entry.status === 'success')
+      .flatMap(entry => {
+        const change = entry.changes.find(change => change.name === normalizedName)
+        if (!change) return []
+        const beforeVersion = change.beforeResolved ?? change.beforeRequest ?? null
+        const afterVersion = change.afterResolved ?? change.afterRequest ?? null
+        if (beforeVersion === afterVersion) return []
+        return [{
+          id: entry.id,
+          startedAt: entry.startedAt,
+          finishedAt: entry.finishedAt,
+          beforeVersion,
+          afterVersion,
+          forced: entry.forced,
+        }]
+      })
+      .sort((left, right) => (left.finishedAt ?? left.startedAt) - (right.finishedAt ?? right.startedAt))
+
+    const compact: InstallPackageHistoryEntry[] = []
+    for (const entry of entries) {
+      const previous = compact.at(-1)
+      if (previous && previous.afterVersion === entry.afterVersion) continue
+      compact.push(entry)
+    }
+    const count = clamp(Math.floor(Number(limit) || 24), 1, 50)
+    return {
+      name: normalizedName,
+      currentVersion: this.getResolvedVersion(normalizedName),
+      entries: compact.slice(-count).reverse(),
+    }
   }
 
   private getDirectory() {
