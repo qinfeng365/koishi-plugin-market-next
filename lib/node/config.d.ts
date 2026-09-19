@@ -1,8 +1,10 @@
 import { Context, Dict, Schema } from 'koishi';
 import Installer from './installer';
 import MarketProvider from './market';
+import { type LogLevel } from './market-internals';
 import type { PluginBundleRecord } from '../shared/bundle';
 export interface Config {
+    logLevel?: LogLevel;
     registry?: Installer.Config;
     search?: MarketProvider.Config;
     chatlunaTool?: boolean;

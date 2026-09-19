@@ -82,8 +82,7 @@ export type {
   InstallHistoryStatus,
   InstallLogDetail,
 } from './install-history'
-
-const logger = new Logger('market')
+import { logger } from './logger'
 
 class Installer extends Service {
   private manifest: PackageJson

@@ -1,10 +1,10 @@
 import { Context, Time } from 'koishi'
 import type { Config } from './config'
+import { logger } from './logger'
 
 export function setupIdleProbe(ctx: Context, config: Config) {
   if (config.idleProbe === false) return
 
-  const logger = ctx.logger('market')
   const startedAt = Date.now()
   let timer: ReturnType<typeof setTimeout> | undefined
   let running = false

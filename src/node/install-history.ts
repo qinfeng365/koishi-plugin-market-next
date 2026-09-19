@@ -1,4 +1,4 @@
-import { Context, Dict, Logger, Time } from 'koishi'
+import { Context, Dict, Time } from 'koishi'
 import { basename, resolve } from 'path'
 import { promises as fsp } from 'fs'
 import {
@@ -7,8 +7,7 @@ import {
   type InstallerConfig,
   type InstallOptions,
 } from './installer-types'
-
-const logger = new Logger('market')
+import { logger } from './logger'
 const DEFAULT_INSTALL_LOG_RETENTION = Time.day * 3
 const INSTALL_LOG_DIR = 'market-next-install-logs'
 const INSTALL_LOG_DETAIL_LIMIT = 512 * 1024

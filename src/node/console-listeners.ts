@@ -7,6 +7,7 @@ import { ensurePluginConfig, ensurePluginConfigs, removeBundleConfigs } from './
 import { fetchAvatar } from './avatar'
 import { lookupMarket, MarketSnapshotTransport } from './market-snapshot'
 import type { MarketSnapshotResponse } from '../shared'
+import { logger } from './logger'
 
 const SELF_PACKAGE = 'koishi-plugin-market-next'
 
@@ -134,7 +135,7 @@ export function setupConsoleListeners(
         if (!meta) return
         return [name, meta] as const
       } catch (error) {
-        ctx.logger('market').debug(`skip registry metadata for ${name}: ${error instanceof Error ? error.message : error}`)
+        logger.debug(`skip registry metadata for ${name}: ${error instanceof Error ? error.message : error}`)
       }
     }, { concurrency: ctx.installer.config.concurrency ?? 4 })
     return Object.fromEntries(entries.filter(Boolean))
@@ -148,7 +149,7 @@ export function setupConsoleListeners(
     try {
       return await fetchAvatar(ctx, key, url)
     } catch (error) {
-      ctx.logger('market').debug(`avatar fetch failed: ${error instanceof Error ? error.message : error}`)
+      logger.debug(`avatar fetch failed: ${error instanceof Error ? error.message : error}`)
     }
   }, { authority: 4 })
 }

@@ -4,6 +4,7 @@ import { dirname, resolve } from 'path'
 import { promises as fsp } from 'fs'
 import type { PluginBundleRecord } from '../shared/bundle'
 import type { UpdateIgnoreRule } from '../shared/update'
+import { logger } from './logger'
 
 export type { UpdateIgnoreRule } from '../shared/update'
 
@@ -29,7 +30,7 @@ export async function readMarketDataStore(ctx: Context): Promise<MarketDataStore
     return normalizeStore(JSON.parse(await fsp.readFile(file, 'utf8')))
   } catch (error) {
     if ((error as any)?.code !== 'ENOENT') {
-      ctx.logger('market').warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
+      logger.warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
     }
     return emptyStore()
   }
@@ -132,7 +133,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       this.data = normalizeStore(value)
     } catch (error) {
       if ((error as any)?.code !== 'ENOENT') {
-        this.ctx.logger('market').warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
+        logger.warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
       }
       this.hasCollapsedGroupsState = false
       this.collapsedGroupsVersion = 0
@@ -181,7 +182,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       }, null, 2))
       await fsp.rename(tempFile, this.file)
     } catch (error) {
-      this.ctx.logger('market').warn(`failed to write market-next data store: ${error instanceof Error ? error.message : error}`)
+      logger.warn(`failed to write market-next data store: ${error instanceof Error ? error.message : error}`)
     }
   }
 }

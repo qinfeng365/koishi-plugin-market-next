@@ -20,6 +20,7 @@ import {
   parseBundleManifest,
   validateBundleManifest,
 } from '../shared/bundle'
+import { logger } from './logger'
 
 async function assertNoDirectBundleCycles(ctx: Context, packageName: string, members: BundleInstallMember[]) {
   const bundleName = packageName.toLowerCase()
@@ -35,7 +36,7 @@ async function assertNoDirectBundleCycles(ctx: Context, packageName: string, mem
       throw new Error(`plugin bundle has a direct cycle: ${packageName} <-> ${member.package}`)
     } catch (error) {
       if (error instanceof Error && error.message.includes('direct cycle')) throw error
-      ctx.logger('market').debug(`plugin bundle cycle check skipped: bundle=${packageName}, member=${member.package}, error=${error instanceof Error ? error.message : error}`)
+      logger.debug(`plugin bundle cycle check skipped: bundle=${packageName}, member=${member.package}, error=${error instanceof Error ? error.message : error}`)
     }
   }
 }
@@ -162,7 +163,7 @@ export async function installBundle(ctx: Context, dataStore: MarketDataStore, re
     })),
   }
   if (record) await dataStore.setBundleRecord(record)
-  ctx.logger('market').info(`plugin bundle install completed: bundle=${request.package}, members=${selected.length}, configured=${configured.length}, moved=${moved.length}, skipped=${skipped.length}, code=${code}, elapsed=${Date.now() - start}ms`)
+  logger.info(`plugin bundle install completed: bundle=${request.package}, members=${selected.length}, configured=${configured.length}, moved=${moved.length}, skipped=${skipped.length}, code=${code}, elapsed=${Date.now() - start}ms`)
   return {
     code,
     installed: Object.keys(deps),

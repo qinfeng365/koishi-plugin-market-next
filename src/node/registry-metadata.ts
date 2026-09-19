@@ -1,4 +1,4 @@
-import { Context, Dict, HTTP, Logger, Time } from 'koishi'
+import { Context, Dict, HTTP, Time } from 'koishi'
 import Scanner, { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
 import { satisfies } from 'semver'
 import {
@@ -13,8 +13,7 @@ import {
   type InstallerConfig,
 } from './installer-types'
 import { RegistryRouter } from './registry-router'
-
-const logger = new Logger('market')
+import { logger } from './logger'
 const NOT_FOUND_CACHE_TTL = Time.minute * 5
 
 export class RegistryMetadata {

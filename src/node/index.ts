@@ -1,6 +1,7 @@
 import { Context, Dict } from 'koishi'
 import { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
 import { resolve } from 'path'
+import { logger, setLogLevel } from './logger'
 import { DependencyProvider, RegistryProvider, RegistryStatusProvider } from './deps'
 import { MarketDataStore, MarketDataStorePayload } from './data'
 import Installer, {
@@ -144,15 +145,18 @@ export const usage = `
 // - cnpm：https://r.cnpmjs.org
 
 export function apply(ctx: Context, config: Config = {}) {
+  const effectiveLogLevel = config.logLevel ?? config.search?.logLevel ?? 'warn'
+  setLogLevel(effectiveLogLevel)
+
   if (!ctx.loader?.writable) {
     return ctx.logger('app').warn('koishi-plugin-market-next is only available for json/yaml config file')
   }
 
   if (ensureMarketNextConfigDefaults(ctx, config)) {
-    ctx.logger('market').info('normalized market-next display config in Koishi config')
+    logger.info('normalized market-next display config in Koishi config')
     void ctx.loader.writeConfig(true)
       .then(() => ctx.get('console')?.refresh('config'))
-      .catch(error => ctx.logger('market').warn(error))
+      .catch(error => logger.warn(error))
   }
 
   applyChatLunaTool(ctx, config)
@@ -210,11 +214,11 @@ export function apply(ctx: Context, config: Config = {}) {
           return ctx.loader.writeConfig(true)
             .then(() => ctx.get('console')?.refresh('config'))
         })
-        .catch(error => ctx.logger('market').warn(`failed to migrate market-next data: ${error instanceof Error ? error.message : error}`))
+        .catch(error => logger.warn(`failed to migrate market-next data: ${error instanceof Error ? error.message : error}`))
       const timer = setTimeout(() => {
         if (!ctx.scope.isActive) return
-        ctx.logger('market').debug('schedule installed plugin config repair after market-next ready')
-        void ensureInstalledPluginConfigs(ctx).catch(error => ctx.logger('market').warn(error))
+        logger.debug('schedule installed plugin config repair after market-next ready')
+        void ensureInstalledPluginConfigs(ctx).catch(error => logger.warn(error))
       }, 1000)
       const stopAvatarMaintenance = startAvatarCacheMaintenance(ctx)
       ctx.effect(() => () => {

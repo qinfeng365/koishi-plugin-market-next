@@ -8,6 +8,7 @@ import type {
   MarketProvider,
   MarketSnapshotTransfer,
 } from '../shared'
+import { logger } from './logger'
 
 const gzip = promisify(gzipCallback)
 const MAX_MARKET_SNAPSHOTS = 6
@@ -47,7 +48,7 @@ export class MarketSnapshotTransport {
     const entry = await memo!.task
     this.remember(entry)
     if (reused) {
-      this.ctx.logger('market').debug(`reused console market snapshot: id=${entry.id}, decoded=${entry.decodedSize}, gzip=${entry.encodedSize}`)
+      logger.debug(`reused console market snapshot: id=${entry.id}, decoded=${entry.decodedSize}, gzip=${entry.encodedSize}`)
     }
     const { data: _, ...payload } = snapshot
     return {
@@ -88,7 +89,7 @@ export class MarketSnapshotTransport {
     const body = await gzip(Buffer.from(json), { level: 6 }) as Buffer
     const entry = { id, body, decodedSize, encodedSize: body.length }
     this.remember(entry)
-    this.ctx.logger('market').debug(`prepared console market snapshot: id=${id}, decoded=${decodedSize}, gzip=${body.length}, elapsed=${Date.now() - start}ms`)
+    logger.debug(`prepared console market snapshot: id=${id}, decoded=${decodedSize}, gzip=${body.length}, elapsed=${Date.now() - start}ms`)
     return entry
   }
 
