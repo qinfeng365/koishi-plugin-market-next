@@ -2,6 +2,7 @@ import { Context, Dict } from 'koishi'
 import { DataService } from '@koishijs/console'
 import { dirname, resolve } from 'path'
 import { promises as fsp } from 'fs'
+import { randomUUID } from 'crypto'
 import type { PluginBundleRecord } from '../shared/bundle'
 import type { UpdateIgnoreRule } from '../shared/update'
 import { logger } from './logger'
@@ -40,9 +41,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   private file: string
   private data = emptyStore()
   private ready?: Promise<void>
-  private writeTask?: Promise<void>
-  private writeTimer?: NodeJS.Timeout
-  private writePending = false
+  private mutationTask: Promise<void> = Promise.resolve()
   private hasCollapsedGroupsState = false
   private collapsedGroupsVersion = 0
 
@@ -50,40 +49,57 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     super(ctx, 'marketData', { immediate: true, authority: 4 })
     this.file = resolve(ctx.baseDir, 'data', 'market-next.json')
     this.ready = this.load()
-    ctx.effect(() => () => {
-      if (this.writeTimer) clearTimeout(this.writeTimer)
-      void this.ready?.then(() => this.write())
-    })
   }
 
   async get() {
     await this.ready
+    await this.mutationTask
     return this.snapshot()
   }
 
   async patch(patch: Partial<MarketDataStorePayload>) {
     await this.ready
-    let changed = false
-    for (const key of ['override', 'updateIgnored', 'bundleRecords', 'collapsedGroups'] as const) {
-      if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
-      this.data[key] = normalizeDict(patch[key])
-      if (key === 'collapsedGroups') this.hasCollapsedGroupsState = true
-      changed = true
-    }
-    if (!changed) return this.snapshot()
-    this.scheduleWrite()
-    super.patch(this.snapshot())
-    return this.snapshot()
+    return this.queueMutation(async () => {
+      const previous = this.data
+      const previousCollapsedState = this.hasCollapsedGroupsState
+      const next = this.snapshot()
+      let changed = false
+      for (const key of ['override', 'updateIgnored', 'bundleRecords', 'collapsedGroups'] as const) {
+        if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
+        next[key] = normalizeDict(patch[key])
+        if (key === 'collapsedGroups') this.hasCollapsedGroupsState = true
+        changed = true
+      }
+      if (!changed) return this.snapshot()
+      this.data = next
+      try {
+        await this.write()
+      } catch (error) {
+        this.data = previous
+        this.hasCollapsedGroupsState = previousCollapsedState
+        throw error
+      }
+      super.patch(this.snapshot())
+      return this.snapshot()
+    })
   }
 
   async setBundleRecord(record: PluginBundleRecord) {
     await this.ready
-    this.data.bundleRecords ||= {}
-    this.data.bundleRecords[record.package] = record
-    const snapshot = this.snapshot()
-    super.patch(snapshot)
-    await this.flushWriteNow()
-    return snapshot
+    return this.queueMutation(async () => {
+      const previous = this.data
+      this.data = this.snapshot()
+      this.data.bundleRecords[record.package] = record
+      try {
+        await this.write()
+      } catch (error) {
+        this.data = previous
+        throw error
+      }
+      const snapshot = this.snapshot()
+      super.patch(snapshot)
+      return snapshot
+    })
   }
 
   async migrateFromConfig(config: {
@@ -93,6 +109,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   }) {
     await this.ready
     const patch: Partial<MarketDataStorePayload> = {}
+    const previousVersion = this.collapsedGroupsVersion
     const migrateCollapsedGroups = this.collapsedGroupsVersion < COLLAPSED_GROUPS_VERSION
     if (!Object.keys(this.data.updateIgnored).length && Object.keys(config.updateIgnored ?? {}).length) {
       patch.updateIgnored = config.updateIgnored
@@ -109,8 +126,12 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       patch.collapsedGroups = collapsedGroups
       this.collapsedGroupsVersion = COLLAPSED_GROUPS_VERSION
     }
-    if (Object.keys(patch).length) await this.patch(patch)
-    if (migrateCollapsedGroups) await this.flushWriteNow()
+    try {
+      if (Object.keys(patch).length) await this.patch(patch)
+    } catch (error) {
+      this.collapsedGroupsVersion = previousVersion
+      throw error
+    }
   }
 
   private snapshot(): MarketDataStorePayload {
@@ -141,48 +162,25 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     }
   }
 
-  private scheduleWrite() {
-    if (this.writeTimer) clearTimeout(this.writeTimer)
-    this.writeTimer = setTimeout(() => {
-      this.writeTimer = undefined
-      this.flushWrite()
-    }, 0)
-  }
-
-  private flushWrite() {
-    if (this.writeTask) {
-      this.writePending = true
-      return
-    }
-    this.writeTask = this.write().finally(() => {
-      this.writeTask = undefined
-      if (!this.writePending) return
-      this.writePending = false
-      this.flushWrite()
-    })
-  }
-
-  private async flushWriteNow() {
-    if (this.writeTimer) {
-      clearTimeout(this.writeTimer)
-      this.writeTimer = undefined
-    }
-    if (this.writeTask) await this.writeTask
-    this.writePending = false
-    await this.write()
+  private queueMutation<T>(action: () => Promise<T>): Promise<T> {
+    const result = this.mutationTask.then(action)
+    this.mutationTask = result.then(() => {}, () => {})
+    return result
   }
 
   private async write() {
+    const tempFile = `${this.file}.${process.pid}.${randomUUID()}.tmp`
     try {
       await fsp.mkdir(dirname(this.file), { recursive: true })
-      const tempFile = `${this.file}.${process.pid}.${Date.now()}.tmp`
       await fsp.writeFile(tempFile, JSON.stringify({
         ...this.data,
         collapsedGroupsVersion: this.collapsedGroupsVersion,
       }, null, 2))
       await fsp.rename(tempFile, this.file)
     } catch (error) {
+      await fsp.rm(tempFile, { force: true }).catch(() => {})
       logger.warn(`failed to write market-next data store: ${error instanceof Error ? error.message : error}`)
+      throw error
     }
   }
 }

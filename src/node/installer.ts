@@ -648,7 +648,16 @@ class Installer extends Service {
       }
       if (beforeReload) {
         logger.debug('run pre-reload dependency hook')
-        await beforeReload()
+        try {
+          await beforeReload()
+        } catch (error) {
+          await this.refreshData().catch((refreshError) => logger.warn(`failed to refresh after pre-reload hook error: ${refreshError}`))
+          await this.recordCurrentEnvironmentSnapshot('operation', this.installHistory.currentId).catch((snapshotError) => {
+            logger.warn(`failed to record dependency environment after hook error: ${snapshotError}`)
+          })
+          const reason = error instanceof Error ? error.message : String(error)
+          throw new Error(`依赖变更已生效，但插件配置写入失败：${reason}。请检查配置后重载插件；无需更换 npm 源。`)
+        }
       }
       await this.refreshData()
       await this.recordCurrentEnvironmentSnapshot('operation', this.installHistory.currentId).catch((error) => {
