@@ -2,7 +2,26 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { getRegistryAttemptReasons } from '../src/shared/dependency-source.ts'
-import { RegistryRouter, resolveRegistryEndpoint } from '../src/node/registry-router.ts'
+import { readPackageManagerRegistry, RegistryRouter, resolveRegistryEndpoint } from '../src/node/registry-router.ts'
+
+test('reads the package manager registry with a bounded command timeout', async () => {
+  let command
+  const endpoint = await readPackageManagerRegistry({ cwd: '/koishi' }, async (name, args, options) => {
+    command = { name, args, options }
+    return { exitCode: 0, stdout: ' https://example.org/npm/\n' }
+  })
+  assert.equal(endpoint, 'https://example.org/npm/')
+  assert.deepEqual(command.args, ['config', 'get', 'registry'])
+  assert.equal(command.options.cwd, '/koishi')
+  assert.equal(command.options.timeout, 3000)
+})
+
+test('failed package manager registry command is surfaced for fallback handling', async () => {
+  await assert.rejects(
+    readPackageManagerRegistry({ cwd: '/koishi' }, async () => ({ exitCode: 1, stdout: '' })),
+    /code 1/,
+  )
+})
 
 test('blank endpoint reads the registry from the Koishi instance directory', async () => {
   let readCwd

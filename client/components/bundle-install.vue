@@ -669,6 +669,11 @@ async function confirmInstall() {
         reportInstallError(t('bundle.messages.disconnected'))
         return undefined
       }
+      if (!result) {
+        installProgressState.status = 'error'
+        reportInstallError(t('bundle.messages.disconnected'))
+        return undefined
+      }
       if (result?.code) {
         installProgressState.status = 'error'
         reportInstallError(t('bundle.messages.exitCode', { code: result.code }))

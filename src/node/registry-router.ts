@@ -1,8 +1,9 @@
 import { Context, Dict, HTTP, Time } from 'koishi'
 import type { Registry } from '@koishijs/registry'
+import execa from 'execa'
 import { promises as fsp } from 'fs'
 import { resolve } from 'path'
-import getRegistry from 'get-registry'
+import which from 'which-pm-runs'
 import {
   shouldPenalizeRegistryRoute,
   type RegistryStatus,
@@ -23,6 +24,7 @@ const REGISTRY_FALLBACK_ENDPOINTS = [
 const REGISTRY_ROUTE_STAGGER = 120
 const REGISTRY_FAST_ROUTE_THRESHOLD = Time.second * 0.8
 const REGISTRY_STATS_TTL = Time.day * 30
+const REGISTRY_DETECTION_TIMEOUT = Time.second * 3
 const DEFAULT_REGISTRY_ENDPOINT = 'https://registry.npmjs.org'
 
 function isRegistryEndpoint(value: string | undefined): value is string {
@@ -37,7 +39,7 @@ function isRegistryEndpoint(value: string | undefined): value is string {
 export async function resolveRegistryEndpoint(
   configured: string | undefined,
   cwd: string,
-  readRegistry: (options: { cwd: string }) => Promise<string | undefined> = getRegistry,
+  readRegistry: (options: { cwd: string }) => Promise<string | undefined> = readPackageManagerRegistry,
 ): Promise<string> {
   if (configured?.trim()) return configured.trim()
 
@@ -54,6 +56,38 @@ export async function resolveRegistryEndpoint(
   const fallback = environment?.trim() || DEFAULT_REGISTRY_ENDPOINT
   logger.warn(`failed to read package manager registry (${failure}); using ${environment ? 'npm registry environment variable' : 'official npm registry'} for npm metadata`)
   return fallback
+}
+
+interface RegistryCommandResult {
+  exitCode?: number
+  stdout?: string
+}
+
+type RegistryCommand = (
+  name: string,
+  args: string[],
+  options: { cwd: string, timeout: number },
+) => Promise<RegistryCommandResult>
+
+export async function readPackageManagerRegistry(
+  options: { cwd: string },
+  run: RegistryCommand = (name, args, commandOptions) => execa(name, args, {
+    ...commandOptions,
+    reject: false,
+  }),
+) {
+  const agent = which()
+  const key = agent?.name === 'yarn' && !agent.version.startsWith('1.')
+    ? 'npmRegistryServer'
+    : 'registry'
+  let name = agent?.name || 'npm'
+  if (name === 'deno') name = 'npm'
+  const result = await run(name, ['config', 'get', key], {
+    cwd: options.cwd,
+    timeout: REGISTRY_DETECTION_TIMEOUT,
+  })
+  if (result.exitCode) throw new Error(`package manager exited with code ${result.exitCode}`)
+  return result.stdout?.trim() || undefined
 }
 
 export interface RegistryEndpointResult {
