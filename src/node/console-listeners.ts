@@ -17,7 +17,18 @@ export function setupConsoleListeners(
   dataStore: MarketDataStore,
   marketSnapshotTransport: MarketSnapshotTransport,
 ) {
-  ctx.console.addListener('market/install', async (deps, forced, options) => {
+  const registered = new Map<string, unknown>()
+  const addListener: typeof ctx.console.addListener = (event, callback, options) => {
+    ctx.console.addListener(event, callback, options)
+    registered.set(event, ctx.console.listeners[event])
+  }
+  ctx.on('dispose', () => {
+    for (const [event, listener] of registered) {
+      if (ctx.console?.listeners[event] === listener) delete ctx.console.listeners[event]
+    }
+  })
+
+  addListener('market/install', async (deps, forced, options) => {
     options ||= {}
     const installNames = Object.entries(deps)
       .filter(([, version]) => version)
@@ -38,60 +49,60 @@ export function setupConsoleListeners(
     return code
   }, { authority: 4 })
 
-  ctx.console.addListener('market/install-bundle', async (request, forced, options) => {
+  addListener('market/install-bundle', async (request, forced, options) => {
     options ||= {}
     return installBundle(ctx, dataStore, request, forced, options)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/install-fallback-candidate', async (failedEndpoint) => {
+  addListener('market/install-fallback-candidate', async (failedEndpoint) => {
     return ctx.installer.getInstallFallbackCandidate(failedEndpoint)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/install-history', async (limit) => {
+  addListener('market/install-history', async (limit) => {
     return ctx.installer.getInstallHistory(limit)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/install-history-detail', async (id) => {
+  addListener('market/install-history-detail', async (id) => {
     return ctx.installer.getInstallLogDetail(id)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/package-history', async (name, limit) => {
+  addListener('market/package-history', async (name, limit) => {
     return ctx.installer.getPackageHistory(name, limit)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/local-package-upload-start', async (request) => {
+  addListener('market/local-package-upload-start', async (request) => {
     return ctx.installer.startLocalPackageUpload(request)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/local-package-upload-chunk', async (request) => {
+  addListener('market/local-package-upload-chunk', async (request) => {
     return ctx.installer.appendLocalPackageUpload(request)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/local-package-upload-finish', async (request) => {
+  addListener('market/local-package-upload-finish', async (request) => {
     return ctx.installer.finishLocalPackageUpload(request)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/local-package-upload-commit', async (uploadId) => {
+  addListener('market/local-package-upload-commit', async (uploadId) => {
     return ctx.installer.commitLocalPackageUpload(uploadId)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/local-package-upload-cancel', async (uploadId) => {
+  addListener('market/local-package-upload-cancel', async (uploadId) => {
     return ctx.installer.cancelLocalPackageUpload(uploadId)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/prepare-local-binding', async (name) => {
+  addListener('market/prepare-local-binding', async (name) => {
     return ctx.installer.prepareLocalBinding(name)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/environment-snapshots', async () => {
+  addListener('market/environment-snapshots', async () => {
     return ctx.installer.getEnvironmentSnapshots()
   }, { authority: 4 })
 
-  ctx.console.addListener('market/environment-snapshot-preview', async (id) => {
+  addListener('market/environment-snapshot-preview', async (id) => {
     return ctx.installer.getEnvironmentSnapshotPreview(id)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/environment-snapshot-apply', async (id, options) => {
+  addListener('market/environment-snapshot-apply', async (id, options) => {
     const code = await ctx.installer.applyEnvironmentSnapshot(id, options)
     await Promise.all([
       ctx.get('console')?.refresh('dependencies'),
@@ -101,38 +112,38 @@ export function setupConsoleListeners(
     return code
   }, { authority: 4 })
 
-  ctx.console.addListener('market/remove-bundle-configs', async (request) => {
+  addListener('market/remove-bundle-configs', async (request) => {
     return removeBundleConfigs(ctx, request)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/update-config', async (patch) => {
+  addListener('market/update-config', async (patch) => {
     return updateMarketNextConfig(ctx, config, patch)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/update-data', async (patch) => {
+  addListener('market/update-data', async (patch) => {
     return dataStore.patch(patch)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/refresh-dependencies', async () => {
+  addListener('market/refresh-dependencies', async () => {
     await ctx.installer.refresh(true)
     await ctx.get('console')?.refresh('config')
   }, { authority: 4 })
 
-  ctx.console.addListener('market/package', async (name) => {
+  addListener('market/package', async (name) => {
     return ctx.installer.getRegistry(name)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/index', async (request) => {
+  addListener('market/index', async (request) => {
     const snapshot = await ctx.console.services.market?.getSnapshot?.()
     if (!snapshot || request?.transport !== 'http-gzip') return snapshot as MarketSnapshotResponse
     return marketSnapshotTransport.create(snapshot)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/lookup', async (request) => {
+  addListener('market/lookup', async (request) => {
     return lookupMarket(ctx.console.services.market, request)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/registry', async (names) => {
+  addListener('market/registry', async (names) => {
     const entries = await pMap(names, async (name) => {
       try {
         const meta = await ctx.installer.getPackage(name)
@@ -145,11 +156,11 @@ export function setupConsoleListeners(
     return Object.fromEntries(entries.filter(Boolean))
   }, { authority: 4 })
 
-  ctx.console.addListener('market/ensure-config', async (name) => {
+  addListener('market/ensure-config', async (name) => {
     return ensurePluginConfig(ctx, name)
   }, { authority: 4 })
 
-  ctx.console.addListener('market/avatar', async (key, url) => {
+  addListener('market/avatar', async (key, url) => {
     try {
       return await fetchAvatar(ctx, key, url)
     } catch (error) {

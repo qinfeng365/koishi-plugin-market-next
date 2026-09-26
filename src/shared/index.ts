@@ -107,7 +107,10 @@ export abstract class MarketProvider extends DataService<MarketProvider.Payload>
     ctx.console.addListener('market/refresh', async () => {
       await this.start(true)
     }, { authority: 4 })
-
+    const listener = ctx.console.listeners['market/refresh']
+    ctx.on('dispose', () => {
+      if (ctx.console?.listeners['market/refresh'] === listener) delete ctx.console.listeners['market/refresh']
+    })
   }
 
   async start(refresh = false): Promise<void> {

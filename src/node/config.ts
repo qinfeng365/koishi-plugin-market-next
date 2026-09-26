@@ -159,24 +159,24 @@ const configReloadKeys = new Set<keyof Config>([
 ])
 
 function findMarketNextConfigNode(plugins: any, currentConfig: Config): { parent: any, key: string, value: any } | undefined {
-  let fallback: { parent: any, key: string, value: any } | undefined
-  for (const key in plugins || {}) {
-    if (key.startsWith('$')) continue
-    const value = plugins[key]
-    if (!value || typeof value !== 'object') continue
-    const disabled = key.startsWith('~')
-    const normalized = disabled ? key.slice(1) : key
-    const [name] = normalized.split(':', 1)
-    if (value === currentConfig || name === 'market-next' || name === 'koishi-plugin-market-next') {
-      if (!disabled) return { parent: plugins, key, value }
-      fallback ||= { parent: plugins, key, value }
-    }
-    if (name === 'group') {
-      const nested = findMarketNextConfigNode(value, currentConfig)
-      if (nested) return nested
+  let best: { parent: any, key: string, value: any, priority: number } | undefined
+  const visit = (nodes: any, parentDisabled = false) => {
+    for (const key of Object.keys(nodes || {})) {
+      if (key.startsWith('$')) continue
+      const value = nodes[key]
+      if (!value || typeof value !== 'object') continue
+      const disabled = parentDisabled || key.startsWith('~')
+      const [name] = (key.startsWith('~') ? key.slice(1) : key).split(':', 1)
+      const named = name === 'market-next' || name === 'koishi-plugin-market-next'
+      if (value === currentConfig || named) {
+        const priority = (disabled ? 0 : 2) + (value === currentConfig ? 2 : 1)
+        if (!best || priority > best.priority) best = { parent: nodes, key, value, priority }
+      }
+      if (name === 'group') visit(value, disabled)
     }
   }
-  return fallback
+  visit(plugins)
+  return best
 }
 
 export function ensureMarketNextConfigDefaults(ctx: Context, currentConfig: Config) {
