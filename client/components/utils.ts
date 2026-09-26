@@ -313,6 +313,11 @@ export async function prepareInstallFallbackRetry(run: (options?: InstallOptions
         installProgressState.status = 'error'
         pushInstallLog(translate('operations.progress.fallbackFailed', { code }), 'stderr')
       }
+    } catch (error) {
+      const detail = formatInstallError(error)
+      installProgressState.status = 'error'
+      pushInstallLog(translate('operations.progress.requestFailed', { detail }), 'stderr')
+      message.error(translate('operations.progress.installError') + (detail ? ` ${detail}` : ''))
     } finally {
       installProgressState.fallbackRunning = false
       installProgressState.retryFallback = undefined

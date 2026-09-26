@@ -2,7 +2,27 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { getRegistryAttemptReasons } from '../src/shared/dependency-source.ts'
+import { RegistryMetadata } from '../src/node/registry-metadata.ts'
 import { readPackageManagerRegistry, RegistryRouter, resolveRegistryEndpoint } from '../src/node/registry-router.ts'
+
+test('refresh and new package metadata clear cached registry not-found results', async () => {
+  const ctx = {
+    baseDir: process.cwd(),
+    scope: { isActive: true },
+    get: () => undefined,
+    throttle: callback => callback,
+    http: { extend: () => ({}) },
+  }
+  const metadata = new RegistryMetadata(ctx, { endpoint: 'https://registry.npmjs.org' })
+  metadata.notFoundCache.example = Date.now()
+  assert.equal(metadata.hasRecentNotFound('example'), true)
+  metadata.setPackage('example', [{ version: '1.0.0' }])
+  assert.equal(metadata.hasRecentNotFound('example'), false)
+  metadata.notFoundCache.example = Date.now()
+  await metadata.reset('test refresh')
+  assert.equal(metadata.hasRecentNotFound('example'), false)
+  metadata.dispose()
+})
 
 test('reads the package manager registry with a bounded command timeout', async () => {
   let command

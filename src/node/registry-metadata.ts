@@ -73,6 +73,7 @@ export class RegistryMetadata {
     this.pkgTasks = {}
     this.fullCache = {}
     this.tempCache = {}
+    this.notFoundCache = {}
     this.clearRegistryStatus()
   }
 
@@ -186,6 +187,7 @@ export class RegistryMetadata {
   }
 
   setPackage(name: string, versions: RemotePackage[]) {
+    delete this.notFoundCache[name]
     this.fullCache[name] = this.tempCache[name] = getVersions(versions)
     this.flushData()
     this.pkgTasks[name] = Promise.resolve(this.fullCache[name])
