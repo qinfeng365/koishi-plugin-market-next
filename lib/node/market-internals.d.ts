@@ -9,6 +9,7 @@ export declare const MARKET_GENERATION_TOLERANCE: number;
 export declare const MAX_CACHE_ENTRIES = 3;
 export declare const CACHE_ENTRY_TTL: number;
 export declare const logLevels: readonly ["silent", "error", "warn", "info", "debug"];
+export declare function isValidMarketIndex(result: SearchResult | undefined): result is SearchResult;
 export type LogLevel = typeof logLevels[number];
 export type MarketSource = NonNullable<MarketPerformance['source']>;
 export interface MarketProviderConfig {

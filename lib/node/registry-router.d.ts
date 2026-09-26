@@ -5,6 +5,17 @@ import { type InstallFallbackCandidate, type InstallerConfig } from './installer
 export declare function resolveRegistryEndpoint(configured: string | undefined, cwd: string, readRegistry?: (options: {
     cwd: string;
 }) => Promise<string | undefined>): Promise<string>;
+interface RegistryCommandResult {
+    exitCode?: number;
+    stdout?: string;
+}
+type RegistryCommand = (name: string, args: string[], options: {
+    cwd: string;
+    timeout: number;
+}) => Promise<RegistryCommandResult>;
+export declare function readPackageManagerRegistry(options: {
+    cwd: string;
+}, run?: RegistryCommand): Promise<string>;
 export interface RegistryEndpointResult {
     endpoint: string;
     registry: Registry;

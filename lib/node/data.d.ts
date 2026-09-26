@@ -15,9 +15,7 @@ export declare class MarketDataStore extends DataService<MarketDataStorePayload>
     private file;
     private data;
     private ready?;
-    private writeTask?;
-    private writeTimer?;
-    private writePending;
+    private mutationTask;
     private hasCollapsedGroupsState;
     private collapsedGroupsVersion;
     constructor(ctx: Context);
@@ -31,8 +29,6 @@ export declare class MarketDataStore extends DataService<MarketDataStorePayload>
     }): Promise<void>;
     private snapshot;
     private load;
-    private scheduleWrite;
-    private flushWrite;
-    private flushWriteNow;
+    private queueMutation;
     private write;
 }

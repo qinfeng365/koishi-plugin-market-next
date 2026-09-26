@@ -10,6 +10,6 @@ Scope: issues found in the 2026-09-26 read-only review. Each commit contains two
 | 4 | Validate npm metadata entries; serialize local upload chunks | Done | Pair 4 commit |
 | 5 | Select active market-next config node; dispose Console listeners | Done | Pair 5 commit |
 | 6 | Acknowledge data-store writes only after persistence; distinguish post-install hook failure from package-manager failure | Done | Pair 6 commit |
-| 7 | Batch market lookups within server limits; additional confirmed functional fix | Pending | - |
+| 7 | Batch market lookups within server limits; roll back failed optimistic saves | Done | Pair 7 commit |
 
 Final verification: focused tests per pair, full build, `npm run test:dependency-source`, `npm run check:package`, and `npm pack --dry-run`.

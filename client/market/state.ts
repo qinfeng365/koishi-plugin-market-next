@@ -30,6 +30,9 @@ const requestedMarketServices = new Set<string>()
 const snapshotSuperseded = new Error('market snapshot superseded')
 const snapshotRetryLimit = new Error('market snapshot changed too frequently')
 const MAX_SNAPSHOT_SUPERSEDED_RETRIES = 3
+const LOOKUP_NAME_LIMIT = 512
+const LOOKUP_SERVICE_LIMIT = 128
+const LOOKUP_CONCURRENCY = 3
 
 function getSummaryKey(value: Partial<MarketProvider.Payload> | undefined) {
   if (!value) return ''
@@ -227,7 +230,7 @@ function collectServiceProviders(data: MarketSnapshot['data'], services: string[
   return result
 }
 
-async function loadMarketLookup(request: MarketLookupRequest, force = false) {
+async function loadMarketLookup(request: MarketLookupRequest, force = false, retries = 0) {
   const names = normalizeLookupValues(request.names ?? [])
   const services = normalizeLookupValues(request.services ?? [])
   if (!names.length && !services.length) return
@@ -263,11 +266,32 @@ async function loadMarketLookup(request: MarketLookupRequest, force = false) {
   const generation = lookupGeneration
   let superseded = false
   const task = (async () => {
-    const response = await send('market/lookup', {
-      names: pendingNames,
-      services: pendingServices,
-    }) as MarketLookupResult | undefined
-    if (!response || generation !== lookupGeneration) return
+    const batchCount = Math.max(
+      Math.ceil(pendingNames.length / LOOKUP_NAME_LIMIT),
+      Math.ceil(pendingServices.length / LOOKUP_SERVICE_LIMIT),
+    )
+    const responses: Array<MarketLookupResult | undefined> = new Array(batchCount)
+    let nextBatch = 0
+    await Promise.all(Array.from({ length: Math.min(batchCount, LOOKUP_CONCURRENCY) }, async () => {
+      while (nextBatch < batchCount) {
+        const index = nextBatch++
+        responses[index] = await send('market/lookup', {
+          names: pendingNames.slice(index * LOOKUP_NAME_LIMIT, (index + 1) * LOOKUP_NAME_LIMIT),
+          services: pendingServices.slice(index * LOOKUP_SERVICE_LIMIT, (index + 1) * LOOKUP_SERVICE_LIMIT),
+        }) as MarketLookupResult | undefined
+      }
+    }))
+    if (responses.some(response => !response) || generation !== lookupGeneration) return
+    const versions = new Set(responses.map(response => response!.dataVersion).filter(version => version != null))
+    if (versions.size > 1) {
+      superseded = true
+      return
+    }
+    const response: MarketLookupResult = {
+      data: Object.assign({}, ...responses.map(item => item!.data)),
+      services: Object.assign({}, ...responses.map(item => item!.services)),
+      dataVersion: versions.values().next().value,
+    }
     const latestVersion = store.market?.dataVersion
     if (latestVersion != null && response.dataVersion != null && latestVersion > response.dataVersion) {
       superseded = true
@@ -290,7 +314,10 @@ async function loadMarketLookup(request: MarketLookupRequest, force = false) {
   })
   lookupTasks.set(key, task)
   await task
-  if (superseded) return loadMarketLookup({ names: pendingNames, services: pendingServices }, true)
+  if (superseded) {
+    if (retries >= MAX_SNAPSHOT_SUPERSEDED_RETRIES) throw snapshotRetryLimit
+    return loadMarketLookup({ names: pendingNames, services: pendingServices }, true, retries + 1)
+  }
 }
 
 receive('market/patch', (value: Partial<MarketProvider.Payload>) => {

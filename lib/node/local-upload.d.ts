@@ -65,6 +65,7 @@ export declare class LocalPackageUploadStore {
     pruneExpired(now?: number): Promise<void>;
     dispose(): Promise<void>;
     private getSession;
+    private runSession;
     private closeHandle;
     private removeSession;
 }

@@ -48,7 +48,7 @@ export declare const searchSchema: z.ZodObject<{
     requirements: z.ZodOptional<z.ZodString>;
     names: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodString, "many">>, string[], unknown>;
     category: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodString, "many">>, string[], unknown>;
-    status: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodEnum<["verified", "insecure", "preview", "portable", "deprecated"]>, "many">>, ("deprecated" | "verified" | "insecure" | "preview" | "portable")[], unknown>;
+    status: z.ZodEffects<z.ZodOptional<z.ZodArray<z.ZodEnum<["verified", "insecure", "preview", "portable", "deprecated"]>, "many">>, ("deprecated" | "preview" | "insecure" | "verified" | "portable")[], unknown>;
     createdAfter: z.ZodOptional<z.ZodString>;
     createdBefore: z.ZodOptional<z.ZodString>;
     updatedAfter: z.ZodOptional<z.ZodString>;
@@ -62,8 +62,8 @@ export declare const searchSchema: z.ZodObject<{
     includeDeprecated: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
     names?: string[];
-    sort?: "relevance" | "downloads" | "created" | "updated";
-    status?: ("deprecated" | "verified" | "insecure" | "preview" | "portable")[];
+    sort?: "created" | "updated" | "relevance" | "downloads";
+    status?: ("deprecated" | "preview" | "insecure" | "verified" | "portable")[];
     intent?: "search" | "recommend" | "recent" | "popular" | "risk" | "compare";
     query?: string;
     requirements?: string;
@@ -80,7 +80,7 @@ export declare const searchSchema: z.ZodObject<{
     includeDeprecated?: boolean;
 }, {
     names?: unknown;
-    sort?: "relevance" | "downloads" | "created" | "updated";
+    sort?: "created" | "updated" | "relevance" | "downloads";
     status?: unknown;
     intent?: "search" | "recommend" | "recent" | "popular" | "risk" | "compare";
     query?: string;

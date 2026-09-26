@@ -1,4 +1,4 @@
-import { reactive, ref } from 'vue'
+import { reactive, ref, toRaw } from 'vue'
 import { send, store } from '@koishijs/client'
 import { gt } from 'semver'
 import { translate } from './i18n'
@@ -301,12 +301,53 @@ export function getWritableBundleRecords(fallback?: { market?: { bundleRecords?:
   return data.bundleRecords
 }
 
+const configPatchRevisions = new Map<string, number>()
+const dataPatchRevisions = new Map<string, number>()
+let configWriteTask: Promise<void> = Promise.resolve()
+let dataWriteTask: Promise<void> = Promise.resolve()
+
+function applyOptimisticPatch(target: Record<string, any> | undefined, patch: Record<string, any>, revisions: Map<string, number>) {
+  if (!target) return (_response?: Record<string, any>) => {}
+  const previous = Object.fromEntries(Object.keys(patch).map(key => [key, {
+    existed: hasOwn(target, key),
+    value: target[key],
+    revision: (revisions.get(key) ?? 0) + 1,
+  }])) as Record<string, { existed: boolean, value: any, revision: number }>
+  for (const key of Object.keys(patch)) {
+    revisions.set(key, previous[key].revision)
+    target[key] = patch[key]
+  }
+  return (response?: Record<string, any>) => {
+    for (const key of Object.keys(patch)) {
+      const old = previous[key]
+      if (revisions.get(key) !== old.revision || !Object.is(toRaw(target[key]), toRaw(patch[key]))) continue
+      if (response) {
+        if (hasOwn(response, key)) target[key] = response[key]
+      } else if (old.existed) {
+        target[key] = old.value
+      } else {
+        delete target[key]
+      }
+    }
+  }
+}
+
+function queueMarketWrite<T>(previous: Promise<void>, run: () => Promise<T>) {
+  const task = previous.then(run)
+  return { task, settled: task.then(() => {}, () => {}) }
+}
+
 export function patchMarketNextConfig(patch: Partial<MarketNextConfigPatch>) {
   const pluginConfig = getMarketNextConfig()
-  if (pluginConfig) Object.assign(pluginConfig, patch)
-  const task = send('market/update-config', patch)
-  if (!task) return Promise.resolve(false)
-  return task.catch((error) => {
+  const settle = applyOptimisticPatch(pluginConfig, patch, configPatchRevisions)
+  const queued = queueMarketWrite(configWriteTask, async () => {
+    const saved = await send('market/update-config', patch)
+    if (saved !== true) throw new Error('market-next config write was not acknowledged')
+    return true
+  })
+  configWriteTask = queued.settled
+  return queued.task.catch((error) => {
+    settle()
     console.error(error)
     return false
   })
@@ -314,13 +355,18 @@ export function patchMarketNextConfig(patch: Partial<MarketNextConfigPatch>) {
 
 export function patchMarketNextData(patch: Partial<MarketNextDataStore>) {
   const data = getMarketDataStore()
-  Object.assign(data, patch)
-  const task = send('market/update-data', patch)
-  if (!task) return Promise.resolve(false)
-  return task.then((next: MarketNextDataStore) => {
-    Object.assign(data, next)
+  const settle = applyOptimisticPatch(data, patch, dataPatchRevisions)
+  const queued = queueMarketWrite(dataWriteTask, async () => {
+    const next = await send('market/update-data', patch) as MarketNextDataStore | undefined
+    if (!next || typeof next !== 'object') throw new Error('market-next data write was not acknowledged')
+    return next
+  })
+  dataWriteTask = queued.settled
+  return queued.task.then((next) => {
+    settle(next)
     return true
   }).catch((error) => {
+    settle()
     console.error(error)
     return false
   })
