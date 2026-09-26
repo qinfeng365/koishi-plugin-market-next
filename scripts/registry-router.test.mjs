@@ -2,7 +2,54 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { getRegistryAttemptReasons } from '../src/shared/dependency-source.ts'
-import { RegistryRouter } from '../src/node/registry-router.ts'
+import { RegistryRouter, resolveRegistryEndpoint } from '../src/node/registry-router.ts'
+
+test('blank endpoint reads the registry from the Koishi instance directory', async () => {
+  let readCwd
+  const endpoint = await resolveRegistryEndpoint('', '/koishi', async ({ cwd }) => {
+    readCwd = cwd
+    return 'https://example.org/npm/'
+  })
+  assert.equal(readCwd, '/koishi')
+  assert.equal(endpoint, 'https://example.org/npm/')
+})
+
+test('explicit endpoint does not invoke package manager config', async () => {
+  const endpoint = await resolveRegistryEndpoint('https://custom.example', '/koishi', async () => {
+    throw new Error('should not be called')
+  })
+  assert.equal(endpoint, 'https://custom.example')
+})
+
+test('failed package manager config uses the npm registry environment variable', async () => {
+  const previous = process.env.npm_config_registry
+  process.env.npm_config_registry = 'https://env.example/npm/'
+  try {
+    const endpoint = await resolveRegistryEndpoint('', '/koishi', async () => {
+      throw new Error('child process exited with code 1')
+    })
+    assert.equal(endpoint, 'https://env.example/npm/')
+  } finally {
+    if (previous === undefined) delete process.env.npm_config_registry
+    else process.env.npm_config_registry = previous
+  }
+})
+
+test('invalid package manager config falls back to the official registry', async () => {
+  const previousLower = process.env.npm_config_registry
+  const previousUpper = process.env.NPM_CONFIG_REGISTRY
+  delete process.env.npm_config_registry
+  delete process.env.NPM_CONFIG_REGISTRY
+  try {
+    const endpoint = await resolveRegistryEndpoint('', '/koishi', async () => 'undefined')
+    assert.equal(endpoint, 'https://registry.npmjs.org')
+  } finally {
+    if (previousLower === undefined) delete process.env.npm_config_registry
+    else process.env.npm_config_registry = previousLower
+    if (previousUpper === undefined) delete process.env.NPM_CONFIG_REGISTRY
+    else process.env.NPM_CONFIG_REGISTRY = previousUpper
+  }
+})
 
 function wait(delay, signal) {
   return new Promise((resolve, reject) => {

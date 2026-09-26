@@ -2,6 +2,9 @@ import { Context, HTTP } from 'koishi';
 import type { Registry } from '@koishijs/registry';
 import { type RegistryStatus } from '../shared';
 import { type InstallFallbackCandidate, type InstallerConfig } from './installer-types';
+export declare function resolveRegistryEndpoint(configured: string | undefined, cwd: string, readRegistry?: (options: {
+    cwd: string;
+}) => Promise<string | undefined>): Promise<string>;
 export interface RegistryEndpointResult {
     endpoint: string;
     registry: Registry;

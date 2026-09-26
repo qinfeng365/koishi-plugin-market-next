@@ -23,6 +23,38 @@ const REGISTRY_FALLBACK_ENDPOINTS = [
 const REGISTRY_ROUTE_STAGGER = 120
 const REGISTRY_FAST_ROUTE_THRESHOLD = Time.second * 0.8
 const REGISTRY_STATS_TTL = Time.day * 30
+const DEFAULT_REGISTRY_ENDPOINT = 'https://registry.npmjs.org'
+
+function isRegistryEndpoint(value: string | undefined): value is string {
+  if (!value?.trim()) return false
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol)
+  } catch {
+    return false
+  }
+}
+
+export async function resolveRegistryEndpoint(
+  configured: string | undefined,
+  cwd: string,
+  readRegistry: (options: { cwd: string }) => Promise<string | undefined> = getRegistry,
+): Promise<string> {
+  if (configured?.trim()) return configured.trim()
+
+  let failure = 'the package manager returned no valid registry URL'
+  try {
+    const detected = await readRegistry({ cwd })
+    if (isRegistryEndpoint(detected)) return detected.trim()
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error)
+  }
+
+  const environment = [process.env.npm_config_registry, process.env.NPM_CONFIG_REGISTRY]
+    .find(isRegistryEndpoint)
+  const fallback = environment?.trim() || DEFAULT_REGISTRY_ENDPOINT
+  logger.warn(`failed to read package manager registry (${failure}); using ${environment ? 'npm registry environment variable' : 'official npm registry'} for npm metadata`)
+  return fallback
+}
 
 export interface RegistryEndpointResult {
   endpoint: string
@@ -280,7 +312,7 @@ export class RegistryRouter {
   }
 
   private async resetEndpoint() {
-    const endpoint = this.config.endpoint || await getRegistry()
+    const endpoint = await resolveRegistryEndpoint(this.config.endpoint, this.ctx.baseDir)
     const previous = this.endpointValue
     this.endpointValue = endpoint
     this.metadataEndpoint = endpoint
