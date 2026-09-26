@@ -65,7 +65,7 @@ import {
   type LocalPackage,
   type PackageManifestSnapshot,
 } from './installer-types'
-import { hasDependencyRuntimeChange, requiresPackageManager } from './installer-transaction'
+import { applyDependencyOverrides, hasDependencyRuntimeChange, requiresPackageManager, writePackageManifest } from './installer-transaction'
 import { PackageManagerRunner } from './package-manager'
 
 export { loadManifest } from './installer-types'
@@ -431,16 +431,9 @@ class Installer extends Service {
   async override(deps: Dict<string>) {
     const filename = resolve(this.cwd, 'package.json')
     logger.debug(`override package dependencies: file=${filename}, changes=${formatDeps(deps)}`)
-    this.manifest.dependencies ||= {}
-    for (const key in deps) {
-      if (deps[key]) {
-        this.manifest.dependencies[key] = deps[key]
-      } else {
-        delete this.manifest.dependencies[key]
-      }
-    }
-    this.manifest.dependencies = Object.fromEntries(Object.entries(this.manifest.dependencies).sort((a, b) => a[0].localeCompare(b[0])))
-    await fsp.writeFile(filename, JSON.stringify(this.manifest, null, 2) + '\n')
+    const nextManifest = applyDependencyOverrides(this.manifest, deps)
+    await writePackageManifest(filename, nextManifest)
+    this.manifest = nextManifest
     logger.info(`package dependencies updated: changes=${formatDeps(deps)}, total=${Object.keys(this.manifest.dependencies).length}`)
   }
 
@@ -473,7 +466,7 @@ class Installer extends Service {
       }
     }
     manifest.dependencies = Object.fromEntries(Object.entries(manifest.dependencies).sort((a, b) => a[0].localeCompare(b[0])))
-    await fsp.writeFile(filename, JSON.stringify(manifest, null, 2) + '\n')
+    await writePackageManifest(filename, manifest)
     this.manifest = manifest
     this.depCache = this.getLocalDepsSnapshot()
     this.depMetadataFresh = false

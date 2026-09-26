@@ -1,7 +1,36 @@
 import { Dict } from 'koishi'
+import type { PackageJson } from '@koishijs/registry'
+import { randomUUID } from 'crypto'
+import { promises as fsp } from 'fs'
 import { satisfies } from 'semver'
 import { classifyDependencySource } from '../shared'
 import type { Dependency } from './installer-types'
+
+export function applyDependencyOverrides(manifest: PackageJson, changes: Dict<string>): PackageJson {
+  const dependencies = { ...(manifest.dependencies ?? {}) }
+  for (const [name, request] of Object.entries(changes)) {
+    if (request) dependencies[name] = request
+    else delete dependencies[name]
+  }
+  return {
+    ...manifest,
+    dependencies: Object.fromEntries(Object.entries(dependencies).sort((a, b) => a[0].localeCompare(b[0]))),
+  }
+}
+
+export async function writePackageManifest(
+  filename: string,
+  manifest: PackageJson,
+  io: Pick<typeof fsp, 'writeFile' | 'rename' | 'rm'> = fsp,
+) {
+  const tempFile = `${filename}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    await io.writeFile(tempFile, JSON.stringify(manifest, null, 2) + '\n')
+    await io.rename(tempFile, filename)
+  } finally {
+    await io.rm(tempFile, { force: true }).catch(() => undefined)
+  }
+}
 
 export interface PackageManagerRequirement {
   changes: Dict<string>

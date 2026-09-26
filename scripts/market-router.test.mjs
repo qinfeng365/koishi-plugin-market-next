@@ -114,6 +114,26 @@ test('continues the route race when the fastest endpoint returns invalid JSON', 
   assert.equal(scores[fallback].successes, 1)
 })
 
+test('continues the route race when the fastest endpoint contains invalid objects', async () => {
+  const primary = 'https://invalid-objects.example/index.json'
+  const fallback = 'https://valid-objects.example/index.json'
+  const state = createRouter({
+    [primary]: {
+      delay: 5,
+      data: JSON.stringify({ version: 1, objects: [null] }),
+    },
+    [fallback]: {
+      delay: 30,
+      data: JSON.stringify({ version: 1, objects: [{ package: { name: 'koishi-plugin-valid' } }] }),
+    },
+  }, primary)
+
+  const result = await state.router.fetchIndexFromEndpoints(1, [primary, fallback])
+
+  assert.equal(result.endpoint, fallback)
+  assert.equal(result.result.objects[0].package.name, 'koishi-plugin-valid')
+})
+
 test('selects a valid fallback after the primary slow threshold and cancels the loser', async () => {
   const primary = 'https://slow.example/index.json'
   const fallback = 'https://fast.example/index.json'

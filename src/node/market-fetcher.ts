@@ -5,6 +5,7 @@ import { MarketDiskCache } from './market-cache'
 import {
   formatBytes,
   formatError,
+  isValidMarketIndex,
   formatStack,
   formatTime,
   normalizeWireSize,
@@ -212,7 +213,7 @@ export class MarketEndpointFetcher {
     this.options.log('debug', `market json parse started: endpoint=${endpoint}, decodedSize=${formatBytes(decoded.size)}`)
     const result: SearchResult = JSON.parse(decoded.text)
     const parseElapsed = Date.now() - parseStart
-    if (!Array.isArray(result?.objects)) throw new Error(`invalid market index from ${endpoint}`)
+    if (!isValidMarketIndex(result)) throw new Error(`invalid market index from ${endpoint}`)
     this.options.log('debug', `market json parse completed: endpoint=${endpoint}, objects=${result.objects.length}, version=${result.version ?? 'legacy'}, elapsed=${parseElapsed}ms`)
     const elapsed = Date.now() - start
     this.options.log('debug', `market index fetched from ${endpoint} in ${elapsed}ms, objects=${result.objects.length}, size=${decoded.size}, wireSize=${decoded.wireSize ?? 'unknown'}, encoding=${response.contentEncoding ?? 'identity'}, hash=${shortHash(decoded.hash) || 'unknown'}, version=${result.version ?? 'legacy'}`)

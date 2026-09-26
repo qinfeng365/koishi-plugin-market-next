@@ -1,9 +1,45 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import {
+  applyDependencyOverrides,
   hasDependencyRuntimeChange,
   requiresPackageManager,
+  writePackageManifest,
 } from '../src/node/installer-transaction.ts'
+
+test('dependency overrides do not mutate the current manifest', () => {
+  const current = { name: 'example', dependencies: { alpha: '^1', beta: '^2' } }
+  const next = applyDependencyOverrides(current, { alpha: '^3', beta: '', gamma: '^1' })
+  assert.deepEqual(current.dependencies, { alpha: '^1', beta: '^2' })
+  assert.deepEqual(next.dependencies, { alpha: '^3', gamma: '^1' })
+})
+
+test('a partial temporary write leaves the existing package manifest intact', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'market-next-manifest-'))
+  const filename = join(dir, 'package.json')
+  const original = '{"name":"example","dependencies":{"alpha":"^1"}}\n'
+  try {
+    await writeFile(filename, original)
+    await assert.rejects(writePackageManifest(filename, { name: 'example' }, {
+      async writeFile(path) {
+        await writeFile(path, '{')
+        throw new Error('disk full')
+      },
+      async rename() {
+        throw new Error('rename should not run')
+      },
+      rm,
+    }), /disk full/)
+    assert.equal(await readFile(filename, 'utf8'), original)
+    await writePackageManifest(filename, { name: 'example', dependencies: { alpha: '^2' } })
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).dependencies.alpha, '^2')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
 
 function requirement(overrides = {}) {
   return {

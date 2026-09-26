@@ -23,6 +23,19 @@ export const MAX_CACHE_ENTRIES = 3
 export const CACHE_ENTRY_TTL = Time.day * 30
 export const logLevels = ['silent', 'error', 'warn', 'info', 'debug'] as const
 
+export function isValidMarketIndex(result: SearchResult | undefined): result is SearchResult {
+  return !!result
+    && Array.isArray(result.objects)
+    && result.objects.every((object) => {
+      return !!object
+        && typeof object === 'object'
+        && !!object.package
+        && typeof object.package === 'object'
+        && typeof object.package.name === 'string'
+        && !!object.package.name.trim()
+    })
+}
+
 export type LogLevel = typeof logLevels[number]
 export type MarketSource = NonNullable<MarketPerformance['source']>
 

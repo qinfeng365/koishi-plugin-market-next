@@ -10,6 +10,7 @@ import {
   formatBytes,
   formatCacheEntries,
   formatError,
+  isValidMarketIndex,
   formatTime,
   getMarketGenerationTime,
   hasCacheResultReference,
@@ -181,12 +182,12 @@ export class MarketDiskCache {
   }
 
   async loadEntry(entry: CacheEntry): Promise<CacheFile | undefined> {
-    if (Array.isArray(entry.result?.objects)) return entry as CacheFile
+    if (isValidMarketIndex(entry.result)) return entry as CacheFile
     if (!entry.file) return
     try {
       const content = await fsp.readFile(resolve(this.directory, entry.file), 'utf8')
       const result = JSON.parse(content) as SearchResult
-      if (!Array.isArray(result?.objects)) return
+      if (!isValidMarketIndex(result)) return
       const cache: CacheFile = { ...entry, result }
       this.entries[entry.endpoint] = cache
       return cache
