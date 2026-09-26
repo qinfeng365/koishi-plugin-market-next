@@ -67,6 +67,33 @@ test('uploads, validates, and commits an npm-packed Koishi plugin', async () => 
   }
 })
 
+test('serializes concurrent chunks and finish for the same upload', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'market-next-local-upload-concurrent-'))
+  const store = new LocalPackageUploadStore(root, () => {})
+  try {
+    const archive = await createPackageArchive(root, {
+      name: 'koishi-plugin-concurrent', version: '1.0.0', main: 'index.js',
+    })
+    const content = await readFile(archive)
+    const first = content.subarray(0, Math.floor(content.length / 2))
+    const second = content.subarray(first.length)
+    const { uploadId } = await store.start({ filename: 'plugin.tgz', size: content.length })
+    const [one, two, preview] = await Promise.all([
+      store.append({ uploadId, index: 0, data: first.toString('base64') }),
+      store.append({ uploadId, index: 1, data: second.toString('base64') }),
+      store.finish({ uploadId }),
+    ])
+    assert.equal(one.received, first.length)
+    assert.equal(two.received, content.length)
+    assert.equal(preview.size, content.length)
+    const committed = await store.commit(uploadId)
+    assert.deepEqual(await readFile(join(root, '.yarn', 'local', committed.filename)), content)
+  } finally {
+    await store.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('rejects archives that are not Koishi plugins', async () => {
   const root = await mkdtemp(join(tmpdir(), 'market-next-local-upload-invalid-'))
   const store = new LocalPackageUploadStore(root, () => {})

@@ -4,6 +4,7 @@ import execa from 'execa'
 import { promises as fsp } from 'fs'
 import { resolve } from 'path'
 import which from 'which-pm-runs'
+import { valid } from 'semver'
 import {
   shouldPenalizeRegistryRoute,
   type RegistryStatus,
@@ -503,7 +504,10 @@ export class RegistryRouter {
       logger.debug(`fetch npm registry endpoint: package=${name}, endpoint=${endpoint}`)
       const registry = await this.createHttp(endpoint).get(`/${name}`, { signal }) as Registry
       if (this.isStale(serial)) throw new Error('npm registry route probe stale')
-      if (!registry?.versions || typeof registry.versions !== 'object') {
+      if (!registry?.versions || typeof registry.versions !== 'object' || Array.isArray(registry.versions)
+        || !Object.keys(registry.versions).length
+        || Object.entries(registry.versions).some(([version, entry]) => !valid(version)
+          || !entry || typeof entry !== 'object' || entry.version !== version)) {
         throw new Error(`invalid registry metadata for ${name}`)
       }
       const elapsed = Date.now() - attemptStart

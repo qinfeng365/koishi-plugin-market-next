@@ -85,6 +85,7 @@ interface LocalUploadSession {
   handle?: FileHandle
   hash: ReturnType<typeof createHash>
   validated?: ValidatedLocalPackage
+  pending: Promise<void>
 }
 
 export class LocalPackageUploadStore {
@@ -119,30 +120,33 @@ export class LocalPackageUploadStore {
       touchedAt: Date.now(),
       handle,
       hash: createHash('sha256'),
+      pending: Promise.resolve(),
     })
     return { uploadId, chunkSize: LOCAL_UPLOAD_CHUNK_SIZE, maxSize: MAX_LOCAL_BINDING_PACK_SIZE }
   }
 
   async append(request: LocalPackageUploadChunkRequest): Promise<LocalPackageUploadProgress> {
     const session = this.getSession(request?.uploadId)
-    if (session.validated) throw new Error('本地插件归档已经完成校验。')
-    if (!Number.isSafeInteger(request?.index) || request.index !== session.nextIndex) {
-      throw new Error('本地插件上传分块顺序无效，请重新上传。')
-    }
-    const buffer = decodeBase64Chunk(request?.data)
-    const remaining = session.size - session.received
-    if (!buffer.length || buffer.length > LOCAL_UPLOAD_CHUNK_SIZE || buffer.length > remaining) {
-      throw new Error('本地插件上传分块大小无效，请重新上传。')
-    }
-    if (!session.handle) throw new Error('本地插件上传会话已经关闭。')
+    return this.runSession(session, async () => {
+      if (session.validated) throw new Error('本地插件归档已经完成校验。')
+      if (!Number.isSafeInteger(request?.index) || request.index !== session.nextIndex) {
+        throw new Error('本地插件上传分块顺序无效，请重新上传。')
+      }
+      const buffer = decodeBase64Chunk(request?.data)
+      const remaining = session.size - session.received
+      if (!buffer.length || buffer.length > LOCAL_UPLOAD_CHUNK_SIZE || buffer.length > remaining) {
+        throw new Error('本地插件上传分块大小无效，请重新上传。')
+      }
+      if (!session.handle) throw new Error('本地插件上传会话已经关闭。')
 
-    const { bytesWritten } = await session.handle.write(buffer, 0, buffer.length, session.received)
-    if (bytesWritten !== buffer.length) throw new Error('本地插件归档写入不完整，请重新上传。')
-    session.hash.update(buffer)
-    session.received += bytesWritten
-    session.nextIndex++
-    session.touchedAt = Date.now()
-    return { received: session.received, size: session.size }
+      const { bytesWritten } = await session.handle.write(buffer, 0, buffer.length, session.received)
+      if (bytesWritten !== buffer.length) throw new Error('本地插件归档写入不完整，请重新上传。')
+      session.hash.update(buffer)
+      session.received += bytesWritten
+      session.nextIndex++
+      session.touchedAt = Date.now()
+      return { received: session.received, size: session.size }
+    })
   }
 
   async finish(request: LocalPackageUploadFinishRequest): Promise<ValidatedLocalPackage & {
@@ -151,82 +155,90 @@ export class LocalPackageUploadStore {
     size: number
   }> {
     const session = this.getSession(request?.uploadId)
-    if (session.validated) {
-      return {
-        ...session.validated,
-        uploadId: session.id,
-        filename: session.originalFilename,
-        size: session.size,
+    return this.runSession(session, async () => {
+      if (session.validated) {
+        return {
+          ...session.validated,
+          uploadId: session.id,
+          filename: session.originalFilename,
+          size: session.size,
+        }
       }
-    }
-    if (session.received !== session.size) {
-      throw new Error(`本地插件归档尚未上传完成（${formatBytes(session.received)} / ${formatBytes(session.size)}）。`)
-    }
-    await this.closeHandle(session)
+      if (session.received !== session.size) {
+        throw new Error(`本地插件归档尚未上传完成（${formatBytes(session.received)} / ${formatBytes(session.size)}）。`)
+      }
+      await this.closeHandle(session)
 
-    try {
-      const hash = session.hash.digest('hex')
-      const manifest = await inspectPackageArchive(session.path)
-      const targetFilename = createCanonicalLocalPackageFilename(manifest.name, manifest.version, hash)
-      session.validated = { manifest, hash, targetFilename }
-      session.touchedAt = Date.now()
-      return {
-        ...session.validated,
-        uploadId: session.id,
-        filename: session.originalFilename,
-        size: session.size,
+      try {
+        const hash = session.hash.digest('hex')
+        const manifest = await inspectPackageArchive(session.path)
+        const targetFilename = createCanonicalLocalPackageFilename(manifest.name, manifest.version, hash)
+        session.validated = { manifest, hash, targetFilename }
+        session.touchedAt = Date.now()
+        return {
+          ...session.validated,
+          uploadId: session.id,
+          filename: session.originalFilename,
+          size: session.size,
+        }
+      } catch (error) {
+        await this.removeSession(session)
+        throw error
       }
-    } catch (error) {
-      await this.removeSession(session)
-      throw error
-    }
+    })
   }
 
   async commit(uploadId: string): Promise<LocalPackageUploadCommitResult> {
     const session = this.getSession(uploadId)
-    if (!session.validated) throw new Error('请先完成本地插件归档校验。')
-    await this.closeHandle(session)
-    await fsp.mkdir(this.root, { recursive: true })
+    return this.runSession(session, async () => {
+      if (!session.validated) throw new Error('请先完成本地插件归档校验。')
+      await this.closeHandle(session)
+      await fsp.mkdir(this.root, { recursive: true })
 
-    const target = resolve(this.root, session.validated.targetFilename)
-    assertInside(this.root, target)
-    const existing = await readFileHash(target)
-    if (existing && existing !== session.validated.hash) {
-      throw new Error('同名本地插件归档已存在，但文件内容不一致。')
-    }
-    if (!existing) {
-      try {
-        await fsp.rename(session.path, target)
-      } catch (error) {
-        const concurrent = await readFileHash(target)
-        if (concurrent !== session.validated.hash) throw error
+      const target = resolve(this.root, session.validated.targetFilename)
+      assertInside(this.root, target)
+      const existing = await readFileHash(target)
+      if (existing && existing !== session.validated.hash) {
+        throw new Error('同名本地插件归档已存在，但文件内容不一致。')
+      }
+      if (!existing) {
+        try {
+          await fsp.rename(session.path, target)
+        } catch (error) {
+          const concurrent = await readFileHash(target)
+          if (concurrent !== session.validated.hash) throw error
+          await fsp.rm(session.path, { force: true })
+        }
+      } else {
         await fsp.rm(session.path, { force: true })
       }
-    } else {
-      await fsp.rm(session.path, { force: true })
-    }
-    this.sessions.delete(session.id)
+      this.sessions.delete(session.id)
 
-    return {
-      name: session.validated.manifest.name,
-      version: session.validated.manifest.version,
-      filename: session.validated.targetFilename,
-      request: createLocalBindingRequest(session.validated.targetFilename),
-      size: session.size,
-      hash: session.validated.hash,
-    }
+      return {
+        name: session.validated.manifest.name,
+        version: session.validated.manifest.version,
+        filename: session.validated.targetFilename,
+        request: createLocalBindingRequest(session.validated.targetFilename),
+        size: session.size,
+        hash: session.validated.hash,
+      }
+    })
   }
 
   async cancel(uploadId: string) {
     const session = this.sessions.get(uploadId)
     if (!session) return false
-    await this.removeSession(session)
-    return true
+    return this.runSession(session, async () => {
+      await this.removeSession(session)
+      return true
+    })
   }
 
   async pruneExpired(now = Date.now()) {
     const expired = [...this.sessions.values()].filter(session => now - session.touchedAt > LOCAL_UPLOAD_TTL)
-    await Promise.all(expired.map(session => this.removeSession(session).catch((error) => {
+    await Promise.all(expired.map(session => this.runSession(session, async () => {
+      if (now - session.touchedAt > LOCAL_UPLOAD_TTL) await this.removeSession(session)
+    }).catch((error) => {
       this.warn(`failed to clean expired local upload ${session.id}: ${error instanceof Error ? error.message : error}`)
     })))
     const activePaths = new Set([...this.sessions.values()].map(session => session.path))
@@ -245,7 +257,7 @@ export class LocalPackageUploadStore {
   }
 
   async dispose() {
-    await Promise.all([...this.sessions.values()].map(session => this.removeSession(session).catch((error) => {
+    await Promise.all([...this.sessions.values()].map(session => this.runSession(session, () => this.removeSession(session)).catch((error) => {
       this.warn(`failed to dispose local upload ${session.id}: ${error instanceof Error ? error.message : error}`)
     })))
   }
@@ -257,6 +269,15 @@ export class LocalPackageUploadStore {
     const session = this.sessions.get(uploadId)
     if (!session) throw new Error('本地插件上传已过期，请重新选择文件。')
     return session
+  }
+
+  private runSession<T>(session: LocalUploadSession, action: () => Promise<T>): Promise<T> {
+    const result = session.pending.then(() => {
+      if (this.sessions.get(session.id) !== session) throw new Error('本地插件上传已过期，请重新选择文件。')
+      return action()
+    })
+    session.pending = result.then(() => {}, () => {})
+    return result
   }
 
   private async closeHandle(session: LocalUploadSession) {

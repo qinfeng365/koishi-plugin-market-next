@@ -155,6 +155,21 @@ test('continues the npm registry race when the fastest endpoint returns invalid 
   }
 })
 
+test('rejects a registry response with malformed version entries before selecting a route', async () => {
+  const primary = 'https://malformed.example'
+  const fallback = 'https://valid.example'
+  const state = await createRouter({
+    [primary]: { delay: 5, registry: { versions: { '1.0.0': null } } },
+    [fallback]: { delay: 20, registry: createRegistry('2.0.0') },
+  }, primary)
+  try {
+    const result = await state.router.fetchRegistryByRoute('koishi-plugin-valid', [primary, fallback], state.router.serial)
+    assert.equal(result.endpoint, fallback)
+  } finally {
+    state.router.dispose()
+  }
+})
+
 test('preserves every endpoint failure reason from an npm registry race', async () => {
   const primary = 'https://missing.example'
   const fallback = 'https://offline.example'
