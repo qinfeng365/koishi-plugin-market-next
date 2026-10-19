@@ -11,7 +11,19 @@ import {
   MAX_LOCAL_BINDING_PACK_SIZE,
 } from './local-binding'
 
-const LOCAL_UPLOAD_CHUNK_SIZE = 512 * 1024
+// Every chunk travels to the server as one Console WebSocket message, base64 encoded,
+// and each client "send" gives up with "timeout" after 60 seconds. Links between the
+// browser and a remote server drop frames once they get large: one console opened over
+// a public address accepted a 48 KiB message and dropped a 64 KiB one, which silently
+// killed every upload above 100 KiB while the chunk size was 512 KiB (about 683 KB once
+// encoded) and still killed it at 64 KiB (87 KB once encoded, see issue #26).
+//
+// Base64 inflates by 4/3, so 8 KiB travels as a message of roughly 11 KB. That is low
+// enough to survive the narrowest frame ceilings seen in practice while keeping the
+// number of round trips bearable: a typical 150 KiB archive needs about 19 chunks, a
+// 2 MiB one about 256. Raise it only if the upload speed on very large archives matters
+// more than compatibility, since every RTT is paid once per chunk.
+const LOCAL_UPLOAD_CHUNK_SIZE = 8 * 1024
 const LOCAL_UPLOAD_TTL = 15 * 60 * 1000
 const MAX_ARCHIVE_ENTRIES = 8192
 const MAX_ARCHIVE_EXPANDED_SIZE = 256 * 1024 * 1024
