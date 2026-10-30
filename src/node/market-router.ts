@@ -23,7 +23,7 @@ import {
   getVersionedMarketIndexUrl,
   getVersionedMarketSource,
 } from './market-version'
-import { scoreRouteHealth } from './route-health'
+import { isPrimaryBypassed, scoreRouteHealth } from './route-health'
 
 class StaleMarketIndexError extends Error {}
 
@@ -277,6 +277,7 @@ export class MarketRouter {
         failures: 0,
         consecutiveFailures: hasRecentSuccess ? 0 : stats.consecutiveFailures,
         cooldownUntil: hasRecentSuccess ? undefined : stats.cooldownUntil,
+        lastFailure: stats.lastFailure,
         averageElapsed: stats.averageElapsed,
         lastSuccess: stats.lastSuccess,
         contentEncoding: stats.contentEncoding,
@@ -295,6 +296,7 @@ export class MarketRouter {
         contentEncoding: stats.contentEncoding,
         consecutiveFailures: stats.consecutiveFailures,
         cooldownUntil: stats.cooldownUntil,
+        lastFailure: stats.lastFailure,
       }
     }
     return result
@@ -356,17 +358,19 @@ export class MarketRouter {
       }
     }
 
-    this.options.log('debug', `fetch primary market endpoint first, primary=${endpoints[0]}, fallbacks=${endpoints.slice(1).join(', ')}, slowThreshold=${FAST_ROUTE_THRESHOLD}ms`)
-    this.options.log('info', `market route started: primary=${endpoints[0]}, fallbackCount=${endpoints.length - 1}, slowThreshold=${FAST_ROUTE_THRESHOLD}ms`)
+    const fallbackDelay = (this.config.fallbackDelaySeconds ?? 3) * Time.second
+    this.options.log('debug', `fetch primary market endpoint first, primary=${endpoints[0]}, fallbacks=${endpoints.slice(1).join(', ')}, slowThreshold=${fallbackDelay}ms`)
+    this.options.log('info', `market route started: primary=${endpoints[0]}, fallbackCount=${endpoints.length - 1}, slowThreshold=${fallbackDelay}ms`)
     return new Promise<EndpointResult>((resolve, reject) => {
       let settled = false
       let failed = 0
       let lastError: any
       let fallbackStarted = false
       let fallbackReason: EndpointResult['fallbackReason']
+      let firstDone = false
       const controllers = endpoints.map(() => this.trackController(new AbortController()))
       const unbindAbort = this.bindAbort(options.signal, controllers)
-      const timer = setTimeout(() => startFallback('primary-slow'), FAST_ROUTE_THRESHOLD)
+      const timer = setTimeout(() => startFallback('primary-slow'), fallbackDelay)
 
       const finish = () => {
         clearTimeout(timer)
@@ -397,6 +401,12 @@ export class MarketRouter {
           data.fallbackReason = fallbackReason
         }
         if (!options.deferCommit) this.commitResult(data)
+        // The configured source is aborted above if it is still waiting, so count that as a
+        // failure; otherwise a hanging source would cost the full delay on every refresh. A
+        // request that already finished was judged in fail(), and slow fallbacks are not cooled down.
+        if (index && fallbackReason === 'primary-slow' && !firstDone && !options.suppressStats && endpoints[0] === this.config.endpoint) {
+          this.recordFailure(endpoints[0], { rescue: options.rescue })
+        }
         resolve(data)
       }
 
@@ -416,6 +426,7 @@ export class MarketRouter {
           return
         }
         if (penalize && !options.suppressStats) this.recordFailure(endpoint, { rescue: options.rescue })
+        if (index === 0) firstDone = true
         lastError = error
         failed++
         if (index === 0) startFallback(primaryReason)
@@ -477,11 +488,14 @@ export class MarketRouter {
     })
     const originalIndex = new Map(fallbacks.map((endpoint, index) => [endpoint, index]))
     const now = Date.now()
-    return [primary, ...availableFallbacks.sort((a, b) => {
+    const sorted = availableFallbacks.sort((a, b) => {
       const delta = this.getScore(b, now) - this.getScore(a, now)
       if (delta) return delta
       return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0)
-    })]
+    })
+    // The configured source goes last while it is bypassed after repeated failures.
+    if (isPrimaryBypassed(this.stats[primary], this.config, now)) return [...sorted, primary]
+    return [primary, ...sorted]
   }
 
   private waitRouteTurn(index: number, signal?: AbortSignal) {
@@ -556,6 +570,7 @@ export class MarketRouter {
       this.options.log('debug', `route rescue failure noted without extending cooldown: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, consecutive=${stats.consecutiveFailures ?? 0}, cooldownUntil=${formatTime(stats.cooldownUntil)}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)
     } else {
       stats.consecutiveFailures = (stats.consecutiveFailures ?? 0) + 1
+      stats.lastFailure = Date.now()
       stats.cooldownUntil = Date.now() + getRouteCooldown(stats.consecutiveFailures)
       stats.score = clamp(stats.score - 1.2, -10, 3)
       this.options.log('debug', `route failure updated: endpoint=${endpoint}, score=${stats.score.toFixed(2)}, successes=${stats.successes}, failures=${stats.failures}, consecutive=${stats.consecutiveFailures}, cooldownUntil=${formatTime(stats.cooldownUntil)}, average=${stats.averageElapsed == null ? '-' : Math.round(stats.averageElapsed) + 'ms'}`)

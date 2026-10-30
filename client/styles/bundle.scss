@@ -1,0 +1,118 @@
+// Shared by the install and uninstall bundle dialogs: the header meta line, the loading state,
+// the member table and the text of a member row, including its notes.
+.bundle-install-panel,
+.bundle-uninstall-dialog {
+  .bundle-meta {
+    margin-top: 0.25rem;
+    color: var(--fg3);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+  }
+
+  .bundle-state {
+    padding: 2rem 1rem;
+    color: var(--fg3);
+    text-align: center;
+  }
+
+  .member-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 1.5rem;
+  }
+
+  .member-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .member-version,
+  .member-sub {
+    color: var(--fg3);
+    font-size: 0.8125rem;
+  }
+
+  .member-sub {
+    overflow-wrap: anywhere;
+  }
+
+  // The info column gets narrow next to the checkbox columns on phones, so long tags wrap there.
+  .member-line .dialog-tag {
+    flex-shrink: 1;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .member-note {
+    margin: 0;
+    color: var(--fg3);
+    font-size: 0.8125rem;
+
+    &.warning {
+      color: var(--warning);
+    }
+
+    &.danger {
+      color: var(--danger);
+    }
+  }
+
+  // Members are laid out as a table: info on the left, then one checkbox column per option
+  // (--bundle-columns is set on each list). The first row holds each column's label
+  // and select-all.
+  .bundle-member {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(var(--bundle-columns), 5.5rem);
+    align-items: center;
+    column-gap: 0.5rem;
+
+    > .el-checkbox {
+      justify-self: center;
+      height: auto;
+      margin-right: 0;
+    }
+  }
+
+  .bundle-all {
+    color: var(--fg2);
+    background: var(--k-side-bg);
+  }
+
+  // Sits in the .bundle-member grid like the row checkboxes, with its label above the box.
+  .bundle-all > .bundle-column {
+    flex-direction: column-reverse;
+    gap: 0.125rem;
+    min-width: 0;
+    white-space: normal;
+
+    .el-checkbox__label {
+      padding: 0;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+
+    // One color whether checked or not, over the shared checked-label rule; disabled ones keep
+    // Element Plus's muted color.
+    .el-checkbox__input:not(.is-disabled) + .el-checkbox__label {
+      color: var(--fg2);
+    }
+  }
+
+  // Unlike other tables, these stay as columns on phones: stacking checkboxes would break the column
+  // labels and select-alls in the first row, and the columns are narrow enough to fit.
+  @media (max-width: 768px) {
+    .bundle-member {
+      grid-template-columns: minmax(0, 1fr) repeat(var(--bundle-columns), 3.5rem);
+      column-gap: 0.25rem;
+    }
+
+    .bundle-all > .bundle-column .el-checkbox__label {
+      font-size: 0.75rem;
+    }
+  }
+}

@@ -43,7 +43,7 @@ export interface BundleInstallMember extends PluginBundleMember {
   selected: boolean
   createConfig: boolean
   usePreset: boolean
-  conflict?: 'same-group' | 'other-config' | 'package-mismatch'
+  conflict?: 'same-group' | 'other-config'
   move?: boolean
 }
 
@@ -116,7 +116,7 @@ function parseBundleMember(value: any): PluginBundleMember | undefined {
   }
 }
 
-export function validateBundleManifest(packageName: string, bundle?: PluginBundleManifest, options: { keyword?: boolean } = {}): PluginBundleValidation {
+export function validateBundleManifest(packageName: string, bundle?: PluginBundleManifest, options: { keyword?: boolean, checkKeyword?: boolean } = {}): PluginBundleValidation {
   const errors: string[] = []
   const warnings: string[] = []
   const normalizedName = packageName.toLowerCase()
@@ -129,7 +129,8 @@ export function validateBundleManifest(packageName: string, bundle?: PluginBundl
     return { valid: false, errors, warnings }
   }
   if (!bundle.members.length) errors.push('koishi.bundle.members must not be empty')
-  if (!options.keyword) warnings.push(`missing keyword "${BUNDLE_KEYWORD}"`)
+  // The install dialog turns this off: the missing keyword only matters to the bundle author.
+  if (options.checkKeyword !== false && !options.keyword) warnings.push(`missing keyword "${BUNDLE_KEYWORD}"`)
 
   const seen = new Set<string>()
   const seenPackages = new Set<string>()
@@ -171,6 +172,11 @@ export function getPluginShortname(name: string) {
   return name.replace(/(koishi-|^@koishijs\/)plugin-/, '')
 }
 
+// Plugin name in a koishi.yml key such as `~adapter-qq:abc123`.
+export function getConfigKeyName(key: string) {
+  return key.split(':', 1)[0].replace(/^~/, '')
+}
+
 export function normalizeBundleIdent(value: string) {
   return value.toLowerCase()
     .replace(/^@/, '')
@@ -187,11 +193,22 @@ export function getBundleMemberIdent(packageName: string, member: Pick<PluginBun
   return `pa-${normalizeBundleIdent(getPluginShortname(packageName))}-${normalizeBundleIdent(getPluginShortname(member.plugin || member.package))}`
 }
 
-export function scanSensitiveConfig(value: unknown, path = ''): string[] {
-  const result: string[] = []
+// Sensitive keys mix values the user must be able to read before installing (commands, scripts, paths)
+// with credentials (tokens, passwords, and URLs, webhooks or SQL strings that often embed them). Only
+// credentials are masked, and anything under a credential key counts as one.
+const SECRET_RE = /(token|secret|password|sql|url|webhook|endpoint)/i
+
+export function isSecretConfigPath(path: string[]) {
+  return path.some(key => SECRET_RE.test(key))
+}
+
+// Paths, as lists of keys, to every value in a preset whose key looks sensitive or risky (tokens, but
+// also commands and scripts), at any depth and of any type, so the user gets to see all of them.
+export function scanSensitiveConfig(value: unknown, path: string[] = []): string[][] {
+  const result: string[][] = []
   if (!value || typeof value !== 'object') return result
   for (const [key, child] of Object.entries(value as Dict)) {
-    const next = path ? `${path}.${key}` : key
+    const next = [...path, key]
     if (SENSITIVE_RE.test(key)) result.push(next)
     result.push(...scanSensitiveConfig(child, next))
   }

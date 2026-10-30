@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" class="market-config-remove-dialog" :title="title" destroy-on-close>
+  <market-dialog v-model="visible" class="market-config-remove-dialog" :title="title" width="480px" destroy-on-close>
     <template v-if="target">
       {{ content }}
     </template>
@@ -7,7 +7,7 @@
       <el-button @click="visible = false">{{ t('extensions.actions.cancel') }}</el-button>
       <el-button type="danger" :loading="removing" @click="remove">{{ t('common.actions.confirm') }}</el-button>
     </template>
-  </el-dialog>
+  </market-dialog>
 </template>
 
 <script setup lang="ts">
@@ -16,6 +16,7 @@ import { computed, ref } from 'vue'
 import { message, router, send } from '@koishijs/client'
 import { configRemoveTarget } from './config-remove'
 import { useMarketNextI18n } from '../i18n'
+import MarketDialog from '../components/market-dialog.vue'
 
 const removing = ref(false)
 const { t } = useMarketNextI18n()

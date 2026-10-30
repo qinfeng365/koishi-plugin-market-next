@@ -1,12 +1,12 @@
 <template>
-  <el-dialog
+  <market-dialog
     v-model="open"
     append-to-body
     align-center
     destroy-on-close
-    :class="['package-history-dialog', modeClass]"
+    class="package-history-dialog"
     :title="t('operations.timeline.title', { name: packageName })"
-    width="min(560px, calc(100vw - 24px))"
+    width="520px"
   >
     <div class="package-history-summary">
       <span>{{ t('operations.timeline.current') }}</span>
@@ -19,9 +19,12 @@
     <div v-else-if="error" class="package-history-state error">
       {{ error }}
     </div>
-    <div v-else-if="!entries.length" class="package-history-state">
-      {{ t('operations.timeline.empty') }}
-    </div>
+    <empty-state
+      v-else-if="!entries.length"
+      icon="market-next:history"
+      :title="t('operations.timeline.emptyTitle')"
+      :description="t('operations.timeline.empty')"
+    ></empty-state>
     <div v-else class="package-history-list">
       <button
         v-for="entry in entries"
@@ -49,13 +52,14 @@
       </button>
     </div>
 
-    <p class="package-history-note">
+    <p v-if="entries.length" class="package-history-note">
       {{ t('operations.timeline.note') }}
     </p>
 
     <template #footer>
       <el-button @click="open = false">{{ t('operations.timeline.close') }}</el-button>
       <el-button
+        v-if="entries.length"
         type="primary"
         :disabled="!selectedEntry || isCurrent(selectedEntry) || !selectedEntry.afterVersion"
         @click="applySelected"
@@ -63,16 +67,17 @@
         {{ t('operations.timeline.useVersion') }}
       </el-button>
     </template>
-  </el-dialog>
+  </market-dialog>
 </template>
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
-import { message, send, useConfig } from '@koishijs/client'
+import { message, send } from '@koishijs/client'
 import type { InstallPackageHistory, InstallPackageHistoryEntry } from 'koishi-plugin-market-next'
-import { getFrontendMode } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 import MarketIcon from '../market/icons'
+import EmptyState from './empty-state.vue'
+import MarketDialog from './market-dialog.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -85,9 +90,7 @@ const emit = defineEmits<{
   'select-version': [version: string]
 }>()
 
-const config = useConfig()
 const { t, locale } = useMarketNextI18n()
-const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 const open = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value),
@@ -111,6 +114,9 @@ async function loadHistory() {
   loading.value = true
   error.value = ''
   selectedId.value = ''
+  // The dialog is shared by every dependency, so drop what the previous package left behind.
+  entries.value = []
+  currentVersion.value = ''
   try {
     const result = await (send('market/package-history', props.packageName, 24) ?? Promise.resolve(undefined)) as InstallPackageHistory | undefined
     if (serial !== loadSerial) return
@@ -119,8 +125,6 @@ async function loadHistory() {
   } catch (cause) {
     if (serial !== loadSerial) return
     console.error(cause)
-    entries.value = []
-    currentVersion.value = ''
     error.value = t('operations.timeline.loadFailed')
   } finally {
     if (serial === loadSerial) loading.value = false
@@ -158,118 +162,128 @@ function formatDate(value: number) {
 </script>
 
 <style lang="scss">
-.package-history-dialog {
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 88%, var(--fg1, currentColor) 12%);
-  border-radius: 10px;
-  color: var(--fg1, var(--el-text-color-primary));
-  background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 90%, var(--k-side-bg, var(--el-bg-color)));
-
-  .el-dialog__header {
-    margin: 0;
-    padding: 14px 44px 12px 18px;
-    border-bottom: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 82%, transparent);
-    background: color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 64%, var(--k-card-bg, var(--el-bg-color)));
-  }
-
-  .el-dialog__title { color: var(--fg1, var(--el-text-color-primary)); font-weight: 700; }
-  .el-dialog__body { padding: 14px 18px 10px; }
-  .el-dialog__footer {
-    padding: 10px 18px 14px;
-    border-top: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 70%, transparent);
-  }
-
-  &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--k-color-primary) 24%, var(--k-color-border, #dcdfe6));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 5%, transparent), transparent 46%),
-      color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 90%, var(--k-side-bg, var(--el-bg-color)));
-    box-shadow: 0 20px 58px color-mix(in srgb, var(--fg1, currentColor) 18%, transparent);
-  }
-}
-
 .package-history-summary {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.8rem;
-  color: var(--fg2, var(--el-text-color-regular));
-  font-size: 0.82rem;
+  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+  color: var(--fg2);
+  background: var(--k-side-bg);
 
   strong {
-    max-width: 70%;
+    min-width: 0;
     overflow: hidden;
-    color: var(--fg1, var(--el-text-color-primary));
-    font-size: 0.95rem;
+    color: var(--fg1);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 }
 
 .package-history-list {
-  display: grid;
-  gap: 0.38rem;
-  max-height: min(52vh, 420px);
-  overflow: auto;
-  padding: 0.15rem 0.2rem 0.15rem 0.05rem;
-  scrollbar-width: thin;
+  border: 1px solid var(--k-color-border);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .package-history-entry {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.75rem;
   width: 100%;
-  min-height: 56px;
-  border: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 68%, transparent);
-  border-radius: 8px;
-  padding: 0.55rem 0.65rem;
+  margin-top: -1px;
+  border: 0;
+  border-top: 1px solid var(--k-color-divider);
+  padding: 0.625rem 0.875rem;
   text-align: left;
-  color: var(--fg1, var(--el-text-color-primary));
-  background: color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 78%, var(--k-side-bg, var(--el-bg-color)));
+  color: var(--fg1);
+  background: transparent;
+  font: inherit;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
 
-  &:hover,
-  &.selected {
-    border-color: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 52%, var(--k-color-border, #dcdfe6));
-    background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 8%, var(--k-card-bg, var(--el-bg-color)));
+  &:hover {
+    background: var(--k-hover-bg);
   }
 
-  &.current { border-left: 3px solid var(--k-color-success, var(--el-color-success)); }
+  &.selected {
+    background: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
+  }
 }
 
 .package-history-dot {
   flex: 0 0 auto;
-  width: 0.62rem;
-  height: 0.62rem;
-  border: 2px solid var(--k-color-primary, var(--el-color-primary));
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
-  background: var(--k-card-bg, var(--el-bg-color));
+  background: var(--k-color-border);
+
+  .current & {
+    background: var(--k-color-success);
+  }
+
+  .selected & {
+    background: var(--k-color-primary);
+  }
 }
 
-.package-history-entry-main { display: grid; gap: 0.18rem; min-width: 0; flex: 1 1 auto; }
-.package-history-version-line { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
-.package-history-version-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.package-history-meta { color: var(--fg2, var(--el-text-color-regular)); font-size: 0.76rem; }
+.package-history-entry-main {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.package-history-version-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.package-history-meta {
+  color: var(--fg3);
+  font-size: 0.8125rem;
+}
+
 .package-history-current {
   flex: 0 0 auto;
-  border-radius: 999px;
-  padding: 0.1rem 0.4rem;
-  color: var(--k-color-success, var(--el-color-success));
-  background: color-mix(in srgb, var(--k-color-success, var(--el-color-success)) 12%, transparent);
-  font-size: 0.7rem;
+  border-radius: 4px;
+  padding: 0 0.375rem;
+  color: var(--k-color-success);
+  background: color-mix(in srgb, var(--k-color-success) 12%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
 }
-.package-history-selected-icon { flex: 0 0 auto; width: 0.85rem; height: 0.85rem; color: var(--k-color-primary, var(--el-color-primary)); }
-.package-history-note { margin: 0.75rem 0 0; color: var(--fg2, var(--el-text-color-regular)); font-size: 0.78rem; line-height: 1.45; }
-.package-history-state { padding: 2.4rem 0.5rem; color: var(--fg2, var(--el-text-color-regular)); text-align: center; }
-.package-history-state.error { color: var(--k-color-danger, var(--el-color-danger)); }
 
-@media (max-width: 560px) {
-  .package-history-dialog .el-dialog__body { padding: 12px 14px 8px; }
-  .package-history-dialog .el-dialog__footer { padding: 9px 14px 12px; }
-  .package-history-summary strong { max-width: 58%; }
+.package-history-selected-icon {
+  flex: 0 0 auto;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--k-color-primary);
+}
+
+.package-history-note {
+  margin: 0.75rem 0 0;
+  color: var(--fg3);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.package-history-state {
+  padding: 2rem 0.5rem;
+  color: var(--fg3);
+  text-align: center;
+
+  &.error {
+    color: var(--danger);
+  }
 }
 </style>

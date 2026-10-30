@@ -1,0 +1,157 @@
+// Dialogs keep Koishi's own el-dialog look. This only adds a scrollable body
+// for long content and a footer that wraps on narrow screens.
+.market-dialog {
+  max-width: calc(100vw - 32px);
+
+  // el-dialog pins the 48px close button to the dialog's top edge, which puts the X
+  // above the first line of the title. Center it on that line instead.
+  .el-dialog__headerbtn {
+    top: calc(var(--el-dialog-padding-primary, 16px) + var(--el-dialog-font-line-height, 24px) / 2 - 24px);
+    // The icon itself sits on the text baseline inside the button, slightly above its center.
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  // market-dialog.vue wraps the body in el-scrollbar so long content scrolls with the same
+  // scrollbar as the pages.
+  .market-dialog-scroll {
+    // k-comment hangs its icon 12px past the left edge, which the scroll box would clip, and the
+    // overlaid thumb would cover the right edge. Extend the box into the dialog padding on both
+    // sides and pad it back so the content stays put.
+    margin: 0 -12px;
+
+    > .el-scrollbar__wrap {
+      max-height: calc(100vh - 14rem);
+    }
+
+    .market-dialog-body {
+      padding: 0 12px;
+    }
+  }
+
+  // Element Plus gives disabled plain buttons a fixed light-theme grey, which stays bright in dark mode.
+  .el-button:not(.el-button--primary, .el-button--success, .el-button--warning, .el-button--danger, .el-button--info) {
+    --el-button-disabled-text-color: var(--fg3);
+  }
+
+  // Koishi themes don't define the --el-color-*-light-5 shades, so disabled solid colored buttons
+  // fall back to Element Plus's default light colors. Fade the button's own color instead.
+  :is(.el-button--primary, .el-button--success, .el-button--warning, .el-button--danger):not(.is-text, .is-plain, .is-link) {
+    --el-button-disabled-bg-color: color-mix(in srgb, var(--el-button-bg-color) 45%, transparent);
+    --el-button-disabled-border-color: transparent;
+  }
+
+  // A checked checkbox keeps the normal text color; the box already shows the state.
+  // Disabled ones keep Element Plus's muted color.
+  .el-checkbox__input.is-checked:not(.is-disabled) + .el-checkbox__label {
+    color: var(--fg1);
+  }
+
+  .el-dialog__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+
+    .el-button + .el-button {
+      margin-left: 0;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .el-overlay-dialog .market-dialog {
+    max-width: none;
+
+    .market-dialog-scroll > .el-scrollbar__wrap {
+      max-height: 70vh;
+    }
+  }
+}
+
+// Shared pieces for dialogs that list items: a heading with a count, a bordered list with divider
+// rows, and small status tags.
+.market-dialog {
+  .dialog-section + .dialog-section {
+    margin-top: 1rem;
+  }
+
+  .dialog-section-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+
+  .dialog-count {
+    border-radius: 10px;
+    padding: 0 0.375rem;
+    color: var(--fg2);
+    background: var(--k-side-bg);
+    font-size: 0.75rem;
+    font-weight: normal;
+    line-height: 1.25rem;
+  }
+
+  .dialog-list {
+    border: 1px solid var(--k-color-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .dialog-list-row {
+    margin-top: -1px;
+    border-top: 1px solid var(--k-color-divider);
+    padding: 0.75rem 0.875rem;
+  }
+
+  .dialog-tag {
+    flex: 0 0 auto;
+    border-radius: 4px;
+    padding: 0 0.375rem;
+    color: var(--fg2);
+    background: var(--k-side-bg);
+    font-size: 0.75rem;
+    font-weight: normal;
+    line-height: 1.25rem;
+    white-space: nowrap;
+
+    &.primary {
+      color: var(--k-color-primary);
+      background: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
+    }
+
+    &.success {
+      color: var(--k-color-success);
+      background: color-mix(in srgb, var(--k-color-success) 12%, transparent);
+    }
+
+    &.warning {
+      color: var(--warning);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+    }
+
+    &.danger {
+      color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+    }
+  }
+
+  // The lead paragraph under a dialog's title.
+  .dialog-intro {
+    margin: 0 0 1rem;
+    color: var(--fg2);
+    line-height: 1.6;
+  }
+
+  // A small muted heading above a block, like the log title in recent operations.
+  .dialog-caption {
+    margin: 1rem 0 0.5rem;
+    color: var(--fg3);
+    font-size: 0.8125rem;
+  }
+}

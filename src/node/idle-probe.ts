@@ -21,9 +21,9 @@ export function setupIdleProbe(ctx: Context, config: Config) {
     clearTimeout(timer)
     timer = undefined
   }
-  const getDelay = () => Math.max(0, config.idleProbeDelay ?? Time.minute * 5)
-  const getBootDelay = () => Math.max(0, config.idleProbeBootDelay ?? Time.minute)
-  const getInterval = () => Math.max(0, config.idleProbeInterval ?? Time.hour * 6)
+  const getDelay = () => Math.max(0, config.idleProbeDelayMinutes ?? 5) * Time.minute
+  const getBootDelay = () => Math.max(0, config.idleProbeBootDelayMinutes ?? 1) * Time.minute
+  const getInterval = () => Math.max(0, config.idleProbeIntervalHours ?? 6) * Time.hour
 
   const runProbe = async () => {
     clearIdleTimer()

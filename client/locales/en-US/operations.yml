@@ -1,14 +1,11 @@
 confirm:
-  title: Confirm dependency changes
-  dependency: Dependency
-  oldVersion: Previous version
-  newVersion: New version
+  title: Apply Dependency Changes
+  intro: These {count} change(s) will be written to package.json and installed by the package manager. Keep this page open while it runs.
   notInstalled: Not installed
-  removeDependency: Remove dependency
-  removeConfig: Remove plugin config for uninstalled plugins
-  discard: Discard changes
+  removeDependency: Uninstall
+  removeConfig: Also remove the config of uninstalled plugins
   apply: Apply changes
-  saveBundleFailed: Failed to save plugin bundle ownership. Refresh and check again.
+  saveBundleFailed: Failed to save plugin bundle ownership. Refresh and check again
 install:
   installErrorHint: This dependency failed to install. You can try repairing or removing it.
   peerName: Dependency
@@ -39,19 +36,16 @@ install:
   waitingInstall: Waiting to install
   downloaded: Downloaded
   select: Select
-  added: Dependency added.
-  addFailed: Failed to add dependency!
-  addTimeout: Adding dependency timed out!
   uninstalling: Uninstalling plugin…
   uninstalled: Uninstalled successfully!
   uninstallFailed: Uninstall failed!
   uninstallTimeout: Uninstall timed out!
 manual:
   title: Add dependency
-  localTab: Local build
-  registryTab: npm package
-  dropTitle: Drop a local plugin archive here
-  dropHint: Or select a .tgz file created by npm pack
+  localTab: Upload a local package
+  registryTab: Add from npm
+  dropTitle: Drop a .tgz file here
+  dropHint: Or click to choose a file packed with npm pack
   dropLimit: 'Maximum file size: 64 MiB'
   uploading: Uploading and validating the local plugin…
   uploadFailed: Failed to upload the local plugin. Try again.
@@ -62,7 +56,7 @@ manual:
   notInstalled: Not installed
   scriptWarning: 'This archive contains installation lifecycle scripts: {scripts}. Install it only if you trust the source.'
   installingTitle: Installing local plugin {name}…
-  installSuccess: Local plugin {name}@{version} installed successfully.
+  installSuccess: Local plugin {name}@{version} installed successfully
   installFailed: Failed to install local plugin {name}!
   operation:
     install: New install
@@ -74,16 +68,16 @@ manual:
     upgrade: Update to {version}
     downgrade: Roll back to {version}
     replace: Replace current build
-  hint: 'Tip: to install a plugin, open the '
+  hint: 'To install a plugin, searching in the '
   market: plugin market
-  hintAfter: .
-  placeholder: Enter a package name
+  hintAfter: ' is easier. Use this to add npm packages that are not listed there.'
+  placeholder: npm package name, e.g. koishi-plugin-example
   registryLoading: Looking up package metadata…
   registryLookupFailed: Package metadata could not be loaded. Check the package name and network connection.
   latest: Latest version
   description: Description
   cancel: Cancel
-  confirm: Confirm
+  confirm: Add
 progress:
   logTitle: Installation log / Package Manager Output
   initializing: Initializing the installation process and attaching output…
@@ -99,7 +93,6 @@ progress:
   errorSelf: market-next update failed. Check the console output.
   errorDependencies: Dependency installation failed. Check the console output.
   ready: Ready
-  applyTitle: Applying dependency changes
   selfUpdateTitle: Updating market-next…
   dependencyTitle: Updating dependencies…
   submitted: Dependency changes submitted. Waiting for the package manager…
@@ -107,10 +100,12 @@ progress:
   waitingSelf: Still waiting for package manager output. A disconnect afterward is expected during the market-next reload.
   waitingDependencies: Still waiting for package manager output. Large changes or a slow network may take longer.
   disconnected: The Console connection was lost, so the installation result is unknown. Refresh the dependencies page to confirm.
-  disconnectedShort: The connection was lost, so the result is unknown. Refresh and check again.
-  selfSubmittedSuccess: market-next update submitted. The Console is reloading.
-  dependenciesSubmittedSuccess: Dependency changes submitted. The Console is reloading.
-  selfSuccessToast: market-next updated. The Console will reload shortly.
+  disconnectedShort: The connection was lost, so the result is unknown. Refresh and check again
+  selfSubmittedSuccess: market-next update submitted. The Console is reloading
+  dependenciesSubmittedSuccess: Dependency changes submitted. The Console is reloading
+  selfSuccessToast: market-next updated. The Console will reload shortly
+  # Toasts have no final period; errorSelf is a full sentence in the install progress dialog
+  selfErrorToast: market-next update failed. Check the console output
   successToast: Installation successful!
   runningEnvironment: Restoring the complete dependency environment. Keep this page open…
   successEnvironment: The dependency environment was restored. The Console is synchronizing state.
@@ -118,67 +113,67 @@ progress:
   requestFailed: 'Installation request failed: {detail}'
   installError: Installation failed!
   installTimeout: Installation timed out!
+  errorWithDetail: '{message} ({detail})'
   environmentTitle: Restoring dependency environment…
   environmentPreparing: Reading the current environment again and validating the target version…
   environmentWaiting: Still waiting for package manager output. Restoring multiple dependencies may take longer.
   environmentDisconnected: The Console connection was lost, so the restore result is unknown. Refresh Dependencies and Version Management to confirm.
-  environmentDisconnectedShort: The connection was lost, so the environment restore result is unknown.
-  environmentError: Failed to restore the dependency environment.
-  environmentSubmitted: Environment restore submitted. The Console is reloading.
-  environmentSuccess: Dependency environment restored successfully.
+  environmentDisconnectedShort: The connection was lost, so the environment restore result is unknown
+  environmentError: Failed to restore the dependency environment
+  environmentSubmitted: Environment restore submitted. The Console is reloading
+  environmentSuccess: Dependency environment restored successfully
   environmentErrorTitle: Failed to restore the dependency environment!
   environmentTimeout: The dependency environment restore request timed out!
   fallbackLog: 'You can retry once with fallback npm source {endpoint}; your configuration will not be changed.'
   fallbackConfirmed: 'User confirmed retry with fallback npm source: {endpoint}'
   fallbackFailed: 'Fallback npm source retry failed. Package manager exit code: {code}'
 history:
+  emptyTitle: No operations yet
+  loadFailedTitle: Failed to load
+  logTitle: Package manager output
   title: Recent operations
-  syncing: Synchronizing records…
-  count: '{count} record(s)'
   refresh: Refresh
-  records: Operation records
   reading: Reading operation records…
-  empty: No dependency operation records
+  empty: After you install, update or uninstall dependencies, the full package manager output is kept here for troubleshooting.
   readingLog: Reading log…
   copyLog: Copy log
-  copied: Log copied.
-  copyFailed: Copy failed. Select the log text manually.
+  copied: Log copied
+  copyFailed: Copy failed. Select the log text manually
   close: Close
-  dependencyCount: Dependencies
   source: Install source
   logSize: Log size
-  unknown: Unknown
-  versionChanges: Version changes
-  items: '{count} item(s)'
   truncated: The log is large; copied content keeps only the beginning and end.
-  selectRecord: Select a record to view its log
   loadFailed: Failed to read recent operations. Check the backend log.
+  loadFailedToast: Failed to read recent operations. Check the backend log
   detailFailed: Failed to read the log detail. The file may have been cleaned up.
   statusRunning: Running
   statusSuccess: Succeeded
   statusError: Failed
   statusUnknown: Unknown status
   operation: Dependency operation
-  install: Install {count}
-  update: Update {count}
-  uninstall: Uninstall {count}
-  changed: Change {count} dependencies
+  install: Install {count} dependency(ies)
+  upgrade: Upgrade {count} dependency(ies)
+  downgrade: Downgrade {count} dependency(ies)
+  update: Update {count} dependency(ies)
+  uninstall: Uninstall {count} dependency(ies)
+  changed: Change {count} dependency(ies)
   notInstalled: Not installed
   uninstalled: Uninstalled
   unknownTime: Unknown time
   defaultSource: Project default
 timeline:
+  emptyTitle: No version history
   title: '{name} version history'
   current: Current version
   currentBadge: Current
   loading: Reading version history…
-  empty: No version change records are available
+  empty: Once this dependency is installed or updated through Market Next, each version is listed here so you can switch back at any time.
   loadFailed: Failed to read version history. Try again later.
   from: Changed from {version}
   useVersion: Set as target version
-  added: '{version} was added to pending changes'
+  added: '{version} was added to the pending changes'
   close: Close
   uninstalled: Uninstalled
   unknownVersion: Unknown
   unknownTime: Unknown time
-  note: Selecting a version adds it to pending changes. Confirm it from the bottom of the Dependencies page.
+  note: Pick a record and click “Set as target version” to add that version to the pending changes.

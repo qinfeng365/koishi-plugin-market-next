@@ -77,7 +77,7 @@ const sentinel = ref<HTMLElement>()
 const list = ref<HTMLElement>()
 const visible = ref(batchSize.value)
 const columns = ref(1)
-const rowHeight = ref(224)
+const rowHeight = ref(186)
 const startIndex = ref(0)
 const endIndex = ref(batchSize.value)
 const topSpacer = ref(0)
@@ -236,7 +236,7 @@ function measureLayout() {
   const width = list.value.clientWidth
   const nextColumns = Math.max(1, Math.floor((width + gap) / (336 + gap)))
   const card = list.value.querySelector<HTMLElement>('.market-package')
-  const nextRowHeight = (card?.offsetHeight || 202) + gap
+  const nextRowHeight = (card?.offsetHeight || 170) + gap
   const nextListTop = getListTop()
   if (columns.value !== nextColumns) columns.value = nextColumns
   if (rowHeight.value !== nextRowHeight) rowHeight.value = nextRowHeight

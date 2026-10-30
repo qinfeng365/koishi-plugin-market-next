@@ -1,33 +1,30 @@
 <template>
-  <el-dialog :model-value="!!active" @update:model-value="closePanel" :class="['install-panel', modeClass]" destroy-on-close>
+  <market-dialog :model-value="!!active" @update:model-value="closePanel" :class="['install-panel', modeClass]" width="720px" destroy-on-close>
     <template v-if="active" #header="{ titleId, titleClass }">
       <span :id="titleId" :class="titleClass">
         {{ active + (localSelection ? ` (${t('dependencyCard.current.local')})` : '') }}
       </span>
-      <el-select
+      <version-picker
         v-if="data"
         v-model="selectVersion"
-        class="market-version-select"
+        :versions="data"
+        :current="current"
+        :latest="Object.keys(data).find(item => !item.includes('-'))"
         :disabled="localSelection"
-        :popper-class="versionPopperClass"
-      >
-        <el-option v-for="({ result }, version) in data" :key="version" :value="version">
-          {{ version }}
-          <template v-if="version === current">{{ t('dependencyCard.actions.current') }}</template>
-          <span :class="[result, 'theme-color', 'dot-hint']"></span>
-        </el-option>
-      </el-select>
+        :mode-class="modeClass"
+      ></version-picker>
     </template>
 
-    <k-comment class="danger" v-if="danger" type="danger">{{ danger }}</k-comment>
-    <k-comment class="warning" v-if="warning" type="warning">{{ warning }}</k-comment>
+    <k-comment class="danger" v-if="danger" type="danger"><p>{{ danger }}</p></k-comment>
+    <k-comment class="warning" v-if="warning" type="warning"><p>{{ warning }}</p></k-comment>
 
     <div v-if="!data && active && !localSelection">
-      <k-comment :type="registryStatus?.error ? 'danger' : 'info'">{{ registryStatusText }}</k-comment>
+      <!-- The dependency card keeps showing an earlier error while it is fetched again; this dialog shows the fetch it waits for. -->
+      <k-comment :type="registryStatus?.error && !registryStatus.loading ? 'danger' : 'primary'"><p>{{ registryStatusText }}</p></k-comment>
     </div>
 
     <k-comment v-if="store.dependencies?.[active] && !current" type="danger">
-      {{ t('operations.install.installErrorHint') }}
+      <p>{{ t('operations.install.installErrorHint') }}</p>
     </k-comment>
 
     <el-scrollbar v-if="data?.[version] && Object.keys(data[version].peers).length" class="peer-table-scroll">
@@ -49,24 +46,19 @@
         <tbody>
           <tr v-for="(peer, name) in data[version].peers" :key="name">
             <td class="text-left">{{ name }}</td>
-            <td>{{ peer.request }}</td>
+            <td :data-label="t('operations.install.peerRange')">{{ peer.request }}</td>
             <td>
-              <span class="wrapper" v-if="shouldShowPeerVersionSelect(peer, name)">
-                <span class="shadow">{{ getVersion(name) || t('operations.install.select') }}</span>
-                <el-select
-                  class="frameless market-version-select"
-                  :model-value="getVersion(name)"
-                  :popper-class="versionPopperClass"
-                  @update:model-value="setVersion(name, $event)"
-                >
-                    <el-option value="">{{ t('dependencyCard.actions.remove') }}</el-option>
-                  <el-option v-for="(_, version) in store.registry[name]" :key="version" :value="version">
-                    {{ version }}
-                    <template v-if="version === current">{{ t('dependencyCard.actions.current') }}</template>
-                    <!-- <span :class="[result, 'theme-color', 'dot-hint']"></span> -->
-                  </el-option>
-                </el-select>
-              </span>
+              <version-picker
+                v-if="shouldShowPeerVersionSelect(peer, name)"
+                :model-value="getVersion(name)"
+                :versions="store.registry[name]"
+                :current="store.dependencies?.[name]?.resolved"
+                :latest="Object.keys(store.registry[name]).find(item => !item.includes('-'))"
+                :placeholder="t('operations.install.select')"
+                removable
+                :mode-class="modeClass"
+                @update:model-value="setVersion(name, $event)"
+              ></version-picker>
               <span v-else class="peer-version" :class="{ workspace: !!getWorkspaceVersion(name), missing: !getPeerResolvedVersion(peer, name) }">
                 {{ getPeerResolvedVersion(peer, name) || t('operations.confirm.notInstalled') }}
                 <template v-if="getWorkspaceVersion(name)">{{ t('dependencyCard.current.workspace') }}</template>
@@ -100,15 +92,16 @@
         </template>
         <template v-else-if="data">
           <el-button v-if="showRemoveButton" @click="requestRemove()" type="danger">{{ t('operations.install.uninstall') }}</el-button>
-          <el-button :type="result" @click="installDep(version)" :disabled="unchanged">
+          <!-- The color shows compatibility; a disabled button has nothing to report, so it stays neutral. -->
+          <el-button :type="unchanged ? undefined : result" @click="installDep(version)" :disabled="unchanged">
             {{ current ? t('operations.install.update') : store.dependencies?.[active] ? t('operations.install.repair') : t('operations.install.install') }}
           </el-button>
         </template>
       </div>
     </template>
-  </el-dialog>
+  </market-dialog>
 
-  <el-dialog v-model="showRemoveDialog" class="market-remove-dialog" destroy-on-close>
+  <market-dialog v-model="showRemoveDialog" class="market-remove-dialog" width="480px" destroy-on-close>
     {{ t('operations.install.removeConfigQuestion') }}
     <template #footer>
       <div class="left">
@@ -124,7 +117,7 @@
         <el-button type="primary" @click="installDep('', false, false)">{{ t('operations.install.keep') }}</el-button>
       </div>
     </template>
-  </el-dialog>
+  </market-dialog>
 
   <bundle-uninstall
     v-model="showBundleUninstallDialog"
@@ -137,21 +130,22 @@
 
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, message, send, store, useContext, useConfig } from '@koishijs/client'
-import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getConfigWriter, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
-import { active, getBulkMode, getBundleRecords, getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { analyzeVersions, ensureInstalledConfig, findBundleRecord, getConfigWriter, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
+import { active, getBulkMode, getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import { isLocalDependency } from '../../src/shared/dependency-source'
 import BundleUninstall from './bundle-uninstall.vue'
+import VersionPicker from './version-picker.vue'
 import { useMarketNextI18n } from '../i18n'
 import { getMarketObject } from '../market/state'
+import MarketDialog from './market-dialog.vue'
 
 const ctx = useContext()
 const config = useConfig()
 const { t } = useMarketNextI18n()
 const frontendMode = computed(() => getFrontendMode(config.value))
 const modeClass = computed(() => `market-mode-${frontendMode.value}`)
-const versionPopperClass = computed(() => `market-version-popper ${modeClass.value}`)
 
 const saveChoice = ref(false)
 const showRemoveDialog = ref(false)
@@ -159,10 +153,9 @@ const showBundleUninstallDialog = ref(false)
 const bundleUninstallTarget = ref('')
 
 const bulkMode = computed({
-  get: () => getBulkMode(config.value),
+  get: () => getBulkMode(),
   set: (value: boolean) => {
-    if (config.value.market) config.value.market.bulkMode = value
-    void patchMarketNextConfig({ bulkMode: value })
+    void patchMarketNextData({ bulkMode: value })
   },
 })
 
@@ -279,7 +272,7 @@ const local = computed(() => store.packages?.[active.value])
 const bundleUninstallRecord = computed(() => {
   const target = bundleUninstallTarget.value
   if (!target || !isBundlePackageName(target)) return
-  return getBundleRecords(config.value)[target] || createLocalBundleRecord(target)
+  return findBundleRecord(target)
 })
 
 const showRemoveButton = computed(() => {
@@ -299,7 +292,7 @@ function isLocalPackageSelection(name: string) {
 
 function requestRemove() {
   const target = active.value
-  const record = target && (getBundleRecords(config.value)[target] || createLocalBundleRecord(target))
+  const record = target && findBundleRecord(target)
   if (target && record) {
     bundleUninstallTarget.value = target
     active.value = ''
@@ -454,58 +447,17 @@ function getResultText(peer: PeerInfo, name: string) {
   @include apply-color(danger);
 }
 
-.install-panel.el-dialog,
-.el-dialog.install-panel,
-.install-panel .el-dialog {
-  width: min(720px, calc(100vw - 32px)) !important;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--k-color-border) 88%, var(--fg1) 12%);
-  border-radius: 10px;
-  color: var(--fg1);
-  background: var(--k-card-bg);
-  box-shadow: none;
-}
-
 .install-panel {
   .el-dialog__header {
     display: flex;
-    gap: 0 0.5em;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     align-items: center;
-    min-height: 62px;
-    padding: 14px 44px 12px 20px;
-    border-bottom: 1px solid color-mix(in srgb, var(--k-color-border) 82%, transparent);
-    background: color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
+    padding-right: 36px;
 
     .el-dialog__title {
       min-width: 0;
-      overflow: hidden;
-      color: var(--fg1);
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-weight: 700;
-      margin-right: 0.5rem;
-      flex: 0 0 auto;
-    }
-
-    .el-select {
-      flex: 1 1 auto;
-      max-width: 12.5rem;
-      margin: -2px 0 -4px;
-    }
-  }
-
-  .el-dialog__headerbtn {
-    top: 11px;
-    right: 12px;
-    width: 38px;
-    height: 38px;
-    border-radius: 8px;
-    color: var(--fg2);
-    transition: background 0.15s, color 0.15s;
-
-    &:hover {
-      color: var(--k-color-primary);
-      background: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
+      overflow-wrap: anywhere;
     }
   }
 
@@ -517,217 +469,145 @@ function getResultText(peer: PeerInfo, name: string) {
     color: var(--k-color-danger);
   }
 
-  .version-badges {
-    float: right;
-    margin-right: -12px;
-  }
-
-  .el-dialog__body {
-    padding: 16px 20px 6px;
-    min-height: 40px;
-    background: color-mix(in srgb, var(--k-side-bg) 58%, var(--k-card-bg));
-
-    > div {
-      margin: 1rem 0;
-    }
-
-    &:last-child {
-      padding-bottom: 1rem;
-    }
-  }
-
-  .peer-table-scroll {
-    border-radius: 8px;
-    background: var(--k-card-bg);
-    box-shadow: none;
+  .market-dialog-body > div {
+    margin: 1rem 0;
   }
 
   table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    table-layout: fixed;
     border: 1px solid var(--k-color-border);
     border-radius: 8px;
-    overflow: hidden;
-    margin: 0.75rem 0;
 
-    .peer-name-col {
-      width: 42%;
-    }
-
-    .peer-range-col {
-      width: 18%;
-    }
-
-    .peer-current-col {
-      width: 20%;
-    }
-
-    .peer-status-col {
-      width: 20%;
-    }
-
-    thead, tbody {
-      td, th {
-        padding: 0.62rem 0.875rem;
-        white-space: nowrap;
-        overflow: hidden;
-        color: var(--fg1);
-        text-overflow: ellipsis;
-        border-bottom: 1px solid var(--k-color-border);
-        border-right: 1px solid var(--k-color-border);
-        font-size: 0.82rem;
-
-        &:last-child {
-          border-right: none;
-        }
-      }
-    }
-
-    th {
-      background: color-mix(in srgb, var(--fg1) 5%, var(--k-side-bg));
-      color: var(--fg2);
-      font-weight: 700;
+    td, th {
+      padding: 0.5rem 0.875rem;
+      border-top: 1px solid var(--k-color-divider);
       text-align: left;
+      white-space: nowrap;
     }
 
-    tr:last-child td {
-      border-bottom: none;
+    // Long peer names wrap so the table never pushes the dialog sideways.
+    td:first-child {
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
-    tbody tr {
-      background: var(--k-card-bg);
-      transition: background 0.15s;
+    // The version picker is wider than plain versions, so this column is centered to line it up with its header.
+    td:nth-child(3),
+    th:nth-child(3) {
+      text-align: center;
+    }
 
-      &:hover {
-        background: color-mix(in srgb, var(--k-color-primary) 6%, var(--k-card-bg));
-      }
+    thead th {
+      border-top: 0;
+      color: var(--fg3);
+      font-size: 0.8125rem;
+      font-weight: normal;
     }
   }
 
   .peer-version {
-    display: inline-flex;
-    align-items: center;
-    max-width: 100%;
-    min-height: 28px;
-    overflow: hidden;
-    padding: 0 9px;
-    border: 1px solid var(--k-color-border);
-    border-radius: 8px;
-    color: var(--fg1);
-    background: color-mix(in srgb, var(--k-side-bg) 42%, var(--k-card-bg));
-    font-weight: 700;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-weight: 600;
 
     &.workspace {
-      gap: 6px;
       color: var(--k-color-success);
-      border-color: color-mix(in srgb, var(--k-color-success) 34%, var(--k-color-border));
-      background: color-mix(in srgb, var(--k-color-success) 10%, var(--k-card-bg));
     }
 
     &.missing {
       color: var(--k-color-danger);
-      border-color: color-mix(in srgb, var(--k-color-danger) 34%, var(--k-color-border));
-      background: color-mix(in srgb, var(--k-color-danger) 10%, var(--k-card-bg));
     }
   }
 
-  span.link {
-    &:hover {
-      cursor: pointer;
-      text-decoration: underline;
-    }
+  .el-dialog__footer .left {
+    margin-right: auto;
   }
 
-  .el-button + .el-button {
-    margin-left: 1rem;
-  }
-
-  .el-dialog__footer {
+  .el-dialog__footer .right {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    min-height: 68px;
-    padding: 14px 16px;
-    border-top: 1px solid color-mix(in srgb, var(--k-color-border) 82%, transparent);
-    background: color-mix(in srgb, var(--k-side-bg) 50%, var(--k-card-bg));
-  }
+    flex-wrap: wrap;
+    gap: 0.5rem;
 
-  &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent), transparent 44%),
-      var(--k-card-bg);
-    box-shadow:
-      0 28px 80px rgb(0 0 0 / 32%),
-      0 0 0 1px color-mix(in srgb, var(--fg1) 8%, transparent) inset;
-
-    .el-dialog__header {
-      border-bottom-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
-        color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
-    }
-
-    .peer-table-scroll {
-      box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
-    }
-
-    .el-dialog__footer {
-      border-top-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
-    }
-  }
-
-  .wrapper {
-    position: relative;
-    display: inline-flex;
-    min-width: 7.8rem;
-    max-width: 100%;
-
-    .shadow {
-      letter-spacing: 1px;
-      visibility: hidden;
-      padding-right: 22px; // .el-input__suffix
-    }
-
-    .el-select {
-      position: absolute;
-      left: 0;
-      top: 50%;
-      right: 0;
-      transform: translateY(-50%);
-    }
-  }
-
-  .frameless {
-    --el-fill-color-blank: var(--k-card-bg);
-    --el-border-color: var(--k-color-border);
-    --el-text-color-regular: var(--fg1);
-
-    :deep(.el-input__wrapper) {
-      min-height: 30px;
-      border-radius: 8px;
-      box-shadow: 0 0 0 1px var(--k-color-border) inset;
+    .el-button + .el-button {
+      margin-left: 0;
     }
   }
 }
 
-.dot-hint::before {
-  content: '';
-  position: absolute;
-  border-radius: 100%;
-  width: 0.5rem;
-  height: 0.5rem;
-  top: 50%;
-  right: 20px;
-  transform: translate(0, -50%);
-  background-color: currentColor;
-  transition: background-color 0.3s ease;
-  box-shadow: 1px 1px 2px #3333;
+.market-remove-dialog .el-dialog__footer {
+  .left {
+    margin-right: auto;
+  }
+
+  .right {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .el-button + .el-button {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  // Each peer becomes a two-line block: name and availability, then range and current version.
+  .install-panel .peer-table {
+    display: block;
+
+    colgroup,
+    thead {
+      display: none;
+    }
+
+    tbody {
+      display: block;
+    }
+
+    tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.25rem 0.75rem;
+      align-items: center;
+      padding: 0.625rem 0.875rem;
+      // Koishi's global table rules put borders on tr, which only show once it stops being a table row.
+      border: 0;
+
+      & + tr {
+        border-top: 1px solid var(--k-color-divider);
+      }
+    }
+
+    td {
+      padding: 0;
+      border-top: 0;
+    }
+
+    // The name leads the block, so it is a step larger than the status beside it.
+    td:nth-child(1) {
+      font-size: 0.9375rem;
+      font-weight: 500;
+    }
+
+    td:nth-child(2) {
+      color: var(--fg2);
+      font-size: 0.875rem;
+
+      &::before {
+        content: attr(data-label) ' ';
+        color: var(--fg3);
+      }
+    }
+
+    td:nth-child(3) {
+      grid-area: 2 / 2;
+      justify-self: end;
+    }
+
+    td:nth-child(4) {
+      grid-area: 1 / 2;
+      justify-self: end;
+    }
+  }
 }
 
 </style>

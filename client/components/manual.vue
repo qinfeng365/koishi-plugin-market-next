@@ -1,45 +1,19 @@
 <template>
-  <el-dialog
+  <market-dialog
     v-model="showManual"
     append-to-body
     align-center
-    class="manual-panel local-package-dialog"
+    class="manual-panel"
     destroy-on-close
-    width="min(680px, calc(100vw - 24px))"
+    width="640px"
     :close-on-click-modal="!busy"
     :close-on-press-escape="!busy"
   >
     <template #header>{{ t('operations.manual.title') }}</template>
 
     <el-tabs v-model="mode" class="manual-tabs">
-      <el-tab-pane name="local">
-        <template #label>
-          <span class="manual-tab-label">
-            <market-icon name="file-archive"></market-icon>
-            <span>{{ t('operations.manual.localTab') }}</span>
-          </span>
-        </template>
-        <local-package-upload
-          :busy="busy"
-          :error="uploadError"
-          :preview="preview"
-          :selected-filename="selectedFilename"
-          :selected-size="selectedSize"
-          :uploaded-bytes="uploadedBytes"
-          :uploading="uploading"
-          :upload-progress="uploadProgress"
-          @error="setError"
-          @select="uploadFile"
-        ></local-package-upload>
-      </el-tab-pane>
 
-      <el-tab-pane name="registry" :disabled="busy">
-        <template #label>
-          <span class="manual-tab-label">
-            <k-icon name="cube"></k-icon>
-            <span>{{ t('operations.manual.registryTab') }}</span>
-          </span>
-        </template>
+      <el-tab-pane name="registry" :label="t('operations.manual.registryTab')" :disabled="busy">
         <div class="registry-panel">
           <k-comment type="warning">
             <p>
@@ -72,32 +46,42 @@
           </dl>
         </div>
       </el-tab-pane>
+      <el-tab-pane name="local" :label="t('operations.manual.localTab')">
+        <local-package-upload
+          :busy="busy"
+          :error="uploadError"
+          :preview="preview"
+          :selected-filename="selectedFilename"
+          :selected-size="selectedSize"
+          :uploaded-bytes="uploadedBytes"
+          :uploading="uploading"
+          :upload-progress="uploadProgress"
+          @error="setError"
+          @select="uploadFile"
+        ></local-package-upload>
+      </el-tab-pane>
     </el-tabs>
 
     <template #footer>
-      <div :class="['manual-footer', { 'manual-footer--local': mode === 'local' }]">
-        <template v-if="mode === 'local'">
-          <el-button v-if="preview || uploadError" :disabled="busy" @click="reset()">
-            {{ t('operations.manual.chooseAnother') }}
-          </el-button>
-          <span class="manual-footer-spacer"></span>
-          <el-button :disabled="committing" @click="showManual = false">
-            {{ t('operations.manual.cancel') }}
-          </el-button>
-          <el-button type="primary" :loading="committing" :disabled="!preview || busy" @click="installPackage">
-            {{ confirmText }}
-          </el-button>
-        </template>
-        <template v-else>
-          <span class="manual-footer-spacer"></span>
-          <el-button @click="showManual = false">{{ t('operations.manual.cancel') }}</el-button>
-          <el-button type="primary" :disabled="registryInvalid" @click="onRegistryEnter">
-            {{ t('operations.manual.confirm') }}
-          </el-button>
-        </template>
-      </div>
+      <template v-if="mode === 'local'">
+        <el-button v-if="preview || uploadError" :disabled="busy" @click="reset()">
+          {{ t('operations.manual.chooseAnother') }}
+        </el-button>
+        <el-button :disabled="committing" @click="showManual = false">
+          {{ t('operations.manual.cancel') }}
+        </el-button>
+        <el-button type="primary" :loading="committing" :disabled="!preview || busy" @click="installPackage">
+          {{ confirmText }}
+        </el-button>
+      </template>
+      <template v-else>
+        <el-button @click="showManual = false">{{ t('operations.manual.cancel') }}</el-button>
+        <el-button type="primary" :disabled="registryInvalid" @click="onRegistryEnter">
+          {{ t('operations.manual.confirm') }}
+        </el-button>
+      </template>
     </template>
-  </el-dialog>
+  </market-dialog>
 </template>
 
 <script lang="ts" setup>
@@ -105,16 +89,16 @@ import type { Registry } from '@koishijs/registry'
 import { useDebounceFn } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import LocalPackageUpload from './local-package-upload.vue'
-import MarketIcon from '../market/icons'
 import { useLocalPackageUpload } from '../composables/use-local-package-upload'
 import { useMarketNextI18n } from '../i18n'
 import { getPendingOverrides, patchMarketNextData } from '../utils'
 import { addManual, showManual } from './utils'
+import MarketDialog from './market-dialog.vue'
 
 type ManualMode = 'local' | 'registry'
 
 const { t } = useMarketNextI18n()
-const mode = ref<ManualMode>('local')
+const mode = ref<ManualMode>('registry')
 const name = ref('')
 const remote = ref<Registry>()
 const registryLoading = ref(false)
@@ -180,7 +164,7 @@ watch(showManual, (visible) => {
   if (visible) return
   void reset(true)
   resetRegistry()
-  mode.value = 'local'
+  mode.value = 'registry'
 })
 
 function onRegistryEnter() {
@@ -204,44 +188,19 @@ function resetRegistry() {
 </script>
 
 <style lang="scss" scoped>
-.manual-tabs {
-  min-width: 0;
-
-  :deep(.el-tabs__header) {
-    margin-bottom: 14px;
-  }
-
-  :deep(.el-tabs__content) {
-    overflow: visible;
-  }
+.manual-tabs :deep(.el-tabs__header) {
+  margin-bottom: 1rem;
 }
 
-.manual-tab-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-
-  :deep(.market-icon),
-  :deep(.k-icon) {
-    width: 16px;
-    height: 16px;
-  }
-}
-
-.registry-panel {
-  min-width: 0;
-
-  .k-comment {
-    margin-top: 0;
-  }
+.registry-panel .k-comment {
+  margin-top: 0;
 }
 
 .registry-status {
-  min-height: 21px;
-  margin: 7px 0;
-  color: var(--k-text-light);
-  font-size: 12px;
-  line-height: 1.5;
+  min-height: 1.25rem;
+  margin: 0.5rem 0;
+  color: var(--fg3);
+  font-size: 0.8125rem;
 
   .error {
     color: var(--danger);
@@ -250,115 +209,27 @@ function resetRegistry() {
 
 .registry-preview {
   display: grid;
-  gap: 9px;
+  gap: 0.5rem;
   margin: 0;
-  padding: 12px;
-  border: 1px solid var(--k-border-color);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--k-side-bg) 54%, var(--k-card-bg));
+  border: 1px solid var(--k-color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
 
   div {
     display: grid;
-    grid-template-columns: minmax(90px, auto) minmax(0, 1fr);
-    gap: 12px;
+    grid-template-columns: 5rem minmax(0, 1fr);
+    gap: 0.75rem;
   }
 
   dt {
-    color: var(--k-text-light);
+    color: var(--fg3);
   }
 
   dd {
     min-width: 0;
     margin: 0;
     overflow-wrap: anywhere;
-    color: var(--k-text-normal);
   }
 }
 
-.manual-footer {
-  width: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-
-  .el-button + .el-button {
-    margin-left: 0;
-  }
-}
-
-.manual-footer-spacer {
-  flex: 1 1 auto;
-}
-
-:global(.local-package-dialog) {
-  --manual-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color)));
-  --manual-border: var(--k-border-color, var(--el-border-color));
-  max-height: calc(100vh - 24px);
-  max-height: calc(100dvh - 24px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--manual-border);
-  background: var(--manual-surface);
-}
-
-:global(.local-package-dialog .el-dialog__header),
-:global(.local-package-dialog .el-dialog__footer) {
-  flex: 0 0 auto;
-}
-
-:global(.local-package-dialog .el-dialog__body) {
-  min-height: 0;
-  flex: 1 1 auto;
-  padding-top: 12px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-:global(.local-package-dialog .el-dialog__footer) {
-  border-top: 1px solid color-mix(in srgb, var(--manual-border) 76%, transparent);
-}
-
-@media (max-width: 560px) {
-  :global(.local-package-dialog) {
-    width: calc(100vw - 16px) !important;
-    max-height: calc(100dvh - 16px);
-    margin: 8px auto;
-  }
-
-  :global(.local-package-dialog .el-dialog__header) {
-    padding: 12px 42px 10px 14px;
-  }
-
-  :global(.local-package-dialog .el-dialog__body) {
-    padding: 10px 12px;
-  }
-
-  :global(.local-package-dialog .el-dialog__footer) {
-    padding: 10px 12px 12px;
-  }
-
-  .registry-preview div {
-    grid-template-columns: 1fr;
-    gap: 2px;
-  }
-
-  .manual-footer {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-
-    .el-button {
-      width: 100%;
-    }
-  }
-
-  .manual-footer--local .el-button--primary {
-    grid-column: 1 / -1;
-  }
-
-  .manual-footer-spacer {
-    display: none;
-  }
-}
 </style>

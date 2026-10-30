@@ -1,92 +1,57 @@
 <template>
-  <el-dialog
+  <market-dialog
     v-model="installProgressState.visible"
     append-to-body
     :show-close="installProgressState.status !== 'running'"
     :before-close="handleBeforeClose"
-    :class="['install-progress-dialog', modeClass]"
+    class="install-progress-dialog"
     :title="installProgressState.title"
-    width="min(800px, calc(100vw - 24px))"
+    width="760px"
   >
-    <div class="progress-body">
-      <!-- Status Banner -->
-      <div :class="['status-banner', installProgressState.status]">
-        <div class="status-indicator">
-          <span v-if="installProgressState.status === 'running'" class="pulse-dot"></span>
-          <market-icon v-else-if="installProgressState.status === 'success'" name="verified"></market-icon>
-          <span v-else-if="installProgressState.status === 'error'" class="error-cross">×</span>
-          <span>{{ statusText }}</span>
-        </div>
-      </div>
+    <p :class="['progress-status', installProgressState.status]">
+      <span v-if="installProgressState.status === 'running'" class="progress-spinner" aria-hidden="true"></span>
+      {{ statusText }}
+    </p>
 
-      <!-- Log Terminal -->
-      <div class="terminal-container">
-        <div class="terminal-header">
-          <span class="term-title">{{ t('operations.progress.logTitle') }}</span>
-        </div>
-        <div class="terminal-viewport" ref="viewport">
-          <div class="terminal-content">
-            <template v-if="installProgressState.logs.length">
-              <div
-                v-for="(log, index) in installProgressState.logs"
-                :key="index"
-                :class="['log-line', log.type]"
-              >
-                <span class="line-prefix">$</span>
-                <span class="line-text">{{ log.line }}</span>
-              </div>
-            </template>
-            <div v-else class="empty-logs">
-              <span class="loading-spinner"></span>
-              {{ t('operations.progress.initializing') }}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <el-scrollbar ref="viewport" class="progress-log" view-class="progress-log-view" :aria-label="t('operations.progress.logTitle')">
+      <template v-if="installProgressState.logs.length">
+        <div v-for="(log, index) in installProgressState.logs" :key="index" :class="['log-line', log.type]">{{ log.line }}</div>
+      </template>
+      <div v-else class="log-empty">{{ t('operations.progress.initializing') }}</div>
+    </el-scrollbar>
+
+    <p v-if="installProgressState.fallbackCandidate" class="fallback-prompt">
+      {{ t('operations.progress.fallbackPrefix') }}
+      <strong>{{ installProgressState.fallbackCandidate.label }}</strong>
+      {{ t('operations.progress.fallbackSuffix') }}
+    </p>
 
     <template #footer>
-      <div class="dialog-footer">
-        <div v-if="installProgressState.fallbackCandidate" class="fallback-prompt">
-          {{ t('operations.progress.fallbackPrefix') }}
-          <strong>{{ installProgressState.fallbackCandidate.label }}</strong>
-          {{ t('operations.progress.fallbackSuffix') }}
-        </div>
-        <el-button
-          v-if="installProgressState.fallbackCandidate && installProgressState.retryFallback"
-          type="primary"
-          :loading="installProgressState.fallbackRunning"
-          :disabled="installProgressState.fallbackRunning"
-          @click="retryFallback"
-        >
-          {{ t('operations.progress.retryFallback') }}
-        </el-button>
-        <el-button
-          :type="installProgressState.status === 'error' ? 'danger' : 'primary'"
-          :disabled="installProgressState.status === 'running'"
-          @click="close"
-        >
-          {{ installProgressState.status === 'running' ? t('operations.progress.executing') : t('operations.progress.close') }}
-        </el-button>
-      </div>
+      <el-button
+        v-if="installProgressState.fallbackCandidate && installProgressState.retryFallback"
+        :loading="installProgressState.fallbackRunning"
+        :disabled="installProgressState.fallbackRunning"
+        @click="retryFallback"
+      >
+        {{ t('operations.progress.retryFallback') }}
+      </el-button>
+      <el-button type="primary" :disabled="installProgressState.status === 'running'" @click="close">
+        {{ installProgressState.status === 'running' ? t('operations.progress.executing') : t('operations.progress.close') }}
+      </el-button>
     </template>
-  </el-dialog>
+  </market-dialog>
 </template>
 
 <script lang="ts" setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { useConfig } from '@koishijs/client'
-import { getFrontendMode } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 import { installProgressState } from './utils'
-import MarketIcon from '../market/icons'
+import MarketDialog from './market-dialog.vue'
 
-const config = useConfig()
 const { t } = useMarketNextI18n()
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
-const viewport = ref<HTMLElement>()
+// Left untyped for the same reason as the log scrollbar in install-history.vue.
+const viewport = ref()
 
 const statusText = computed(() => {
   if (installProgressState.environmentRestore) {
@@ -112,11 +77,10 @@ const statusText = computed(() => {
   }
 })
 
-// Auto-scroll logs to bottom
 watch(() => installProgressState.logs.length, () => {
   nextTick(() => {
     if (!viewport.value) return
-    viewport.value.scrollTop = viewport.value.scrollHeight
+    viewport.value.setScrollTop(viewport.value.wrapRef.scrollHeight)
   })
 })
 
@@ -137,276 +101,72 @@ function retryFallback() {
 
 <style lang="scss">
 .install-progress-dialog {
-  --progress-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #18181b)));
-  --progress-surface-muted: color-mix(in srgb, var(--progress-surface) 84%, var(--k-side-bg, var(--el-fill-color-light, #f8fafc)) 16%);
-  --progress-text: var(--fg1, var(--el-text-color-primary, #1e293b));
-  --progress-text-muted: var(--fg2, var(--el-text-color-regular, #64748b));
-  --progress-border-base: var(--k-color-border, var(--el-border-color, #d4d8e2));
-  --progress-border: color-mix(in srgb, var(--progress-border-base) 78%, var(--progress-text) 22%);
-  --progress-border-soft: color-mix(in srgb, var(--progress-border-base) 76%, transparent);
-  --success-color: var(--k-color-success, var(--el-color-success, #10b981));
-  --error-color: var(--k-color-danger, var(--el-color-danger, #ef4444));
-  --primary-color: var(--k-color-primary, var(--el-color-primary, #3b82f6));
-  --status-color: var(--primary-color);
-  --status-bg: color-mix(in srgb, var(--status-color) 10%, var(--progress-surface));
-  --status-border: color-mix(in srgb, var(--status-color) 34%, var(--progress-border));
-
-  border-radius: 12px;
-  border: 1px solid var(--progress-border);
-  color: var(--progress-text);
-  background: var(--progress-surface);
-  box-shadow: none;
-  overflow: hidden;
-
-  .el-dialog__header {
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--progress-border-soft);
-    background: color-mix(in srgb, var(--progress-surface-muted) 72%, var(--progress-surface));
-  }
-
-  .el-dialog__title {
-    color: var(--progress-text);
-  }
-
-  .el-dialog__headerbtn {
-    .el-dialog__close {
-      color: var(--progress-text-muted);
-    }
-
-    &:hover .el-dialog__close {
-      color: var(--primary-color);
-    }
-  }
-
-  .el-dialog__body {
-    padding-top: 0.5rem;
-    padding-bottom: 1rem;
-    background: var(--progress-surface);
-  }
-
-  .el-dialog__footer {
-    border-top: 1px solid var(--progress-border-soft);
-    background: color-mix(in srgb, var(--progress-surface) 86%, var(--progress-surface-muted) 14%);
-  }
-
-  .progress-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .dialog-footer {
+  .progress-status {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
     gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .fallback-prompt {
-    flex: 1 1 18rem;
-    min-width: 0;
-    color: var(--progress-text-muted);
-    font-size: 0.82rem;
-    line-height: 1.45;
-    text-align: left;
-
-    strong {
-      color: var(--primary-color);
-      font-weight: 600;
-    }
-  }
-
-  .status-banner {
-    --status-color: var(--primary-color);
-    padding: 0.6rem 0.8rem;
-    border-radius: 8px;
-    border: 1px solid var(--status-border);
-    background: var(--status-bg);
-    color: var(--status-color);
-    font-size: 0.85rem;
-    font-weight: 500;
-    box-shadow: none;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    margin: 0 0 0.75rem;
+    color: var(--fg2);
 
     &.running {
-      --status-color: var(--primary-color);
+      color: var(--k-color-primary);
     }
+
     &.success {
-      --status-color: var(--success-color);
+      color: var(--k-color-success);
     }
+
     &.error {
-      --status-color: var(--error-color);
+      color: var(--danger);
     }
   }
 
-  .status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-
-    .market-icon {
-      font-size: 1.1rem;
-    }
-  }
-
-  .pulse-dot {
-    width: 8px;
-    height: 8px;
-    background-color: var(--primary-color);
+  .progress-spinner {
+    width: 0.875rem;
+    height: 0.875rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
     border-radius: 50%;
-    display: inline-block;
-    animation: term-pulse 1.4s infinite ease-in-out;
+    animation: market-progress-spin 0.8s linear infinite;
   }
 
-  .error-cross {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--error-color);
-    color: var(--el-color-white, #fff);
-    display: grid;
-    place-items: center;
-    font-size: 0.75rem;
-    font-weight: bold;
-  }
-
-  .terminal-container {
-    background: var(--progress-surface-muted);
-    border: 1px solid var(--progress-border);
+  .progress-log {
+    height: min(24rem, 50vh);
+    border: 1px solid var(--k-color-border);
     border-radius: 8px;
-    height: 360px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+    background: var(--k-side-bg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.6;
   }
 
-  .terminal-header {
-    display: flex;
-    align-items: center;
-    padding: 0.5rem 0.75rem;
-    background: color-mix(in srgb, var(--progress-text) 5%, var(--progress-surface-muted));
-    border-bottom: 1px solid color-mix(in srgb, var(--progress-border) 84%, transparent);
-    flex: 0 0 auto;
-  }
-
-  .term-title {
-    font-size: 0.72rem;
-    color: color-mix(in srgb, var(--progress-text) 64%, transparent);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .terminal-viewport {
-    flex: 1 1 auto;
-    overflow-y: auto;
-  }
-
-  .terminal-content {
-    padding: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.8rem;
-    line-height: 1.4;
-    color: var(--progress-text);
+  .progress-log-view {
+    padding: 0.75rem 1rem;
   }
 
   .log-line {
-    word-break: break-all;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
 
     &.stderr {
-      color: var(--error-color);
-    }
-
-    .line-prefix {
-      color: color-mix(in srgb, var(--progress-text) 42%, transparent);
-      margin-right: 0.4rem;
-      user-select: none;
+      color: var(--warning);
     }
   }
 
-  .empty-logs {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: color-mix(in srgb, var(--progress-text) 52%, transparent);
-    padding: 1rem 0;
+  .log-empty {
+    color: var(--fg3);
   }
 
-  .loading-spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
-    border-top-color: var(--primary-color);
-    border-radius: 50%;
-    animation: term-spin 0.7s linear infinite;
-  }
-
-  // Styles specific to Polished Mode
-  &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--progress-border) 82%, var(--primary-color) 18%);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 5%, transparent), transparent 44%),
-      var(--progress-surface);
-    box-shadow:
-      0 24px 54px color-mix(in srgb, var(--progress-text) 22%, transparent),
-      0 8px 18px color-mix(in srgb, var(--primary-color) 8%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--primary-color) 10%, transparent) inset;
-    backdrop-filter: blur(12px);
-
-    .el-dialog__header {
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 68%),
-        color-mix(in srgb, var(--progress-surface-muted) 72%, var(--progress-surface));
-    }
-
-    .el-dialog__body {
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 2%, transparent), transparent),
-        var(--progress-surface);
-    }
-
-    .terminal-header {
-      background:
-        linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 7%, transparent), transparent 64%),
-        color-mix(in srgb, var(--progress-text) 5%, var(--progress-surface-muted));
-    }
-
-    .terminal-container {
-      border-color: color-mix(in srgb, var(--primary-color) 22%, var(--progress-border));
-      box-shadow:
-        inset 0 1px 0 color-mix(in srgb, var(--progress-text) 7%, transparent),
-        0 10px 26px color-mix(in srgb, var(--primary-color) 7%, transparent);
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .status-banner {
-      backdrop-filter: blur(6px);
-    }
-  }
-
-  // Styles specific to Performance Mode
-  &.market-mode-performance {
-    border-radius: 8px;
-    box-shadow: none;
-    
-    .terminal-container {
-      box-shadow: none;
-    }
+  .fallback-prompt {
+    margin: 0.75rem 0 0;
+    color: var(--fg2);
+    line-height: 1.6;
   }
 }
 
-@keyframes term-pulse {
-  0%, 100% { transform: scale(0.8); opacity: 0.5; }
-  50% { transform: scale(1.1); opacity: 1; }
-}
-
-@keyframes term-spin {
-  to { transform: rotate(360deg); }
+@keyframes market-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

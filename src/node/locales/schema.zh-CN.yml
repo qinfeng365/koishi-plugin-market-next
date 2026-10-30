@@ -1,64 +1,82 @@
-registry:
-  $description: 插件源设置
-  endpoint: 插件的下载源。默认跟随当前项目的 npm config。
-  timeout: 获取插件数据的超时时间。
-  autoRoute: 当前下载源获取版本失败时自动尝试备用 npm 源。
-  retry: 每个 npm 源获取版本失败后的重试次数。
-  concurrency: 批量获取依赖版本时的最大并发数。
-  installLogRetentionHours: 依赖安装、更新与卸载操作日志保留多少小时，默认 72 小时。
-
-search:
-  $description: 搜索设置
-  endpoint: 用于搜索插件市场的网址。默认使用 t4wefan 镜像。
-  timeout: 搜索插件市场的超时时间。
-  proxyAgent: 用于搜索插件市场的代理。
-  autoRoute: 当前市场源失败时自动尝试备用市场源。
-  logLevel: 插件市场调试日志级别（兼容旧版设置）。
-
-logLevel: 插件市场与依赖操作日志级别。silent 关闭日志，debug 输出最详细。
-marketSilentFilters: 旧版永久静默过滤。
-idleProbe: Console 空闲时自动探测依赖版本和插件市场数据。仅在没有浏览器控制台连接时运行，不会因为刷新页面触发。
-idleProbeDelay: Console 无人在线多久后开始后台探测。
-idleProbeBootDelay: Koishi 启动或重载后，至少等待多久才允许空闲探测。
-idleProbeInterval: 两次空闲后台探测之间的最小间隔。
-bulkMode: 批量操作模式。开启后安装、更新、卸载会先暂存，点击“应用更改”后执行。
-removeConfig:
-  $description: 卸载插件时是否同时删除已有插件配置。未设置时每次询问。
-  $inner:
-    - 每次询问
-    - 始终删除插件配置
-    - 永不删除插件配置
-updateIgnoredPackages: 不检测更新的依赖名。每行一个包名，也可以使用逗号、分号或空格分隔。
-updateIgnoreDuration: 点击“忽略此次更新”后的默认忽略时长。0 表示不按时间过期。
-updateIgnoreVersions: 点击“忽略此次更新”后连续忽略几个新版本。1 表示只忽略当前最新版本。
-updateIgnorePrerelease: 手动开启后，alpha / beta / rc 等预发布版本不会被视为可更新版本。
-chatlunaTool: 启用 ChatLuna 插件市场查询工具。此功能需要另行安装并启用 ChatLuna；满足条件后会注册只读工具 koishi_plugin_market_search。未安装 ChatLuna 不影响插件市场的其他功能。
-
-frontendMode:
-  $description: 前端显示模式。性能模式保持低动效；精致模式启用更细腻的动效和高级样式。
-  $inner:
-    - 性能模式
-    - 精致模式
-depsLayout:
-  $description: 依赖管理页布局。网格模式多列展示；列表模式单列宽卡片，信息更密集。
-  $inner:
-    - 网格
-    - 列表
-marketSilentRules:
-  $description: 插件市场永久静默过滤。添加后命中的插件会直接隐藏，不会显示在搜索框中。
-  type:
-    $description: 规则类型
+# 每一项对应配置页上的一个分区，顺序与 src/node/config.ts 中的 Schema.intersect 一致。
+- $description: 显示
+  frontendMode:
+    $description: 插件市场页的显示风格。精致模式会加上背景装饰和动画。
     $inner:
-      - 状态：预览版插件
-      - 状态：不安全插件
-      - 状态：插件包
-      - 创建时间：早于指定日期
-      - 创建时间：晚于指定日期
-      - 更新时间：早于指定日期
-      - 更新时间：晚于指定日期
-      - 创建时间：最近 N 天内
-      - 更新时间：最近 N 天内
-      - 自定义高级条件
-  value: 规则值。状态类留空；日期类填写 YYYY-MM-DD；最近 N 天填写数字；自定义规则填写搜索条件。
-  note: 备注
-  enabled: 是否启用
+      - 性能模式
+      - 精致模式
+  depsLayout:
+    $description: 依赖管理页默认的视图，页面右上角也可以随时切换。
+    $inner:
+      - 卡片
+      - 列表
+
+# 这一分区是「开关 + 开启时才显示的时间项」，所以按子 Schema 逐个给出文案。
+- - $description: 后台检查
+    idleProbe: 控制台没人使用时，在后台检查依赖和插件市场的更新。只刷新数据，不会自动安装。
+  - - {}
+    - idleProbeDelayMinutes: 控制台闲置多少分钟后开始检查。
+      idleProbeBootDelayMinutes: Koishi 启动或重载后，至少等多少分钟再开始检查。
+      idleProbeIntervalHours: 两次检查之间至少间隔多少小时。
+
+- registry:
+    - $description: npm 源
+      endpoint: 安装插件使用的 npm 源。留空时沿用项目自己的 npm 配置。
+      timeoutSeconds: 获取单个依赖版本信息的超时时间，单位为秒，0 表示不限时。
+      autoRoute: 当前源出错或迟迟没有结果时，同时请求备用源，用最先返回的结果。每次请求仍然先问当前源。
+    - - {}
+      - fallbackDelaySeconds: 当前源多少秒内没有结果时开始请求备用源。当前源出错时会立即请求。
+        primaryFailureLimit: 当前源连续失败或超时多少次后，暂时改为先请求备用源。超过上面的等待时间仍没有结果、被备用源抢先，也算一次。0 表示从不切换。
+        primaryBypassMinutes: 暂时改用备用源的时长，单位为分钟。到时后重新先请求当前源。
+    - retry: 每个源失败后重试的次数。
+      concurrency: 同时获取版本信息的依赖数量。
+      installLogRetentionDays: 安装、更新和卸载日志的保留天数。
+
+- search:
+    - $description: 插件市场源
+      endpoint: 插件市场索引的地址，其他可用的镜像列在本页顶部。
+      timeoutSeconds: 拉取市场索引的超时时间，单位为秒，0 表示不限时。
+      proxyAgent: 拉取市场索引时使用的代理，不影响 npm 源。
+      autoRoute: 当前市场源出错或迟迟没有结果时，同时请求备用源，用最先返回且不比已有数据旧的结果。每次刷新仍然先问当前源。
+    - - {}
+      - fallbackDelaySeconds: 当前市场源多少秒内没有结果时开始请求备用源。当前市场源出错时会立即请求。
+        primaryFailureLimit: 当前市场源连续失败或超时多少次后，暂时改为先请求备用源。超过上面的等待时间仍没有结果、被备用源抢先，也算一次。0 表示从不切换。
+        primaryBypassMinutes: 暂时改用备用源的时长，单位为分钟。到时后重新先请求当前市场源。
+
+- $description: 市场过滤
+  marketSilentRules:
+    $description: 符合规则的插件会直接从插件市场中隐藏。
+    type:
+      $description: 类型
+      $inner:
+        - 预览版插件
+        - 不安全插件
+        - 插件包
+        - 创建早于某天
+        - 创建晚于某天
+        - 更新早于某天
+        - 更新晚于某天
+        - 最近 N 天内创建
+        - 最近 N 天内更新
+        - 自定义搜索条件
+    value: 日期填 YYYY-MM-DD，天数填数字，自定义条件填搜索语法（如 category:adapter）；前三种类型不用填。
+    note: 备注
+    enabled: 启用
+
+- $description: 其他
+  chatlunaTool: 为 ChatLuna 提供一个只读的插件市场查询工具（koishi_plugin_market_search），需要先安装 ChatLuna。
+  logLevel: 日志的详细程度。silent 不输出，debug 输出全部调试信息。
+
+# 以下选项由控制台页面写入，配置页上不显示。
+- bulkMode: 批量操作模式。
+  removeConfig:
+    $description: 卸载插件时是否同时删除它的配置。
+    $inner:
+      - 每次询问
+      - 删除
+      - 保留
+  updateIgnoredPackages: 不检查更新的依赖，每行一个。
+  updateIgnoreDays: 「忽略此更新」默认忽略的天数，0 表示一直忽略。
+  updateIgnoreVersions: 「忽略此更新」时连续忽略的版本数。
+  updateIgnorePrerelease: 不把 alpha、beta、rc 等预发布版本当作更新。
+  marketSilentFilters: 旧版静默过滤。

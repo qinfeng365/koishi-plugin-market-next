@@ -1,37 +1,33 @@
 title: Version Management
-syncing: Synchronizing environment versions…
-count: '{count} environment version(s)'
+intro: Market Next records the versions of all direct dependencies at startup and after every dependency operation. Pick a record to restore your dependencies to that point.
+emptyTitle: Nothing to restore yet
+loadFailedTitle: Failed to load
 refresh: Refresh
-snapshots: Environment Versions
 current: Current
-currentEnvironment: Current Environment
-savedEnvironment: Saved Environment
-dependencies: '{count} direct dependencies'
-reading: Reading environment versions…
-empty: No environment versions are available
-readingPreview: Calculating the difference between the current and target environments…
-selectSnapshot: Select an environment version to view its differences
-loadFailed: Failed to read environment versions. Check the backend log.
-previewFailed: Failed to read the environment difference. The target may have been cleaned up.
-targetEnvironment: Target Environment
-changedCount: '{count} changed'
-unchangedCount: '{count} unchanged'
-unsupportedCount: '{count} unsupported'
-scopeWarning: Only direct dependency versions in package.json are restored. Plugin config, databases, and plugin-generated data are not restored or deleted.
-dependency: Dependency
-currentVersion: Current Version
-targetVersion: Target Version
-status: Status
-notInstalled: Not Installed
-alreadyCurrent: Current Version
+currentEnvironment: Current environment
+dependencies: '{count} dependencies'
+reading: Reading records…
+empty: Only the current environment has been recorded so far. Every install, update or uninstall adds a record you can restore.
+readingPreview: Comparing…
+isCurrent: This is the current environment. Pick an earlier record to compare.
+noChanges: Identical to the current environment.
+loadFailed: Failed to read records. Check the backend log.
+loadFailedToast: Failed to read records. Check the backend log
+previewFailed: Failed to read the difference. This record may have been cleaned up.
+changedCount: '{count} difference(s) from the current environment'
+unsupportedCount: '{count} cannot be restored automatically'
+showUnchanged: Show the other {count} unchanged dependencies
+hideUnchanged: Hide unchanged dependencies
+scopeWarning: Only dependency versions in package.json are restored. Plugin config, databases and files created by plugins stay as they are.
+notInstalled: Not installed
 restore: Restore This Version
-confirmTitle: Confirm Dependency Environment Restore
-confirmText: This will apply {count} dependency version change(s) in one operation.
-removeWarning: The target environment removes {count} direct dependency/dependencies, but matching plugin config and data will be kept.
-confirmRestore: Confirm Restore
-sourceStartup: Recorded at startup
-sourceOperation: Recorded after a dependency operation
-sourceExternal: External change detected
+confirmTitle: Restore Dependency Versions
+confirmText: This applies {count} dependency change(s) in one go.
+removeWarning: '{count} dependency/dependencies will be removed, but their plugin config and data are kept.'
+confirmRestore: Restore
+sourceStartup: Startup
+sourceOperation: After change
+sourceExternal: External
 change:
   upgrade: Upgrade
   downgrade: Downgrade

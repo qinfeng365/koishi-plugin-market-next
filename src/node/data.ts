@@ -16,6 +16,7 @@ export interface MarketDataStorePayload {
   updateIgnored: Dict<string | UpdateIgnoreRule>
   bundleRecords: Dict<PluginBundleRecord>
   collapsedGroups: Dict<boolean>
+  bulkMode: boolean
 }
 
 const emptyStore = (): MarketDataStorePayload => ({
@@ -23,6 +24,7 @@ const emptyStore = (): MarketDataStorePayload => ({
   updateIgnored: {},
   bundleRecords: {},
   collapsedGroups: {},
+  bulkMode: false,
 })
 
 export async function readMarketDataStore(ctx: Context): Promise<MarketDataStorePayload> {
@@ -43,6 +45,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
   private ready?: Promise<void>
   private mutationTask: Promise<void> = Promise.resolve()
   private hasCollapsedGroupsState = false
+  private hasBulkModeState = false
   private collapsedGroupsVersion = 0
 
   constructor(public ctx: Context) {
@@ -62,12 +65,18 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     return this.queueMutation(async () => {
       const previous = this.data
       const previousCollapsedState = this.hasCollapsedGroupsState
+      const previousBulkModeState = this.hasBulkModeState
       const next = this.snapshot()
       let changed = false
       for (const key of ['override', 'updateIgnored', 'bundleRecords', 'collapsedGroups'] as const) {
         if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
         next[key] = normalizeDict(patch[key])
         if (key === 'collapsedGroups') this.hasCollapsedGroupsState = true
+        changed = true
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'bulkMode')) {
+        next.bulkMode = !!patch.bulkMode
+        this.hasBulkModeState = true
         changed = true
       }
       if (!changed) return this.snapshot()
@@ -77,6 +86,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       } catch (error) {
         this.data = previous
         this.hasCollapsedGroupsState = previousCollapsedState
+        this.hasBulkModeState = previousBulkModeState
         throw error
       }
       super.patch(this.snapshot())
@@ -106,6 +116,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     updateIgnored?: Dict<string | UpdateIgnoreRule>
     bundleRecords?: Dict<PluginBundleRecord>
     collapsedGroups?: Dict<boolean>
+    bulkMode?: boolean
   }) {
     await this.ready
     const patch: Partial<MarketDataStorePayload> = {}
@@ -117,6 +128,8 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
     if (!Object.keys(this.data.bundleRecords).length && Object.keys(config.bundleRecords ?? {}).length) {
       patch.bundleRecords = config.bundleRecords
     }
+    // koishi.yml only keeps bulkMode until this migration removes it.
+    if (!this.hasBulkModeState && config.bulkMode !== undefined) patch.bulkMode = config.bulkMode
     if (!this.hasCollapsedGroupsState) {
       patch.collapsedGroups = config.collapsedGroups ?? {}
     }
@@ -140,6 +153,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       updateIgnored: { ...this.data.updateIgnored },
       bundleRecords: { ...this.data.bundleRecords },
       collapsedGroups: { ...this.data.collapsedGroups },
+      bulkMode: this.data.bulkMode,
     }
   }
 
@@ -148,6 +162,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
       const content = await fsp.readFile(this.file, 'utf8')
       const value = JSON.parse(content)
       this.hasCollapsedGroupsState = Object.prototype.hasOwnProperty.call(value, 'collapsedGroups')
+      this.hasBulkModeState = Object.prototype.hasOwnProperty.call(value, 'bulkMode')
       this.collapsedGroupsVersion = Number.isInteger(value?.collapsedGroupsVersion)
         ? Math.max(0, value.collapsedGroupsVersion)
         : 0
@@ -157,6 +172,7 @@ export class MarketDataStore extends DataService<MarketDataStorePayload> {
         logger.warn(`failed to read market-next data store: ${error instanceof Error ? error.message : error}`)
       }
       this.hasCollapsedGroupsState = false
+      this.hasBulkModeState = false
       this.collapsedGroupsVersion = 0
       this.data = emptyStore()
     }
@@ -191,6 +207,7 @@ function normalizeStore(value: any): MarketDataStorePayload {
     updateIgnored: normalizeDict(value?.updateIgnored),
     bundleRecords: normalizeDict(value?.bundleRecords),
     collapsedGroups: normalizeDict<boolean>(value?.collapsedGroups),
+    bulkMode: !!value?.bulkMode,
   }
 }
 

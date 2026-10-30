@@ -41,3 +41,33 @@ test('data store rejects a failed write without publishing the patch', async () 
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('data store takes bulkMode over from koishi.yml and keeps it as a boolean', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'market-next-data-bulk-'))
+  try {
+    const ctx = new Context()
+    ctx.baseDir = root
+    const store = new MarketDataStore(ctx)
+    await store.migrateFromConfig({ bulkMode: true })
+    assert.equal((await store.get()).bulkMode, true)
+    await store.patch({ bulkMode: 0 })
+    const saved = JSON.parse(await readFile(join(root, 'data', 'market-next.json'), 'utf8'))
+    assert.equal(saved.bulkMode, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('data store keeps its own bulkMode once it has one', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'market-next-data-bulk-keep-'))
+  try {
+    const ctx = new Context()
+    ctx.baseDir = root
+    const store = new MarketDataStore(ctx)
+    await store.patch({ bulkMode: false })
+    await store.migrateFromConfig({ bulkMode: true })
+    assert.equal((await store.get()).bulkMode, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

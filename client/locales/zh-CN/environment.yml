@@ -1,37 +1,33 @@
 title: 版本管理
-syncing: 正在同步环境版本……
-count: 共 {count} 个环境版本
+intro: Market Next 会在启动时和每次依赖操作后记下所有直接依赖的版本。选一个记录，就能把依赖恢复到当时的样子。
+emptyTitle: 暂时没有可以恢复的版本
+loadFailedTitle: 读取失败
 refresh: 刷新
-snapshots: 环境版本
 current: 当前
 currentEnvironment: 当前环境
-savedEnvironment: 已保存环境
-dependencies: '{count} 个直接依赖'
-reading: 正在读取环境版本……
-empty: 暂无可用环境版本
-readingPreview: 正在计算当前环境到目标环境的差异……
-selectSnapshot: 选择一个环境版本查看差异
-loadFailed: 读取环境版本失败，请检查后端日志。
-previewFailed: 读取环境版本差异失败，目标可能已被清理。
-targetEnvironment: 目标环境
-changedCount: 变更 {count}
-unchangedCount: 未变化 {count}
-unsupportedCount: 无法恢复 {count}
-scopeWarning: 仅恢复 package.json 中的直接依赖版本；插件配置、数据库和插件生成的数据不会恢复或删除。
-dependency: 依赖
-currentVersion: 当前版本
-targetVersion: 目标版本
-status: 状态
+dependencies: '{count} 个依赖'
+reading: 正在读取记录……
+empty: 目前只记录了当前环境。之后每次安装、更新或卸载依赖，都会多一条可以恢复的记录。
+readingPreview: 正在对比差异……
+isCurrent: 这就是当前环境，选一条更早的记录来对比差异。
+noChanges: 和当前环境完全一样。
+loadFailed: 读取记录失败，请检查后端日志。
+loadFailedToast: 读取记录失败，请检查后端日志
+previewFailed: 读取差异失败，这条记录可能已被清理。
+changedCount: 与当前环境相比有 {count} 处不同
+unsupportedCount: '{count} 个无法自动恢复'
+showUnchanged: 显示其余 {count} 个没有变化的依赖
+hideUnchanged: 隐藏没有变化的依赖
+scopeWarning: 只会恢复 package.json 里的依赖版本，插件配置、数据库和插件产生的文件都不会变。
 notInstalled: 未安装
-alreadyCurrent: 当前版本
-restore: 恢复到此版本
-confirmTitle: 确认恢复依赖环境
-confirmText: 将一次性应用 {count} 项依赖版本变更。
-removeWarning: 目标环境会移除 {count} 个直接依赖，但不会删除对应插件配置和数据。
-confirmRestore: 确认恢复
-sourceStartup: 启动时记录
-sourceOperation: 依赖操作后记录
-sourceExternal: 检测到外部变化
+restore: 恢复到这个版本
+confirmTitle: 恢复依赖版本
+confirmText: 将一次性应用 {count} 处依赖改动。
+removeWarning: 有 {count} 个依赖会被移除，但对应的插件配置和数据会保留。
+confirmRestore: 恢复
+sourceStartup: 启动时
+sourceOperation: 操作后
+sourceExternal: 外部改动
 change:
   upgrade: 升级
   downgrade: 降级

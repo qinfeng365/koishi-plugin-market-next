@@ -167,7 +167,8 @@ export class InstallHistoryStore {
 
   emit(type: 'stdout' | 'stderr', line: string) {
     const cleanLine = sanitizeInstallLogText(line)
-    this.ctx.get('console')?.broadcast('market/install-log', { type, line: cleanLine })
+    // Same authority as market/install-history, which serves these logs afterwards.
+    this.ctx.get('console')?.broadcast('market/install-log', { type, line: cleanLine }, { authority: 4 })
     this.write(type, cleanLine)
   }
 
@@ -279,12 +280,8 @@ export class InstallHistoryStore {
   }
 
   private getRetention() {
-    const hours = Number(this.config.installLogRetentionHours)
-    if (Number.isFinite(hours) && hours > 0) return Math.max(1, hours) * Time.hour
-    const legacyRetention = Number(this.config.installLogRetention)
-    return Number.isFinite(legacyRetention) && legacyRetention > 0
-      ? Math.max(Time.hour, legacyRetention)
-      : DEFAULT_INSTALL_LOG_RETENTION
+    const days = this.config.installLogRetentionDays
+    return days > 0 ? days * Time.day : DEFAULT_INSTALL_LOG_RETENTION
   }
 
   private async writeMetadata() {

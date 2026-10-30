@@ -446,7 +446,7 @@ export function formatLoadError(endpoint: string, input: NormalizedSearchInput, 
     },
     results: [],
     nextQueries: [
-      'Check market.search.endpoint, market.search.timeout, proxyAgent, or current network connectivity.',
+      'Check market.search.endpoint, market.search.timeoutSeconds, proxyAgent, or current network connectivity.',
       'If a previous call had stale=true, use its cached results until the registry is reachable.',
     ],
   }

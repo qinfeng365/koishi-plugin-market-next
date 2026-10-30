@@ -1,63 +1,82 @@
-registry:
-  $description: Registry settings
-  endpoint: Package download source. Follows the current project's npm config by default.
-  timeout: Timeout for fetching package metadata.
-  autoRoute: Automatically try fallback npm registries when version metadata cannot be fetched from the current registry.
-  retry: Retry count after version metadata fails on each npm registry.
-  concurrency: Maximum concurrency when loading dependency version metadata.
-  installLogRetentionHours: How many hours dependency operation logs are retained. Defaults to 72 hours.
-search:
-  $description: Search settings
-  endpoint: URL used to search the plugin market. Uses the t4wefan mirror by default.
-  timeout: Timeout for searching the plugin market.
-  proxyAgent: Proxy used to search the plugin market.
-  autoRoute: Automatically try fallback market sources when the current source fails.
-  logLevel: Plugin market log level (legacy setting).
-
-logLevel: Log level for market and package operations. silent disables logs; debug enables detailed logs.
-marketSilentFilters: Legacy permanent silent filters.
-idleProbe: Automatically probes dependency versions and market data while Console is idle. It only runs when no browser console is connected, and page reloads do not trigger it.
-idleProbeDelay: How long Console must stay idle before the background probe starts.
-idleProbeBootDelay: Minimum delay after Koishi startup or reload before idle probing is allowed.
-idleProbeInterval: Minimum interval between idle background probes.
-bulkMode: Batch operation mode. Dependency install, update, and uninstall actions are staged until applying changes.
-removeConfig:
-  $description: Whether to remove existing plugin config when uninstalling a plugin. Ask every time when unset.
-  $inner:
-    - Ask every time
-    - Always remove plugin config
-    - Never remove plugin config
-updateIgnoredPackages: Dependency package names that should not be checked for updates. One package per line, or separated by commas, semicolons, or spaces.
-updateIgnoreDuration: Default duration after ignoring one update. 0 means no time-based expiry.
-updateIgnoreVersions: How many consecutive newer versions should be ignored after ignoring one update. 1 means only the current latest version.
-updateIgnorePrerelease: When enabled, alpha / beta / rc and other prerelease versions are not treated as update targets.
-chatlunaTool: Enable the ChatLuna plugin market query tool. ChatLuna must be installed and enabled separately; when available, this registers the read-only koishi_plugin_market_search tool. Other market features work without ChatLuna.
-
-frontendMode:
-  $description: Frontend display mode. Performance mode keeps low-motion dense UI; polished mode enables richer visual effects.
-  $inner:
-    - Performance mode
-    - Polished mode
-depsLayout:
-  $description: Dependencies page layout. Grid shows compact cards; list shows a denser single-column view.
-  $inner:
-    - Grid
-    - List
-marketSilentRules:
-  $description: Permanent silent market filters. Matched plugins are hidden from the market page.
-  type:
-    $description: Rule type
+# Each item is one section of the config page, in the same order as Schema.intersect in src/node/config.ts.
+- $description: Display
+  frontendMode:
+    $description: Display style of the plugin market page. Polished mode adds background decoration and animation.
     $inner:
-      - 'Status: plugin in development'
-      - 'Status: insecure plugin'
-      - 'Status: plugin bundle'
-      - Created before a date
-      - Created after a date
-      - Updated before a date
-      - Updated after a date
-      - Created within the last N days
-      - Updated within the last N days
-      - Custom advanced condition
-  value: 'Rule value. Leave status rules empty; use YYYY-MM-DD for dates, a number for recent-day rules, or a search condition for custom rules.'
-  note: Note
-  enabled: Enabled
+      - Performance
+      - Polished
+  depsLayout:
+    $description: Default view of the Dependencies page. You can also switch it in the top-right corner of the page.
+    $inner:
+      - Cards
+      - List
+
+# This section is a toggle plus options that only show while it is on, so each sub-schema gets its own entry.
+- - $description: Background checks
+    idleProbe: Check dependencies and the plugin market for updates while nobody is using the console. This only refreshes data and never installs anything.
+  - - {}
+    - idleProbeDelayMinutes: Minutes the console must be idle before a check starts.
+      idleProbeBootDelayMinutes: Minutes to wait after Koishi starts or reloads before the first check.
+      idleProbeIntervalHours: Minimum hours between two checks.
+
+- registry:
+    - $description: npm Registry
+      endpoint: npm registry used to install plugins. Leave empty to use the project's own npm config.
+      timeoutSeconds: Timeout for looking up one dependency's versions, in seconds. 0 means no limit.
+      autoRoute: When the current registry fails or takes too long, also ask the fallbacks and use the first answer. Each request still starts with the current registry.
+    - - {}
+      - fallbackDelaySeconds: Seconds without an answer from the current registry before the fallbacks are asked. A failure asks them at once.
+        primaryFailureLimit: Failures or timeouts in a row before requests start from the fallbacks for a while. Having no answer after the delay above while a fallback answers counts as one. 0 never switches.
+        primaryBypassMinutes: How long requests start from the fallbacks, in minutes. After that the current registry is asked first again.
+    - retry: Retries for each registry after a failure.
+      concurrency: Number of dependencies to look up at the same time.
+      installLogRetentionDays: Days to keep install, update and uninstall logs.
+
+- search:
+    - $description: Plugin Market Source
+      endpoint: URL of the plugin market index. Other mirrors are listed at the top of this page.
+      timeoutSeconds: Timeout for fetching the market index, in seconds. 0 means no limit.
+      proxyAgent: Proxy used for fetching the market index. It does not affect the npm registry.
+      autoRoute: When the current source fails or takes too long, also ask the fallbacks and use the first answer that is not older than the data already loaded. Each refresh still starts with the current source.
+    - - {}
+      - fallbackDelaySeconds: Seconds without an answer from the current source before the fallbacks are asked. A failure asks them at once.
+        primaryFailureLimit: Failures or timeouts in a row before refreshes start from the fallbacks for a while. Having no answer after the delay above while a fallback answers counts as one. 0 never switches.
+        primaryBypassMinutes: How long refreshes start from the fallbacks, in minutes. After that the current source is asked first again.
+
+- $description: Market filters
+  marketSilentRules:
+    $description: Plugins matching these rules are hidden from the plugin market.
+    type:
+      $description: Type
+      $inner:
+        - Preview plugins
+        - Insecure plugins
+        - Plugin bundles
+        - Created before a date
+        - Created after a date
+        - Updated before a date
+        - Updated after a date
+        - Created in the last N days
+        - Updated in the last N days
+        - Custom search condition
+    value: A date as YYYY-MM-DD, a number of days, or a search condition such as category:adapter. The first three types need no value.
+    note: Note
+    enabled: Enabled
+
+- $description: Other
+  chatlunaTool: Provide a read-only plugin market query tool (koishi_plugin_market_search) for ChatLuna. Requires ChatLuna.
+  logLevel: How detailed the logs are. silent prints nothing; debug prints everything.
+
+# The options below are written by the console pages and are not shown on the config page.
+- bulkMode: Batch operation mode.
+  removeConfig:
+    $description: Whether to remove a plugin's config when uninstalling it.
+    $inner:
+      - Ask every time
+      - Remove
+      - Keep
+  updateIgnoredPackages: Dependencies that are never checked for updates, one per line.
+  updateIgnoreDays: Default number of days for "Ignore this update". 0 means ignore indefinitely.
+  updateIgnoreVersions: Number of consecutive versions skipped by "Ignore this update".
+  updateIgnorePrerelease: Do not treat alpha, beta, rc and other prerelease versions as updates.
+  marketSilentFilters: Legacy silent filters.

@@ -62,7 +62,7 @@ export const badges: Dict<Badge> = {
   bundle: {
     query: 'is:bundle',
     negate: 'not:bundle',
-    icon: 'file-archive',
+    icon: 'layer-group',
   },
   newborn: {
     query: `created:>${aWeekAgo}`,

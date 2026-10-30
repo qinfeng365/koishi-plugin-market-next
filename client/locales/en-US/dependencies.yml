@@ -1,68 +1,60 @@
 toolbar:
-  blockPreview: Hide previews
-  gridView: Grid view
+  blockPreview: Skip pre-release versions
+  layout: Layout
+  gridView: Card view
   listView: List view
+  loading: Fetching version info…
   searchPlaceholder: Search dependencies
-  loading: Loading
-empty: No matching dependencies.
+empty: No matching dependencies
+emptyHint: Try another keyword, or set the filter back to “All”.
 apply:
-  count: '{count} pending change(s)'
-  description: Changes will be written to package.json and installed after confirmation.
-  discard: Discard Changes
+  count: '{count} change(s) to apply'
+  description: Confirming writes package.json and starts the installation.
+  discard: Discard
   apply: Apply Changes
 filters:
   all: All
   pending: Pending
   bundle: Plugin bundles
-  unconfigured: Installed, not configured
+  unconfigured: Not configured
   updatable: Updates available
   ignored: Ignored
-  checkDisabled: Update checks disabled
+  checkDisabled: Update checks off
   invalid: Unsupported
-  error: Version error
+  error: Fetch failed
   local: Local plugins
-  manual: Added manually
+  manual: To be installed
 groups:
   pending:
-    label: Pending Changes
-    description: These changes are staged and will be applied only after confirmation.
+    label: Pending
+    description: These changes have not taken effect yet. Click “Apply Changes” below to install, update or uninstall.
   bundle:
     label: Plugin Bundles
-    description: Bundles manage a group of member plugins and do not need a config entry themselves.
+    description: A bundle installs and manages a group of plugins. The bundle itself does not appear on the plugin config page.
   updatable:
     label: Updates Available
-    description: A newer npm version is available than the installed version.
+    description: npm has a newer version than the one installed.
   ignored:
-    label: Updates Ignored
-    description: This update is ignored by policy and will be shown again when the rule expires.
+    label: Ignored Updates
+    description: These updates are temporarily ignored and will show up again when the rule expires or more versions are released.
   checkDisabled:
-    label: Update Checks Disabled
-    description: This dependency is permanently excluded from update checks.
+    label: Update Checks Off
+    description: These dependencies will not show new versions.
   unconfigured:
-    label: Installed, Not Configured
-    description: The dependency is installed locally but has no corresponding plugin configuration.
+    label: Not Configured
+    description: Downloaded, but not yet added on the plugin config page.
   invalid:
     label: Unsupported
-    description: This version range cannot be managed automatically and requires manual editing.
+    description: The version range cannot be managed automatically. Edit package.json by hand.
   error:
-    label: Version Error
-    description: npm metadata is currently unavailable, possibly because of a network or mirror issue.
+    label: Fetch Failed
+    description: Version info from npm is unavailable right now, possibly due to the network or an out-of-date mirror. Try refreshing later.
   local:
     label: Local Plugins
-    description: Plugins loaded from a workspace, local directory, local archive, or manual installation do not participate in remote version checks.
+    description: Loaded from a workspace, a local directory or a local archive. They are not checked for updates on npm.
   manual:
-    label: Added Manually
-    description: This dependency is staged for installation but is not installed yet.
+    label: To Be Installed
+    description: Added, but not installed yet.
   installed:
     label: Installed
-    description: Installed and currently has no action requiring attention.
-card:
-  bundle: Plugin bundle
-  update: Update
-  configure: Configure
-  ignore: Ignore
-  restore: Restore
-  remove: Remove dependency
-  current: (current)
-  undo: Undo
-  cancelChange: Cancel change
+    description: Up to date. Nothing to do here.

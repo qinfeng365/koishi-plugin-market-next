@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { scoreRouteHealth } from '../src/node/route-health.ts'
+import { isPrimaryBypassed, scoreRouteHealth } from '../src/node/route-health.ts'
 
 const now = Date.UTC(2026, 7, 21)
 
@@ -63,4 +63,14 @@ test('preserves the existing success-rate and history weighting', () => {
     fastThreshold: 500,
     now,
   }), 6.4)
+})
+
+test('bypasses the configured source only after enough failures and only for a while', () => {
+  const minute = 60_000
+  const config = { autoRoute: true, primaryFailureLimit: 3, primaryBypassMinutes: 5 }
+  assert.equal(isPrimaryBypassed({ consecutiveFailures: 2, lastFailure: 1 }, config, minute), false)
+  assert.equal(isPrimaryBypassed({ consecutiveFailures: 3, lastFailure: 1 }, config, minute), true)
+  assert.equal(isPrimaryBypassed({ consecutiveFailures: 3, lastFailure: 1 }, config, 6 * minute), false)
+  assert.equal(isPrimaryBypassed({ consecutiveFailures: 3, lastFailure: 1 }, { ...config, primaryFailureLimit: 0 }, minute), false)
+  assert.equal(isPrimaryBypassed({ consecutiveFailures: 3, lastFailure: 1 }, { ...config, autoRoute: false }, minute), false)
 })

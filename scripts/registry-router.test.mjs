@@ -19,8 +19,85 @@ test('refresh and new package metadata clear cached registry not-found results',
   metadata.setPackage('example', [{ version: '1.0.0' }])
   assert.equal(metadata.hasRecentNotFound('example'), false)
   metadata.notFoundCache.example = Date.now()
-  await metadata.reset('test refresh')
+  await metadata.reset('test refresh', [])
   assert.equal(metadata.hasRecentNotFound('example'), false)
+  metadata.dispose()
+})
+
+test('reset keeps registry errors until a new fetch settles them', async () => {
+  const patches = []
+  const ctx = {
+    baseDir: process.cwd(),
+    scope: { isActive: true },
+    get: () => ({ patch: (key, value) => patches.push([key, structuredClone(value)]) }),
+    throttle: callback => callback,
+    http: { extend: () => ({}) },
+  }
+  const metadata = new RegistryMetadata(ctx, { endpoint: 'https://registry.npmjs.org' })
+  metadata.registryStatus = {
+    failed: { loading: true, error: 'timeout', reason: 'timeout' },
+    removed: { loading: false, error: 'timeout', reason: 'timeout' },
+    loaded: { loading: false, endpoint: 'https://registry.npmjs.org' },
+    fetching: { loading: true, endpoint: 'https://registry.npmjs.org' },
+    dialog: { loading: true },
+  }
+  const refetched = []
+  metadata.getPackage = async name => refetched.push(name)
+  await metadata.reset('test refresh', ['failed', 'loaded', 'fetching'])
+  assert.deepEqual(metadata.registryStatus.failed, { loading: false, error: 'timeout', reason: 'timeout' })
+  assert.equal(metadata.registryStatus.loaded, undefined)
+  const [key, statuses] = patches.find(([key]) => key === 'registryStatus')
+  assert.equal(key, 'registryStatus')
+  // Fetched again for the dialog that may be waiting, so it stays loading.
+  assert.equal('dialog' in statuses, false)
+  assert.deepEqual(refetched, ['dialog'])
+  assert.deepEqual(statuses.failed, { loading: false, error: 'timeout', reason: 'timeout' })
+  assert.equal(statuses.fetching, null)
+  metadata.setRegistryStatus('failed', { loading: true, attempts: 0 })
+  assert.equal(patches.at(-1)[1].failed.error, 'timeout')
+  assert.equal(patches.at(-1)[1].failed.loading, true)
+  metadata.setPackage('failed', [{ version: '1.0.0' }])
+  assert.equal(metadata.registryStatus.failed.error, undefined)
+  metadata.dispose()
+})
+
+test('a fetch that starts while the reset resolves the endpoint keeps its status', async () => {
+  const ctx = {
+    baseDir: process.cwd(),
+    scope: { isActive: true },
+    get: () => ({ patch() {} }),
+    throttle: callback => callback,
+    http: { extend: () => ({}) },
+  }
+  const metadata = new RegistryMetadata(ctx, { endpoint: 'https://registry.npmjs.org' })
+  const previous = metadata.serial
+  const resetting = metadata.reset('test refresh', [])
+  metadata.setRegistryStatus('dialog', { loading: true })
+  metadata.setRegistryStatus('cancelled', { loading: false }, previous)
+  await resetting
+  assert.equal(metadata.registryStatus.dialog.loading, true)
+  assert.equal(metadata.registryStatus.cancelled, undefined)
+  metadata.dispose()
+})
+
+test('reset sends the versions and statuses still waiting in the throttles', async () => {
+  const patches = []
+  const ctx = {
+    baseDir: process.cwd(),
+    scope: { isActive: true },
+    get: () => ({ patch: (key, value) => patches.push([key, structuredClone(value)]) }),
+    // Never flushes on its own, so everything stays waiting until the reset.
+    throttle: () => () => {},
+    http: { extend: () => ({}) },
+  }
+  const metadata = new RegistryMetadata(ctx, { endpoint: 'https://registry.npmjs.org' })
+  metadata.setPackage('fetched', [{ version: '1.0.0' }])
+  metadata.setRegistryStatus('settled', { loading: false, endpoint: 'https://registry.npmjs.org' })
+  await metadata.reset('test refresh', ['fetched', 'settled'])
+  const sent = Object.fromEntries(patches)
+  assert.ok(sent.registry.fetched)
+  assert.equal(sent.registryStatus.settled.loading, false)
+  assert.deepEqual(metadata.fullCache, {})
   metadata.dispose()
 })
 

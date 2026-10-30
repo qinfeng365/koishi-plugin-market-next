@@ -154,7 +154,7 @@ function formatBytes(value: number) {
 }
 
 .local-package-dropzone {
-  min-height: 286px;
+  min-height: 220px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -183,7 +183,7 @@ function formatBytes(value: number) {
   }
 
   &.ready {
-    min-height: 224px;
+    min-height: 0;
     flex-direction: row;
     align-items: flex-start;
     justify-content: flex-start;

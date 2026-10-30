@@ -1,10 +1,11 @@
 import { Awaitable, Context, Dict, loading, message, receive, send, socket, store, valueMap } from '@koishijs/client'
 import type { Registry, SearchObject } from '@koishijs/registry'
-import type { RegistryStatus } from 'koishi-plugin-market-next'
 import { compare, satisfies } from 'semver'
-import { reactive, ref, watch } from 'vue'
-import { active } from '../utils'
+import { computed, reactive, Ref, ref, shallowReactive, watch } from 'vue'
+import { active, getBundleRecords, getPendingOverrides, patchMarketNextData } from '../utils'
 import { translate } from '../i18n'
+import { getMarketObject } from '../market/state'
+import type { MarketStore } from '../registry-state'
 import {
   getBundleGroupIdent,
   getPluginShortname,
@@ -22,9 +23,21 @@ export interface ClientConfigWriter {
   remove(name: string): void
 }
 
+export function formatShortname(name: string) {
+  const shortname = getMarketObject(name)?.shortname
+  if (shortname && shortname !== name) return shortname
+  if (name.startsWith('@koishijs/plugin-')) return name.slice('@koishijs/plugin-'.length)
+  if (name.startsWith('koishi-plugin-')) return name.slice('koishi-plugin-'.length)
+  const scoped = name.match(/^@([^/]+)\/koishi-plugin-(.+)$/)
+  return scoped ? `@${scoped[1]}/${scoped[2]}` : name
+}
+
 export function getConfigWriter(ctx: Context) {
   return ctx.get('configWriter') as ClientConfigWriter | undefined
 }
+
+// Shortnames of the plugins in koishi.yml. configWriter misses entries whose $if is false.
+export const configuredPlugins = computed(() => new Set(store.pluginConfigs))
 
 interface AnalyzeResult {
   peers: Dict<PeerInfo>
@@ -37,8 +50,13 @@ export interface PeerInfo {
   result: ResultType
 }
 
+// Shared with cards that only need to know whether versions exist, so both read the same source.
+export function getVersions(name: string) {
+  return store.registry?.[name] || manualDeps[name]?.versions
+}
+
 export function analyzeVersions(name: string, getVersion: (name: string) => string): Dict<AnalyzeResult> {
-  const versions = store.registry?.[name] || manualDeps[name]?.versions
+  const versions = getVersions(name)
   if (!versions) return
   return valueMap(versions, (item) => {
     const peers = valueMap({ ...item.peerDependencies }, (request, name) => {
@@ -66,10 +84,6 @@ export function analyzeVersions(name: string, getVersion: (name: string) => stri
 }
 
 export const manualDeps = reactive<Dict<Registry>>({})
-
-type MarketStore = typeof store & {
-  registryStatus?: Dict<RegistryStatus>
-}
 
 export function getRegistryStatus(name: string) {
   return (store as MarketStore).registryStatus?.[name]
@@ -100,7 +114,14 @@ export function getRegistryStatusText(name: string) {
   }
 }
 
-function formatEndpoint(endpoint: string) {
+// Toasts end without a full stop, also when the text is a sentence from the server or from a
+// dialog, which may end in a line break. An ellipsis is left alone.
+export function toastText(text: string) {
+  text = text.trimEnd()
+  return text.endsWith('...') ? text : text.replace(/[。.]$/, '')
+}
+
+export function formatEndpoint(endpoint: string) {
   try {
     return new URL(endpoint).host
   } catch {
@@ -120,6 +141,82 @@ export const showConfirm = ref(false)
 export const showInstallHistory = ref(false)
 export const showEnvironmentVersions = ref(false)
 export const expandedDependency = ref('')
+
+export type DependencyDialogType = 'ignore' | 'local-binding' | 'bundle-uninstall' | 'history'
+
+// The dependency page keeps one set of dialogs for all cards. The target stays set after
+// closing so the dialog keeps its content while it fades out.
+export const dependencyDialog = reactive({
+  type: undefined as DependencyDialogType | undefined,
+  name: '',
+})
+
+export interface DependencyMenuItem {
+  command: string
+  label: string
+  icon: string
+  danger?: boolean
+}
+
+// Like the dialogs, one "more" menu serves every card and is placed next to the clicked button.
+// The anchor is the element wrapping that button, because Element Plus rewrites the aria
+// attributes of the element it is anchored to. The rest stays set while the menu fades out
+// and is cleared once it is hidden.
+export const dependencyMenu = shallowReactive({
+  open: false,
+  anchor: undefined as HTMLElement | undefined,
+  items: (() => []) as () => DependencyMenuItem[],
+  select: (() => {}) as (command: string) => void,
+})
+
+// Packages whose local binding is being prepared, so the card shows it even after the dialog closes.
+export const bindingLocalPackages = reactive(new Set<string>())
+
+// An empty version removes the package and undefined drops the pending change.
+export function setPendingVersion(name: string, version: string | undefined) {
+  const override = getPendingOverrides()
+  if (version === undefined || version === store.dependencies?.[name]?.resolved) {
+    delete override[name]
+  } else {
+    override[name] = version
+  }
+  void patchMarketNextData({ override: { ...override } })
+}
+
+// Runs one load at a time. A call during a load waits for it instead of starting another, and
+// a refresh that keeps the current selection runs once that load is done.
+export function createSerialLoader(run: (preserveSelection: boolean) => Promise<void>) {
+  let task: Promise<void> | undefined
+  const load = (preserveSelection = false): Promise<void> => {
+    if (task) return preserveSelection ? task.then(() => load(true)) : task
+    task = run(preserveSelection).finally(() => task = undefined)
+    return task
+  }
+  return load
+}
+
+// Opens a dialog once its first load settles, or after a short wait, so it appears at the
+// width that fits its data instead of resizing when the data arrives.
+export function useDeferredDialog(source: Ref<boolean>, load: () => Promise<unknown>, timeout = 1000) {
+  const visible = ref(false)
+  let serial = 0
+  watch(source, (value) => {
+    const current = ++serial
+    if (!value) {
+      visible.value = false
+      return
+    }
+    const reveal = () => {
+      if (current === serial && source.value) visible.value = true
+    }
+    void load().finally(reveal)
+    setTimeout(reveal, timeout)
+  })
+  return computed({
+    get: () => visible.value,
+    set: (value: boolean) => source.value = value,
+  })
+}
 export const activeBundle = ref<SearchObject>()
 export type BundleMemberCleanupTarget = {
   package: string
@@ -153,6 +250,14 @@ export function createBundleRecordFromManifest(packageName: string, version = ''
   }
 }
 
+export function getInstalledVersion(name: string) {
+  return store.dependencies?.[name]?.resolved ?? store.packages?.[name]?.package.version ?? ''
+}
+
+export function findBundleRecord(packageName: string) {
+  return getBundleRecords()[packageName] || createLocalBundleRecord(packageName)
+}
+
 export function createLocalBundleRecord(packageName: string): BundleRecordView | undefined {
   if (!isBundlePackageName(packageName)) return
   const local = store.packages?.[packageName]
@@ -160,7 +265,7 @@ export function createLocalBundleRecord(packageName: string): BundleRecordView |
   if (!local && !dep) return
   const bundle = parseBundleManifest((local?.package as any)?.koishi?.bundle)
   if (!bundle?.members.length) return
-  return createBundleRecordFromManifest(packageName, dep?.resolved ?? local?.package.version ?? '', bundle)
+  return createBundleRecordFromManifest(packageName, getInstalledVersion(packageName), bundle)
 }
 
 export function resolveBundlePackageFromGroup(groupPath?: string, records: Dict<PluginBundleRecord> = {}) {
@@ -220,7 +325,7 @@ export async function fetchBundleRecord(packageName: string): Promise<BundleReco
     return undefined
   }) as Registry | undefined
   if (!registry?.versions) return createLocalBundleRecord(packageName)
-  const targetVersion = store.dependencies?.[packageName]?.resolved ?? store.packages?.[packageName]?.package.version
+  const targetVersion = getInstalledVersion(packageName)
   const entry = targetVersion && registry.versions?.[targetVersion]
     ? [targetVersion, registry.versions[targetVersion]] as const
     : Object.entries(registry.versions ?? {})[0]
@@ -317,7 +422,7 @@ export async function prepareInstallFallbackRetry(run: (options?: InstallOptions
       const detail = formatInstallError(error)
       installProgressState.status = 'error'
       pushInstallLog(translate('operations.progress.requestFailed', { detail }), 'stderr')
-      message.error(translate('operations.progress.installError') + (detail ? ` ${detail}` : ''))
+      message.error(withErrorDetail(translate('operations.progress.installError'), detail))
     } finally {
       installProgressState.fallbackRunning = false
       installProgressState.retryFallback = undefined
@@ -342,7 +447,13 @@ function reportInstallRequestError(error: unknown, messages: InstallMessages) {
   pushInstallLog(translate('operations.progress.requestFailed', { detail }), 'stderr')
   message.error(isTimeout
     ? messages.timeoutText ?? translate('operations.progress.installTimeout')
-    : `${messages.errorText ?? translate('operations.progress.installError')}${detail ? ` ${detail}` : ''}`)
+    : withErrorDetail(messages.errorText ?? translate('operations.progress.installError'), detail))
+}
+
+// How every failed install request reads in a toast. The detail often comes from the server and
+// ends in a full stop, which a toast drops; the ！ of the texts stays, as only full stops are dropped.
+function withErrorDetail(text: string, detail: string) {
+  return detail ? translate('operations.progress.errorWithDetail', { message: text, detail: toastText(detail) }) : text
 }
 
 function isSelfUpdate(override: Dict<string>) {
@@ -513,9 +624,9 @@ async function waitForInstalledPackage(name: string) {
   }
 }
 
-async function waitForInstalledConfig(ctx: Context, name: string) {
+async function waitForInstalledConfig(name: string) {
   for (let index = 0; index < 40; index++) {
-    if (getConfigWriter(ctx)?.get(name)?.length) return true
+    if (configuredPlugins.value.has(getPluginShortname(name))) return true
     await sleep(250)
   }
   return false
@@ -525,7 +636,7 @@ export async function ensureInstalledConfig(ctx: Context, name: string, silent =
   if (!name || !getConfigWriter(ctx)) return
   await (send('market/ensure-config', name) ?? Promise.resolve(false)).catch(console.error)
   await waitForInstalledPackage(name)
-  if (await waitForInstalledConfig(ctx, name)) return
+  if (await waitForInstalledConfig(name)) return
   const configWriter = getConfigWriter(ctx)
   if (!configWriter || configWriter.get(name)?.length) return
   configWriter.ensure(name, silent)

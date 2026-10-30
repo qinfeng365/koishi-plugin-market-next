@@ -1,4 +1,4 @@
-import { Dict, receive, store } from '@koishijs/client'
+import { Dict, store } from '@koishijs/client'
 import type { PluginBundleRecord, RegistryStatus } from 'koishi-plugin-market-next'
 import type { DependencySource } from '../src/shared/dependency-source'
 import type { IgnoredUpdates } from './utils'
@@ -25,14 +25,14 @@ declare module '@koishijs/client' {
       invalid?: boolean
       latest?: string
     }>
+    pluginConfigs?: string[]
   }
 }
 
 interface MarketConfig {
-  bulkMode?: boolean
   removeConfig?: boolean
   updateIgnoredPackages?: string
-  updateIgnoreDuration?: number
+  updateIgnoreDays?: number
   updateIgnoreVersions?: number
   updateIgnorePrerelease?: boolean
   gravatar?: string
@@ -45,13 +45,19 @@ interface MarketConfig {
 }
 
 export type MarketStore = typeof store & {
-  registryStatus?: Dict<RegistryStatus>
+  // Null for a dependency whose fetch a reset cancelled, until the check fetches it again.
+  registryStatus?: Dict<RegistryStatus | null>
+}
+
+export function isRegistryRefreshing() {
+  return Object.values((store as MarketStore).registryStatus ?? {}).some(status => status?.loading)
 }
 
 export const REGISTRY_STATUS_SWEEP_INTERVAL = 15_000
 const REGISTRY_STATUS_TIMEOUT = 120_000
 
-export function sweepRegistryStatus(target: MarketStore = store as MarketStore) {
+export function sweepRegistryStatus() {
+  const target = store as MarketStore
   const now = Date.now()
   const next = { ...target.registryStatus }
   let changed = false
@@ -69,28 +75,3 @@ export function sweepRegistryStatus(target: MarketStore = store as MarketStore) 
   if (changed) target.registryStatus = next
   return changed
 }
-
-receive('market/registry', (data) => {
-  store.registry = {
-    ...store.registry,
-    ...data,
-  }
-})
-
-receive('market/registry-status', (data: Dict<RegistryStatus>) => {
-  const target = store as MarketStore
-  const next = { ...target.registryStatus }
-  for (const [name, status] of Object.entries(data)) {
-    if (!status) continue
-    next[name] = status
-  }
-  target.registryStatus = {
-    ...next,
-  }
-  sweepRegistryStatus(target)
-})
-
-receive('market/registry-status/clear', () => {
-  const target = store as MarketStore
-  target.registryStatus = {}
-})

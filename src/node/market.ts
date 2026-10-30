@@ -10,7 +10,6 @@ import {
   formatSnapshot,
   formatTime,
   formatTimings,
-  logLevels,
   shortHash,
   waitFor,
   type EndpointResult,
@@ -20,7 +19,8 @@ import {
 import { MarketDiskCache } from './market-cache'
 import { MarketRouter } from './market-router'
 import { createMarketResultSnapshot } from './market-result'
-import { logger } from './logger'
+import { getLogLevel, logger } from './logger'
+import { createMarketSync } from './market-sync'
 
 export const DEFAULT_ENDPOINT = 'https://registry.koishi.t4wefan.pub/index.json'
 
@@ -28,6 +28,9 @@ class MarketProvider extends BaseMarketProvider {
   private http: HTTP
   private failed: string[] = []
   private scanner: Scanner
+  // Rechecks installed dependencies against the loaded market data; the installer also calls
+  // it once its own metadata refresh finishes, since either side can load last.
+  syncDependencies: (resetChecks?: boolean) => void
   private fullCache: Dict<SearchObject> = {}
   private tempCache: Dict<SearchObject> = {}
   private payload?: BaseMarketProvider.Payload
@@ -53,6 +56,7 @@ class MarketProvider extends BaseMarketProvider {
   constructor(ctx: Context, public config: MarketProvider.Config = {}) {
     super(ctx)
     config.endpoint ||= DEFAULT_ENDPOINT
+    config.timeout = config.timeoutSeconds * Time.second
     this.endpoint = config.endpoint
     this.cache = new MarketDiskCache(ctx, config, {
       getEndpointCandidates: () => this.router.getEndpointCandidates(),
@@ -76,6 +80,7 @@ class MarketProvider extends BaseMarketProvider {
       this.router.abortPendingRequests('market provider disposed')
     })
     this.http = ctx.http.extend(config)
+    this.syncDependencies = createMarketSync(ctx, this)
     this.flushData = ctx.throttle(() => {
       if (this.disposed || !this.scanner || !ctx.scope.isActive) return
       this.log('debug', `broadcast market patch: delta=${Object.keys(this.tempCache).length}, total=${this.scanner.total}, progress=${this.scanner.progress}, failed=${this.failed.length}`)
@@ -91,7 +96,7 @@ class MarketProvider extends BaseMarketProvider {
         validatedAt: undefined,
         refreshing: false,
         debug: this.getDebugInfo(),
-      })
+      }, { authority: 4 })
       this.tempCache = {}
     }, 500)
     ctx.on('ready', () => {
@@ -253,6 +258,26 @@ class MarketProvider extends BaseMarketProvider {
       return true
     }
     return false
+  }
+
+  // Reads the market entries of a few packages from what is already loaded. Unlike
+  // getSnapshot, it never starts a load or builds the whole payload.
+  getLoadedObjects(names: string[]) {
+    const result: Dict<SearchObject> = {}
+    const source = this.payloadData && this.payloadDataVersion === this.dataVersion
+      ? this.payloadData
+      : this.indexMode === 'legacy' ? this.fullCache : undefined
+    if (source) {
+      for (const name of names) {
+        if (source[name]) result[name] = source[name]
+      }
+      return result
+    }
+    const wanted = new Set(names)
+    for (const item of this.scanner?.objects ?? []) {
+      if (wanted.has(item.package.name)) result[item.package.name] = item
+    }
+    return result
   }
 
   async get() {
@@ -451,7 +476,7 @@ class MarketProvider extends BaseMarketProvider {
     task.finally(async () => {
       if (this.pendingRefreshTask === task) this.pendingRefreshTask = undefined
       if (this.disposed || !this.ctx.scope.isActive) return
-      await this.ctx.get('console')?.refresh('market')
+      await this.notifyMarketRefresh()
     })
   }
 
@@ -586,6 +611,7 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   private notifyMarketRefresh() {
+    this.syncDependencies()
     return this.ctx.get('console')?.refresh('market')
   }
 
@@ -600,13 +626,13 @@ class MarketProvider extends BaseMarketProvider {
         clearError: true,
         invalidatePayload: true,
       })
-      await this.ctx.get('console')?.refresh('market')
+      await this.notifyMarketRefresh()
       this.log('debug', `background market refresh completed in ${Date.now() - start}ms, endpoint=${this.endpoint}, source=${result.source}, objects=${this.scanner.total}`)
       this.log('info', `background market refresh completed: ${formatSnapshot(snapshot)}`)
     } catch (error) {
       if (this.isStale(serial)) return
       this._error = error
-      await this.ctx.get('console')?.refresh('market')
+      await this.notifyMarketRefresh()
       this.log('warn', `background market refresh failed in ${Date.now() - start}ms: ${formatError(error)}`)
     }
   }
@@ -679,7 +705,7 @@ class MarketProvider extends BaseMarketProvider {
   }
 
   private getDebugInfo(timings?: Dict<number>) {
-    if (this.config.logLevel !== 'debug') return
+    if (getLogLevel() !== 'debug') return
     if (!timings) return this.debugInfo
     return {
       ...this.debugInfo,
@@ -703,13 +729,24 @@ class MarketProvider extends BaseMarketProvider {
 namespace MarketProvider {
   export interface Config extends MarketProviderConfig {}
 
-  export const Config: Schema<Config> = Schema.object({
-    endpoint: Schema.string().role('link').default(DEFAULT_ENDPOINT),
-    timeout: Schema.number().role('time').default(Time.second * 30),
-    proxyAgent: Schema.string().role('link'),
-    autoRoute: Schema.boolean().default(true),
-    logLevel: Schema.union(logLevels.map(level => Schema.const(level))).default('warn'),
-  })
+  export const Config: Schema<Config> = Schema.intersect([
+    Schema.object({
+      endpoint: Schema.string().role('link').default(DEFAULT_ENDPOINT),
+      timeoutSeconds: Schema.number().min(0).default(30),
+      proxyAgent: Schema.string().role('link'),
+      autoRoute: Schema.boolean().default(true),
+    }),
+    Schema.union([
+      Schema.object({
+        autoRoute: Schema.const(false).required(),
+      }),
+      Schema.object({
+        fallbackDelaySeconds: Schema.number().min(0).default(3),
+        primaryFailureLimit: Schema.number().min(0).step(1).default(3),
+        primaryBypassMinutes: Schema.number().min(0).default(5),
+      }),
+    ]),
+  ])
 }
 
 export default MarketProvider

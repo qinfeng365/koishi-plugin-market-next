@@ -101,6 +101,7 @@ class Installer extends Service {
 
   constructor(public ctx: Context, public config: Installer.Config = {}) {
     super(ctx, 'installer')
+    config.timeout = config.timeoutSeconds * Time.second
     this.manifest = loadManifest(this.cwd)
     this.metadata = new RegistryMetadata(ctx, config)
     this.installHistory = new InstallHistoryStore(ctx, config, name => this.depCache[name]?.resolved)
@@ -203,6 +204,28 @@ class Installer extends Service {
     return this.metadata.getPackage(name)
   }
 
+  // Fetches the versions of a few dependencies again without resetting the whole cache, so the
+  // dependencies page can pick up a release the market has already seen. Returns undefined when
+  // a full refresh started meanwhile and the result was dropped.
+  async refreshPackages(names: string[]) {
+    const serial = this.metadata.serial
+    let changed = 0
+    await pMap(names, async (name) => {
+      const versions = await this.metadata.recheckPackage(name)
+      if (this.isStale(serial) || !versions || !this.depCache[name]) return
+      const latest = Object.keys(versions)[0]
+      if (latest && latest !== this.depCache[name].latest) {
+        this.depCache[name].latest = latest
+        changed++
+      }
+    }, { concurrency: this.config.concurrency ?? 4 })
+    if (this.isStale(serial)) return
+    // Versions and registry status reach the console as patches already; only the
+    // dependency list needs a push when a latest version moved.
+    if (changed) await this.ctx.get('console')?.refresh('dependencies')
+    return changed
+  }
+
   private formatRegistryError(error: any) {
     return this.metadata.formatError(error)
   }
@@ -300,7 +323,14 @@ class Installer extends Service {
     logger.info(`dependency metadata refresh completed: total=${names.length}, targets=${targets.length}, registry=${this.metadata.selectedEndpoint}, elapsed=${Date.now() - start}ms`)
     if (!this.isStale(serial)) {
       this.depMetadataFresh = true
+      // Versions and statuses have arrived as patches and are not pushed again in full: the console
+      // keeps the versions it has, which open dialogs rely on without fetching them again, and
+      // those of packages that are no longer dependencies are only left unused. Versions of other
+      // packages fetched before the reset stay as they were until the page is reloaded, as they
+      // do across a market refresh.
       this.ctx.get('console')?.refresh('dependencies')
+      const market = this.ctx.get('console')?.services.market as { syncDependencies?: (resetChecks?: boolean) => void } | undefined
+      market?.syncDependencies?.(true)
     }
     return result
   }
@@ -329,15 +359,15 @@ class Installer extends Service {
       logger.info(`dependency ${reason} probe reused running metadata task: elapsed=${Date.now() - start}ms`)
       return
     }
-    await this.metadata.reset(`dependency ${reason} probe superseded`)
-    this.manifest = loadManifest(this.cwd)
-    this.depTask = undefined
-    this.depMetadataFresh = false
-    this.depCache = this.getLocalDepsSnapshot()
-    logger.info(`dependency ${reason} probe started: deps=${Object.keys(this.manifest.dependencies ?? {}).length}`)
-    await this.refreshDependencyMetadata(true)
-    await this.refreshData()
+    logger.info(`dependency ${reason} probe started`)
+    // Its pushes before and after the check reach no page: the idle probe runs when none is connected.
+    await this.refresh(true, true)
     logger.info(`dependency ${reason} probe completed: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, elapsed=${Date.now() - start}ms`)
+  }
+
+  // The dependency snapshot as it is, without building it or starting a metadata refresh.
+  getCachedDeps() {
+    return this.depCache
   }
 
   getDeps(options: Installer.GetDepsOptions = {}) {
@@ -349,18 +379,21 @@ class Installer extends Service {
     return this.depCache
   }
 
+  // Versions and registry statuses are left out: they arrive as patches, and pushing them whole
+  // right after a reset would empty the dependencies page until the check refills it.
   async refreshData() {
     await Promise.all([
       this.ctx.get('console')?.refresh('dependencies'),
-      this.ctx.get('console')?.refresh('registry'),
-      this.ctx.get('console')?.refresh('registryStatus'),
       this.ctx.get('console')?.refresh('packages'),
     ])
   }
 
   async refresh(refresh = false, waitMetadata = false) {
     const start = Date.now()
-    await this.metadata.reset('dependency refresh superseded')
+    // The dependencies from before the refresh are enough for the reset, which keeps their errors:
+    // the check fetches every dependency anyway. The manifest is read after it, so of overlapping
+    // refreshes the one that finishes last does not leave an older one in place.
+    await this.metadata.reset('dependency refresh superseded', Object.keys(this.manifest.dependencies ?? {}))
     this.manifest = loadManifest(this.cwd)
     this.depTask = undefined
     this.depMetadataFresh = false
@@ -369,7 +402,7 @@ class Installer extends Service {
     if (!refresh) return
     await this.refreshData()
     if (waitMetadata) await metadataTask
-    logger.info(`dependency refresh requested by console: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, waitMetadata=${waitMetadata}, elapsed=${Date.now() - start}ms`)
+    logger.info(`dependency refresh requested: deps=${Object.keys(this.manifest.dependencies ?? {}).length}, waitMetadata=${waitMetadata}, elapsed=${Date.now() - start}ms`)
   }
 
   private startInstallLog(
@@ -797,14 +830,28 @@ namespace Installer {
 
   export interface Config extends InstallerConfig {}
 
-  export const Config: Schema<Config> = Schema.object({
-    endpoint: Schema.string().role('link'),
-    timeout: Schema.number().role('time').default(Time.second * 5),
-    autoRoute: Schema.boolean().default(true),
-    retry: Schema.number().min(0).max(5).step(1).default(1),
-    concurrency: Schema.number().min(1).max(16).step(1).default(4),
-    installLogRetentionHours: Schema.number().min(1).max(24 * 365).step(1).default(72),
-  }) // TODO .hidden()
+  export const Config: Schema<Config> = Schema.intersect([
+    Schema.object({
+      endpoint: Schema.string().role('link'),
+      timeoutSeconds: Schema.number().min(0).default(5),
+      autoRoute: Schema.boolean().default(true),
+    }),
+    Schema.union([
+      Schema.object({
+        autoRoute: Schema.const(false).required(),
+      }),
+      Schema.object({
+        fallbackDelaySeconds: Schema.number().min(0).default(2),
+        primaryFailureLimit: Schema.number().min(0).step(1).default(3),
+        primaryBypassMinutes: Schema.number().min(0).default(5),
+      }),
+    ]),
+    Schema.object({
+      retry: Schema.number().min(0).max(5).step(1).default(1),
+      concurrency: Schema.number().min(1).max(16).step(1).default(4),
+      installLogRetentionDays: Schema.number().min(1).max(365).step(1).default(3),
+    }),
+  ]) // TODO .hidden()
 }
 
 export default Installer

@@ -13,7 +13,7 @@ import {
   type InstallFallbackCandidate,
   type InstallerConfig,
 } from './installer-types'
-import { scoreRouteHealth } from './route-health'
+import { isPrimaryBypassed, scoreRouteHealth } from './route-health'
 import { logger } from './logger'
 const REGISTRY_FALLBACK_ENDPOINTS = [
   'https://registry.npmmirror.com',
@@ -221,7 +221,7 @@ export class RegistryRouter {
   }
 
   async ensureEndpoint(name: string, serial = this.currentSerial) {
-    const endpoints = this.getRouteProbeEndpoints()
+    const endpoints = this.getRegistryEndpoints()
     if (!name || endpoints.length <= 1) return
     if (!this.routeProbeTask) {
       this.routeProbeTask = this.probeMetadataEndpoint(name, endpoints, serial)
@@ -360,25 +360,12 @@ export class RegistryRouter {
     }
   }
 
+  // Every request starts from the configured registry, except while it is bypassed after
+  // repeated failures; a fallback that answered once does not take its place.
   getRegistryEndpoints() {
-    const preferred = this.getPreferredMetadataEndpoint()
-    return [preferred, ...this.getRouteProbeEndpoints()]
-      .filter((endpoint, index, array): endpoint is string => !!endpoint && array.indexOf(endpoint) === index)
-  }
-
-  private getPreferredMetadataEndpoint() {
-    const endpoint = this.metadataEndpoint || this.endpointValue
-    if (endpoint === this.endpointValue) return endpoint
-    const stats = this.routeStats[endpoint]
-    if (!stats) return endpoint
-    const now = Date.now()
-    const primaryScore = this.getRouteScore(this.endpointValue, now)
-    const selectedScore = this.getRouteScore(endpoint, now)
-    if (stats.failures >= 2 && selectedScore + 1 < primaryScore) {
-      logger.debug(`demote npm metadata endpoint: selected=${endpoint}, selectedScore=${selectedScore.toFixed(1)}, primary=${this.endpointValue}, primaryScore=${primaryScore.toFixed(1)}, failures=${stats.failures}, lastFailure=${stats.lastFailureReason ?? '-'}`)
-      return this.endpointValue
-    }
-    return endpoint
+    const [primary, ...fallbacks] = this.getRouteProbeEndpoints()
+    if (!isPrimaryBypassed(this.routeStats[this.endpointValue], this.config)) return [primary, ...fallbacks]
+    return [...fallbacks, primary]
   }
 
   private getRegistryEndpointCandidates() {
@@ -405,7 +392,7 @@ export class RegistryRouter {
     serial: number,
     onAttempt?: (endpoint: string) => void,
   ): Promise<RegistryEndpointResult> {
-    const fallbackDelay = this.getFallbackDelay(endpoints[0])
+    const fallbackDelay = this.getFallbackDelay()
     if (endpoints.length === 1 || this.config.autoRoute === false) {
       const controller = this.trackController(new AbortController())
       onAttempt?.(endpoints[0])
@@ -426,6 +413,7 @@ export class RegistryRouter {
       let failed = 0
       let lastError: any
       let fallbackStarted = false
+      let firstDone = false
       const failureReasons: RegistryStatus['reason'][] = []
       let fallbackReason: RegistryEndpointResult['fallbackReason']
       const controllers = endpoints.map(() => this.trackController(new AbortController()))
@@ -444,6 +432,12 @@ export class RegistryRouter {
         })
         if (result.endpoint !== endpoints[0]) result.fallbackReason = fallbackReason
         this.recordRouteSuccess(result)
+        // The configured registry is aborted above if it is still waiting, so count that as a
+        // failure; otherwise a hanging registry would cost the full delay on every lookup. A
+        // request that already finished was judged in fail(), and slow fallbacks do not count.
+        if (index && fallbackReason === 'primary-slow' && !firstDone && endpoints[0] === this.endpointValue) {
+          this.recordRouteFailure(endpoints[0], 'timeout')
+        }
         resolve(result)
       }
       const fail = (endpoint: string, index: number, error: any) => {
@@ -459,7 +453,10 @@ export class RegistryRouter {
         failureReasons.push(reason)
         if (shouldPenalizeRegistryRoute(reason)) this.recordRouteFailure(endpoint, reason)
         lastError = error
-        if (index === 0) startFallback('primary-failed')
+        if (index === 0) {
+          firstDone = true
+          startFallback('primary-failed')
+        }
         if (++failed < endpoints.length) return
         settled = true
         finish()
@@ -487,7 +484,7 @@ export class RegistryRouter {
 
   private async probeMetadataEndpoint(name: string, endpoints: string[], serial: number) {
     const start = Date.now()
-    logger.info(`npm registry route probe started: probe=${name}, primary=${endpoints[0]}, fallbackCount=${Math.max(0, endpoints.length - 1)}, slowThreshold=${this.getFallbackDelay(endpoints[0])}ms`)
+    logger.info(`npm registry route probe started: probe=${name}, primary=${endpoints[0]}, fallbackCount=${Math.max(0, endpoints.length - 1)}, slowThreshold=${this.getFallbackDelay()}ms`)
     try {
       const result = await this.raceEndpoints(name, endpoints, serial)
       if (this.isStale(serial)) return
@@ -576,17 +573,8 @@ export class RegistryRouter {
     this.scheduleStatsWrite()
   }
 
-  private getFallbackDelay(endpoint: string) {
-    const stats = this.routeStats[endpoint]
-    if (!stats) return REGISTRY_FAST_ROUTE_THRESHOLD
-    const recentSuccess = stats.lastSuccess && Date.now() - stats.lastSuccess <= Time.minute * 10
-    if (!recentSuccess && stats.failures >= 3) return 200
-    if (!recentSuccess && stats.failures >= 2) return 400
-    if (stats.averageElapsed != null) {
-      if (stats.averageElapsed > 4000) return 400
-      if (stats.averageElapsed > 2500) return 600
-    }
-    return REGISTRY_FAST_ROUTE_THRESHOLD
+  private getFallbackDelay() {
+    return (this.config.fallbackDelaySeconds ?? 2) * Time.second
   }
 
   private getRouteScores() {
@@ -594,7 +582,7 @@ export class RegistryRouter {
     return this.getRegistryEndpointCandidates().map(endpoint => ({
       endpoint,
       score: this.getRouteScore(endpoint, now),
-      fallbackDelay: endpoint === this.endpointValue ? this.getFallbackDelay(endpoint) : undefined,
+      fallbackDelay: endpoint === this.endpointValue ? this.getFallbackDelay() : undefined,
       ...this.routeStats[endpoint],
     }))
   }

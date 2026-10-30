@@ -1,0 +1,17 @@
+// Koishi gives every el-button the page background on hover and only recolors the hover text
+// of primary buttons, so solid success / warning / danger buttons turn into white text on a
+// white background, and the pressed state puts blue or purple text on the darker fill.
+// Keep solid buttons solid on our pages, with white text throughout. Hover and press darken
+// the fill instead of lightening it, since a lighter fill makes white text harder to read.
+:is(.page-market, .page-dependencies, .market-dialog) {
+  @each $type in primary, success, warning, danger, info {
+    .el-button--#{$type}:not(.is-plain, .is-text, .is-link) {
+      --el-button-hover-text-color: var(--el-color-white);
+      --el-button-hover-bg-color: color-mix(in srgb, var(--el-color-#{$type}) 88%, black);
+      --el-button-hover-border-color: var(--el-button-hover-bg-color);
+      --el-button-active-text-color: var(--el-color-white);
+      --el-button-active-bg-color: color-mix(in srgb, var(--el-color-#{$type}) 76%, black);
+      --el-button-active-border-color: var(--el-button-active-bg-color);
+    }
+  }
+}

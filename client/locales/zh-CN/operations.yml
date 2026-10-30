@@ -1,14 +1,11 @@
 confirm:
-  title: 确认依赖更改
-  dependency: 依赖
-  oldVersion: 旧版本
-  newVersion: 新版本
+  title: 应用依赖更改
+  intro: 下面 {count} 项改动会写入 package.json，然后由包管理器安装。安装期间请不要关闭页面。
   notInstalled: 未安装
-  removeDependency: 移除依赖
-  removeConfig: 为卸载的插件删除配置
-  discard: 丢弃改动
+  removeDependency: 卸载
+  removeConfig: 同时删除被卸载插件的配置
   apply: 应用更改
-  saveBundleFailed: 插件包归属记录保存失败，请刷新后确认。
+  saveBundleFailed: 插件包归属记录保存失败，请刷新后确认
 install:
   installErrorHint: 该依赖的安装发生了错误，你可以尝试修复或移除它。
   peerName: 依赖名称
@@ -39,19 +36,16 @@ install:
   waitingInstall: 等待安装
   downloaded: 已下载
   select: 选择
-  added: 依赖已添加。
-  addFailed: 依赖添加失败！
-  addTimeout: 依赖添加超时！
   uninstalling: 正在卸载插件……
   uninstalled: 卸载成功！
   uninstallFailed: 卸载失败！
   uninstallTimeout: 卸载超时！
 manual:
   title: 添加依赖
-  localTab: 本地构建
-  registryTab: npm 包名
-  dropTitle: 拖拽到此处上传
-  dropHint: 或点击选择由 npm pack 生成的 .tgz 文件
+  localTab: 上传本地包
+  registryTab: 从 npm 添加
+  dropTitle: 把 .tgz 文件拖到这里
+  dropHint: 或者点击选择用 npm pack 打包出的文件
   dropLimit: 单个文件最大 64 MiB
   uploading: 正在上传并校验本地插件……
   uploadFailed: 本地插件上传失败，请重试。
@@ -62,7 +56,7 @@ manual:
   notInstalled: 未安装
   scriptWarning: 此归档包含安装生命周期脚本：{scripts}。确认来源可信后再安装。
   installingTitle: 正在安装本地插件 {name}……
-  installSuccess: 本地插件 {name}@{version} 安装成功。
+  installSuccess: 本地插件 {name}@{version} 安装成功
   installFailed: 本地插件 {name} 安装失败！
   operation:
     install: 新安装
@@ -74,16 +68,16 @@ manual:
     upgrade: 更新到 {version}
     downgrade: 回退到 {version}
     replace: 替换当前构建
-  hint: 提示：如果你想要安装插件，请前往
+  hint: 想安装插件的话，去
   market: 插件市场
-  hintAfter: 页面。
-  placeholder: 请输入名称
+  hintAfter: 搜索会更方便。这里适合添加不在市场里的 npm 包。
+  placeholder: npm 包名，例如 koishi-plugin-example
   registryLoading: 正在查询包信息……
   registryLookupFailed: 无法获取包信息，请检查包名和网络连接。
   latest: 最新版本
   description: 介绍
   cancel: 取消
-  confirm: 确定
+  confirm: 添加
 progress:
   logTitle: 安装日志 / Package Manager Output
   initializing: 正在初始化安装进程并挂载输出……
@@ -99,7 +93,6 @@ progress:
   errorSelf: market-next 更新失败，请检查控制台输出。
   errorDependencies: 依赖安装失败，请检查控制台输出。
   ready: 准备就绪
-  applyTitle: 正在应用依赖更改
   selfUpdateTitle: 正在更新 market-next……
   dependencyTitle: 正在更新依赖……
   submitted: 已提交依赖变更，正在等待后端启动包管理器……
@@ -107,10 +100,12 @@ progress:
   waitingSelf: 仍在等待包管理器输出；如果 Console 随后断开连接，这是更新重载的正常过程。
   waitingDependencies: 仍在等待包管理器输出。
   disconnected: Console 连接已断开，安装结果无法确认。请刷新依赖页确认实际状态。
-  disconnectedShort: 连接已断开，安装结果无法确认，请刷新后检查。
-  selfSubmittedSuccess: market-next 更新已提交，Console 正在重载。
-  dependenciesSubmittedSuccess: 依赖变更已提交，控制台正在重载。
-  selfSuccessToast: market-next 更新完成，Console 即将重载。
+  disconnectedShort: 连接已断开，安装结果无法确认，请刷新后检查
+  selfSubmittedSuccess: market-next 更新已提交，Console 正在重载
+  dependenciesSubmittedSuccess: 依赖变更已提交，控制台正在重载
+  selfSuccessToast: market-next 更新完成，Console 即将重载
+  # 通知不带句号；errorSelf 是安装进度弹窗里的完整句子，保留句号
+  selfErrorToast: market-next 更新失败，请检查控制台输出
   successToast: 安装成功！
   runningEnvironment: 正在恢复整个依赖环境，请勿关闭页面……
   successEnvironment: 依赖环境恢复成功，控制台正在同步状态。
@@ -118,67 +113,67 @@ progress:
   requestFailed: 安装请求失败：{detail}
   installError: 安装失败！
   installTimeout: 安装超时！
+  errorWithDetail: '{message}（{detail}）'
   environmentTitle: 正在恢复依赖环境……
   environmentPreparing: 正在重新读取当前环境并校验目标版本……
   environmentWaiting: 仍在等待包管理器输出。
   environmentDisconnected: Console 连接已断开，恢复结果无法确认。请刷新依赖页和版本管理后确认。
-  environmentDisconnectedShort: 连接已断开，环境恢复结果无法确认。
-  environmentError: 依赖环境恢复失败。
-  environmentSubmitted: 环境恢复已提交，Console 正在重载。
-  environmentSuccess: 依赖环境恢复成功。
+  environmentDisconnectedShort: 连接已断开，环境恢复结果无法确认
+  environmentError: 依赖环境恢复失败
+  environmentSubmitted: 环境恢复已提交，Console 正在重载
+  environmentSuccess: 依赖环境恢复成功
   environmentErrorTitle: 依赖环境恢复失败！
   environmentTimeout: 依赖环境恢复请求超时！
   fallbackLog: 可使用备用 npm 源 {endpoint} 重试一次；不会修改你的配置。
   fallbackConfirmed: 用户确认使用备用 npm 源重试：{endpoint}
   fallbackFailed: 备用 npm 源重试失败，包管理器退出码：{code}
 history:
+  emptyTitle: 还没有操作记录
+  loadFailedTitle: 读取失败
+  logTitle: 包管理器输出
   title: 最近操作
-  syncing: 正在同步记录……
-  count: 共 {count} 条记录
   refresh: 刷新
-  records: 操作记录
   reading: 正在读取操作记录……
-  empty: 暂无依赖操作记录
+  empty: 安装、更新或卸载依赖后，完整的包管理器输出会保存在这里，方便排查问题。
   readingLog: 正在读取日志……
   copyLog: 复制日志
-  copied: 日志已复制。
-  copyFailed: 复制失败，请手动选择日志文本。
+  copied: 日志已复制
+  copyFailed: 复制失败，请手动选择日志文本
   close: 关闭
-  dependencyCount: 依赖数量
   source: 安装源
   logSize: 日志大小
-  unknown: 未知
-  versionChanges: 版本变更
-  items: '{count} 项'
   truncated: 日志过大，复制内容仅保留开头与末尾。
-  selectRecord: 选择一条记录查看日志
   loadFailed: 读取最近操作失败，请检查后端日志。
+  loadFailedToast: 读取最近操作失败，请检查后端日志
   detailFailed: 读取日志详情失败，文件可能已被自动清理。
   statusRunning: 执行中
   statusSuccess: 成功
   statusError: 失败
   statusUnknown: 状态未知
   operation: 依赖操作
-  install: 安装 {count}
-  update: 更新 {count}
-  uninstall: 卸载 {count}
-  changed: 变更 {count} 个依赖
+  install: 安装 {count} 个依赖
+  upgrade: 升级 {count} 个依赖
+  downgrade: 降级 {count} 个依赖
+  update: 更新 {count} 个依赖
+  uninstall: 卸载 {count} 个依赖
+  changed: 改动 {count} 个依赖
   notInstalled: 未安装
   uninstalled: 已卸载
   unknownTime: 时间未知
   defaultSource: 项目默认源
 timeline:
+  emptyTitle: 暂无版本历史
   title: '{name} 版本历史'
   current: 当前版本
   currentBadge: 当前
   loading: 正在读取版本历史……
-  empty: 暂无可用的版本变更记录
+  empty: 通过 Market Next 安装或更新过这个依赖之后，每个版本都会记在这里，可以随时切回去。
   loadFailed: 读取版本历史失败，请稍后重试。
   from: 从 {version} 变更
   useVersion: 设为目标版本
-  added: 已将 {version} 加入待应用更改
+  added: 已把 {version} 加入待应用的改动
   close: 关闭
   uninstalled: 已卸载
   unknownVersion: 未知
   unknownTime: 时间未知
-  note: 选择版本后会加入待应用更改，请在依赖管理页底部确认后执行。
+  note: 选中一条记录后点「设为目标版本」，该版本会加入待应用的改动。

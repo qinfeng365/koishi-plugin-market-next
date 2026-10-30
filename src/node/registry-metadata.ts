@@ -1,6 +1,6 @@
 import { Context, Dict, HTTP, Time } from 'koishi'
 import Scanner, { DependencyMetaKey, Registry, RemotePackage } from '@koishijs/registry'
-import { satisfies } from 'semver'
+import { gt, satisfies } from 'semver'
 import {
   allRegistryAttemptsNotFound,
   getRegistryAttemptReasons,
@@ -16,6 +16,13 @@ import { RegistryRouter } from './registry-router'
 import { logger } from './logger'
 const NOT_FOUND_CACHE_TTL = Time.minute * 5
 
+function filterVersions(name: string, registry: Registry) {
+  return getVersions(Object.values(registry.versions).filter((remote) => {
+    if (name === 'koishi') return satisfies(remote.version, '4')
+    return !Scanner.isPlugin(name) || Scanner.isCompatible('4', remote)
+  }))
+}
+
 export class RegistryMetadata {
   fullCache: Dict<Dict<Pick<RemotePackage, DependencyMetaKey>>> = {}
   registryStatus: Dict<RegistryStatus> = {}
@@ -24,18 +31,27 @@ export class RegistryMetadata {
   private pkgTasks: Dict<Promise<Dict<Pick<RemotePackage, DependencyMetaKey>> | undefined>> = {}
   private router: RegistryRouter
   private notFoundCache: Dict<number> = {}
+  private fetching = new Map<string, Promise<unknown>>()
   private tempRegistryStatus: Dict<RegistryStatus> = {}
   private flushData: () => void
   private flushRegistryStatus: () => void
 
+  // Sent as patches of the registry and registryStatus data services rather than events of their
+  // own: Koishi applies those itself, so none is lost before the market-next page has loaded, and
+  // they go only to clients that may read the data services. A patch that arrives before a newly
+  // connected page has the data is skipped, but that data is read after the patched values were
+  // stored, so it has them.
   constructor(private ctx: Context, private config: InstallerConfig) {
     this.router = new RegistryRouter(ctx, config)
+    // A reset sends what is waiting itself, so a later call may find nothing to send.
     this.flushData = ctx.throttle(() => {
-      ctx.get('console')?.broadcast('market/registry', this.tempCache)
+      if (!Object.keys(this.tempCache).length) return
+      ctx.get('console')?.patch('registry', this.tempCache)
       this.tempCache = {}
     }, 500)
     this.flushRegistryStatus = ctx.throttle(() => {
-      ctx.get('console')?.broadcast('market/registry-status', { ...this.tempRegistryStatus })
+      if (!Object.keys(this.tempRegistryStatus).length) return
+      ctx.get('console')?.patch('registryStatus', this.tempRegistryStatus)
       this.tempRegistryStatus = {}
     }, 200)
   }
@@ -68,13 +84,50 @@ export class RegistryMetadata {
     await this.router.initializeEndpoint()
   }
 
-  async reset(reason: string) {
-    await this.router.reset(reason)
+  async reset(reason: string, deps: string[]) {
+    const previous = this.registryStatus
+    const isDependency = new Set(deps)
+    // Still waiting in the throttles; the console gets them below rather than never.
+    const versions = this.tempCache
+    const pending = this.tempRegistryStatus
     this.pkgTasks = {}
+    this.fetching.clear()
     this.fullCache = {}
     this.tempCache = {}
     this.notFoundCache = {}
-    this.clearRegistryStatus()
+    // The console keeps what it has until the new results are patched in, so the dependencies page
+    // does not empty out and refill while the check runs. Errors of dependencies are kept here too,
+    // since a status patch replaces the whole entry: the next fetch starts from them and settles them.
+    // Local and invalid dependencies are not fetched again, so theirs stays until the package is
+    // fetched or no longer a dependency; their cards ignore the status.
+    this.registryStatus = Object.fromEntries(deps
+      .filter(name => previous[name]?.error)
+      .map(name => [name, { ...previous[name], loading: false }]))
+    this.tempRegistryStatus = {}
+    // In the same tick as the state above, so no fetch of the old or the new serial writes between.
+    // Fetches that start while the endpoint is resolved again still use the previous one, which is
+    // nearly always the same.
+    const resetting = this.router.reset(reason)
+    if (Object.keys(versions).length) this.ctx.get('console')?.patch('registry', versions)
+    // Fetches the reset cancelled never settle their status. A dependency gets what it has here:
+    // its kept error, or null, which reads as being fetched like a status not sent yet, but without
+    // the timeout of a loading one, since the check may take a while to reach it again. The check
+    // fetches every dependency except local and invalid ones, whose cards ignore the status; if
+    // it fails before reaching one, that one reads as being fetched until the next check.
+    const cancelled = Object.keys(previous).filter(name => previous[name].loading)
+    const statuses = {
+      ...pending,
+      ...Object.fromEntries(cancelled
+        .filter(name => isDependency.has(name))
+        .map(name => [name, this.registryStatus[name] ?? null])),
+    }
+    if (Object.keys(statuses).length) this.ctx.get('console')?.patch('registryStatus', statuses)
+    await resetting
+    // Other packages were fetched for a dialog, which may still be waiting for their versions and
+    // does not ask again; they stay loading and are fetched again here.
+    for (const name of cancelled) {
+      if (!isDependency.has(name)) this.getPackage(name).catch(() => {})
+    }
   }
 
   dispose() {
@@ -97,10 +150,9 @@ export class RegistryMetadata {
     let lastError: any
     let lastEndpoint = this.selectedEndpoint
     const failureReasons: RegistryStatus['reason'][] = []
+    // An earlier error stays until this fetch settles, so the dependency stays in its group meanwhile.
     this.setRegistryStatus(name, {
       loading: true,
-      error: undefined,
-      reason: undefined,
       endpoint: lastEndpoint,
       attempts,
       elapsed: undefined,
@@ -187,10 +239,41 @@ export class RegistryMetadata {
   }
 
   setPackage(name: string, versions: RemotePackage[]) {
+    // Versions from the market scan settle a kept error, without ending a fetch that is running.
+    if (this.registryStatus[name]?.error) this.setRegistryStatus(name, { error: undefined, reason: undefined })
     delete this.notFoundCache[name]
     this.fullCache[name] = this.tempCache[name] = getVersions(versions)
     this.flushData()
     this.pkgTasks[name] = Promise.resolve(this.fullCache[name])
+  }
+
+  // Fetches the versions of one package again, quietly and through the normal route (the
+  // configured registry, with fallbacks only when auto routing is on and it is slow or failing).
+  // The cached versions and registry status stay as they are unless a newer release is found,
+  // and a failure only logs at debug level. The route probe payload is skipped, since it belongs
+  // to the current serial and may be stale.
+  async recheckPackage(name: string) {
+    if (this.fetching.has(name)) return this.pkgTasks[name].catch(() => undefined)
+    const serial = this.serial
+    try {
+      await this.ensureEndpoint(name, serial)
+      if (this.isStale(serial)) return
+      const { registry, endpoint } = await this.router.fetchRegistryByRoute(name, this.router.getRegistryEndpoints(), serial)
+      if (this.isStale(serial) || this.fetching.has(name)) return
+      const versions = filterVersions(name, registry)
+      const latest = Object.keys(versions)[0]
+      const known = Object.keys(this.fullCache[name] ?? {})[0]
+      if (!latest || known && !gt(latest, known)) return this.fullCache[name]
+      delete this.notFoundCache[name]
+      this.fullCache[name] = this.tempCache[name] = versions
+      this.flushData()
+      this.pkgTasks[name] = Promise.resolve(versions)
+      // An earlier failed fetch may have left an error on the card.
+      this.setRegistryStatus(name, { loading: false, error: undefined, reason: undefined, endpoint }, serial)
+      return versions
+    } catch (error) {
+      logger.debug(`registry metadata recheck failed: ${name}, error=${this.formatError(error).error}`)
+    }
   }
 
   getPackage(name: string) {
@@ -202,6 +285,10 @@ export class RegistryMetadata {
     if (!this.pkgTasks[name]) {
       const task = this.fetchPackage(name, this.serial)
       this.pkgTasks[name] = task
+      this.fetching.set(name, task)
+      task.finally(() => {
+        if (this.fetching.get(name) === task) this.fetching.delete(name)
+      }).catch(() => {})
       task.then((versions) => {
         if (this.pkgTasks[name] !== task) return
         if (!versions) delete this.pkgTasks[name]
@@ -238,20 +325,11 @@ export class RegistryMetadata {
     this.flushRegistryStatus()
   }
 
-  private clearRegistryStatus() {
-    this.registryStatus = {}
-    this.tempRegistryStatus = {}
-    this.ctx.get('console')?.broadcast('market/registry-status/clear' as any, {})
-  }
-
   private async fetchPackage(name: string, serial = this.serial) {
     try {
       const registry = await this.getRegistry(name, serial)
       if (this.isStale(serial) || !registry) return
-      this.fullCache[name] = this.tempCache[name] = getVersions(Object.values(registry.versions).filter((remote) => {
-        if (name === 'koishi') return satisfies(remote.version, '4')
-        return !Scanner.isPlugin(name) || Scanner.isCompatible('4', remote)
-      }))
+      this.fullCache[name] = this.tempCache[name] = filterVersions(name, registry)
       this.flushData()
       return this.fullCache[name]
     } catch (error) {

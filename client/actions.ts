@@ -2,11 +2,11 @@ import { ref, watch } from 'vue'
 import { Context, message, router, send, store } from '@koishijs/client'
 import { getPendingOverrides, patchMarketNextData } from './utils'
 import { translate } from './i18n'
-import { showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
+import { activeBundle, dependencyDialog, installProgressState, showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
 import {
+  isRegistryRefreshing,
   REGISTRY_STATUS_SWEEP_INTERVAL,
   sweepRegistryStatus,
-  type MarketStore,
 } from './registry-state'
 
 const APRIL_FOOLS_SHORTCUT_TIMEOUT = 1_500
@@ -89,7 +89,21 @@ export function setupActions(ctx: Context) {
       refreshing.value = true
       if (!dependencies) pendingMarketRefreshFeedback.value = true
       try {
-        await send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
+        // Undefined while disconnected, when nothing was sent.
+        const task = send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
+        if (!task) throw new Error('disconnected')
+        await task
+        // The refresh may change the versions these dialogs are about. The install dialog opens only
+        // from the market page, whose refresh keeps it; manual add keeps its own versions and may be
+        // in the middle of an upload. The request returns once the reset is done, so a dialog opened
+        // before that is closed too; resets from elsewhere close nothing. While the install progress
+        // dialog is open, the dialog behind it stays: it closes itself when the install succeeds,
+        // and a fallback retry offered after a failure still needs it.
+        if (dependencies && !installProgressState.visible) {
+          activeBundle.value = undefined
+          showConfirm.value = false
+          if (dependencyDialog.type === 'ignore') dependencyDialog.type = undefined
+        }
         if (dependencies) {
           message.success(translate('common.messages.refreshDependenciesStarted'))
         } else {
@@ -144,11 +158,6 @@ export function setupActions(ctx: Context) {
     type: () => refreshingMarket.value || !store.market || store.market.refreshing || store.market.progress < store.market.total ? 'spin disabled' : '',
   }])
 
-  const registryRefreshing = () => {
-    const target = store as MarketStore
-    return Object.values(target.registryStatus ?? {}).some(status => status.loading)
-  }
-
   ctx.menu('dependencies', [{
     id: '.upgrade',
     icon: () => {
@@ -167,17 +176,17 @@ export function setupActions(ctx: Context) {
     label: () => translate('common.actions.manual'),
   }, {
     id: '.history',
-    icon: 'info-full',
+    icon: 'clipboard-list',
     label: () => translate('common.actions.history'),
   }, {
     id: '.versions',
-    icon: 'file-archive',
+    icon: 'market-next:versions',
     label: () => translate('common.actions.versionManagement'),
   }, {
     id: 'market.refresh',
     icon: 'refresh',
     label: () => translate('common.actions.refresh'),
-    type: () => refreshingDependencies.value || registryRefreshing() ? 'spin disabled' : '',
+    type: () => refreshingDependencies.value || isRegistryRefreshing() ? 'spin disabled' : '',
   }])
 
   ctx.effect(() => {

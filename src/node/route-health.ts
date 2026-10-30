@@ -53,3 +53,16 @@ export function scoreRouteHealth(stats: RouteHealthStats | undefined, options: R
   score -= Math.min(5, (stats.consecutiveFailures ?? 0) * 1.5)
   return score
 }
+
+// Whether the configured source has failed often enough in a row that requests should start
+// from the fallbacks for a while. It is asked first again once the bypass time is up.
+export function isPrimaryBypassed(
+  stats: { consecutiveFailures?: number, lastFailure?: number } | undefined,
+  config: { autoRoute?: boolean, primaryFailureLimit?: number, primaryBypassMinutes?: number },
+  now = Date.now(),
+) {
+  const limit = config.primaryFailureLimit ?? 3
+  if (config.autoRoute === false || limit <= 0 || !stats?.lastFailure) return false
+  if ((stats.consecutiveFailures ?? 0) < limit) return false
+  return now - stats.lastFailure < (config.primaryBypassMinutes ?? 5) * 60_000
+}

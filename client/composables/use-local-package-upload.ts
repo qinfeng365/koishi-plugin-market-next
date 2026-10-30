@@ -5,7 +5,7 @@ import type {
   LocalPackageUploadStartResult,
 } from 'koishi-plugin-market-next'
 import { computed, onScopeDispose, ref } from 'vue'
-import { install } from '../components/utils'
+import { install, toastText } from '../components/utils'
 
 type Translate = (key: string, params?: Record<string, unknown>) => string
 
@@ -107,7 +107,7 @@ export function useLocalPackageUpload(t: Translate, closeDialog: () => void) {
       })
     } catch (error) {
       uploadError.value = formatError(error, t('operations.manual.uploadFailed'))
-      message.error(uploadError.value)
+      message.error(toastText(uploadError.value))
     } finally {
       committing.value = false
     }

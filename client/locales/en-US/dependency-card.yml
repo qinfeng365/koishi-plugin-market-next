@@ -1,15 +1,15 @@
 status:
-  pendingRemove: Pending removal
-  pendingApply: Pending change
-  pendingInstall: Pending install
+  pendingRemove: To uninstall
+  pendingApply: Pending
+  pendingInstall: To install
   local: Local plugin
   unsupported: Unsupported
   bundle: Plugin bundle
   unconfigured: Not configured
-  versionError: Version error
-  manual: Added manually
-  checkDisabled: Checks disabled
-  ignored: Update ignored
+  versionError: Fetch failed
+  manual: To install
+  checkDisabled: Checks off
+  ignored: Ignored
   updatable: Update available
   installed: Installed
 current:
@@ -18,43 +18,21 @@ current:
   workspace: Workspace
   installError: Installation error
 target:
-  remove: Remove dependency
-  keepLocal: Keep local source
-  loading: Loading
-  waitingData: Waiting for version data
-  waitingInstall: Waiting for installation
-  waiting: Waiting
-label:
-  pending: Pending
-  latest: Latest
-  ignored: Ignored
-  target: Target
+  remove: Uninstall
+  waitingInstall: Waiting to install
 detail:
-  pendingRemove: This dependency will be removed from package.json after the changes are applied.
-  pendingApply: A version change is staged for this dependency and will take effect after applying.
-  pendingInstall: This dependency is staged for installation and will be installed locally after applying.
-  local: This plugin uses a bound local source and does not participate in npm registry updates.
-  localDiscovered: Koishi discovered this plugin locally, but it is not a remote dependency in the current package.json and does not participate in npm registry updates.
-  localUnbound: This plugin is loaded locally, but package.json only records a version. Bind its local source first or a later dependency install may try to download it from npm.
-  unsupported: This version range cannot be managed automatically. Edit package.json manually.
-  bundle: The bundle itself does not need a config entry; member configs are managed by the bundle group.
-  unconfigured: Downloaded locally, but no matching plugin config exists yet.
-  checkDisabled: Update checks are disabled for this dependency. Click “Restore prompt” to enable them again.
-  ignored: The current update is ignored.
-  foundUpdate: New version {version} is available.
-  localShort: Local source
-  localUnboundShort: Source not bound
-  unsupportedShort: Unsupported
-  fetching: Fetching version data
-  noData: No version data
-config:
-  notNeeded: Not needed
-  notPlugin: Not a plugin
-  unknown: Unknown
-  pending: Pending install
-  notLoaded: Not loaded
-  unconfigured: Not configured
-  configured: Configured
+  pendingRemove: This dependency will be removed from package.json when you apply the changes.
+  pendingInstall: It will be installed when you apply the changes.
+  local: Uses a bound local source and is not checked for updates on npm.
+  localDiscovered: Koishi found this plugin locally. It is not listed in package.json, so it is not checked for updates on npm.
+  localUnbound: This plugin is loaded locally, but package.json only records a version. Bind its local source first, otherwise installing other dependencies may make the package manager download it from npm.
+  unsupported: The version range cannot be managed automatically. Edit package.json by hand.
+  bundle: The bundle itself needs no config. Member plugins are configured inside the bundle group.
+  unconfigured: Downloaded, but not yet added on the plugin config page.
+  checkDisabled: New versions of this dependency will not be shown.
+  ignored: This update is ignored.
+  fetching: Fetching version info…
+  noData: No version info
 source:
   bundle: 'Plugin bundle: {name}'
   bundleSelf: Bundle itself
@@ -66,75 +44,54 @@ source:
   registry: npm registry
   git: Git repository
   url: Remote archive
-  pending: Pending install
   local: Local
-  manual: Manual
-  packageJson: package.json
 actions:
-  history: History
+  history: Version history
   update: Update
-  configure: Configure
-  ignore: Ignore
-  restore: Restore
-  remove: Remove dependency
-  current: (current)
+  ignore: Ignore this update
+  remove: Uninstall
   undo: Undo
-  updateLatest: Update to latest
-  restorePrompt: Restore prompt
+  more: More actions
+  pickVersion: Change version
+  hideVersions: Hide version picker
+  configure: Configure
+  restorePrompt: Show updates again
   addConfig: Add config
-  cancelChange: Cancel change
   manage: Manage
-  collapse: Collapse
-  versions: Versions
-  edit: Edit
-  operate: Actions
   uninstall: Uninstall
-  uninstallBundle: Uninstall plugin bundle
+  uninstallBundle: Uninstall bundle
   bindLocal: Bind local source
+picker:
+  placeholder: Pick a version
+  current: Current
+  latest: Latest
+  prerelease: Pre-release
+  incompatible: Incompatible with installed dependencies, or deprecated
 localBinding:
   title: Bind Local Plugin Source
   description: Create a local archive from the currently loaded {name} package and stage that source for this dependency.
   note: Plugin scripts are not run while packing, and package.json is not changed immediately. Bind every plugin marked “Source not bound”, then apply the staged changes together.
   cancel: Cancel
   confirm: Create and bind
-  prepared: The local source has been added to pending changes.
-  failed: Could not create the local source. Check the backend log.
+  prepared: The local source has been added to pending changes
+  failed: Could not create the local source. Check the backend log
 ignore:
-  title: Ignore update
-  intro: Ignore updates for {name}
-  versionIntro: ' for {version}.'
-  permanent: Disable update checks for this plugin permanently
+  title: Ignore Update
+  intro: '{name} has a new version {version}. What would you like to do?'
+  thisVersion: Ignore this update only
+  permanent: Never check this plugin for updates
   duration: Ignore for
-  forever: No expiry
+  forever: No time limit
   day: '{count} day(s)'
   custom: Custom
-  customDays: Custom days
-  versionCount: Consecutive versions to ignore
-  permanentNote: Permanent rules are saved in dependency management and can be restored from the “Update checks disabled” group.
-  durationNote: No expiry means the rule does not expire by time; new versions are shown after the ignored-version count is reached.
+  customDays: Days
+  versionCount: Versions to skip
+  permanentNote: You can turn checks back on from the “Update Checks Off” group.
+  durationNote: Updates will show again when the time is up or when more new versions are released than you chose to skip.
   cancel: Cancel
-  confirm: Confirm ignore
-  addedToDisabled: Added to the update-check exclusion list.
-  saved: Update prompt ignored.
-identity:
-  adapter: Adapter
-  database: Database
-  webui: Console
-  core: Core
-  general: General
-  extension: Extension
-  manage: Administration
-  preset: Preset
-  image: Image
-  media: Information
-  tool: Utilities
-  life: Life
-  ai: AI
-  meme: Fun
-  game: Games
-  gametool: Game tools
-  bundle: Plugin bundle
-  other: Plugin
+  confirm: Ignore
+  addedToDisabled: This plugin will no longer be checked for updates
+  saved: This update is ignored
 registry:
   loading: 'Fetching version data from npm registry{endpoint}{attempts}…'
   attempts: 'attempted {count} time(s)'

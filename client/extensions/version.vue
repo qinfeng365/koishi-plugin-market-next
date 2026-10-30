@@ -42,14 +42,14 @@
     <p>{{ t('extensions.messages.externalLocal') }}</p>
   </k-comment>
 
-  <el-dialog v-model="showUninstallDialog" class="market-extension-uninstall-dialog" :title="t('operations.install.uninstall')" destroy-on-close>
+  <market-dialog v-model="showUninstallDialog" class="market-extension-uninstall-dialog" :title="t('operations.install.uninstall')" width="520px" destroy-on-close>
     {{ t('extensions.messages.configQuestion') }}
     <template #footer>
       <el-button @click="showUninstallDialog = false">{{ t('extensions.actions.cancel') }}</el-button>
       <el-button type="primary" @click="uninstallDependency(false)">{{ t('extensions.actions.onlyUninstall') }}</el-button>
       <el-button type="danger" @click="uninstallDependency(true)">{{ t('extensions.actions.uninstallAndRemoveConfig') }}</el-button>
     </template>
-  </el-dialog>
+  </market-dialog>
 
   <bundle-uninstall
     v-model="showBundleUninstallDialog"
@@ -76,6 +76,7 @@ import {
 import BundleUninstall from '../components/bundle-uninstall.vue'
 import { useMarketNextI18n } from '../i18n'
 import { getMarketObject, loadMarketObjects } from '../market/state'
+import MarketDialog from '../components/market-dialog.vue'
 
 const ctx = useContext()
 const config = useConfig()
@@ -136,7 +137,7 @@ async function requestUninstall() {
     showBundleUninstallDialog.value = true
     return
   }
-  if (getBulkMode(config.value)) {
+  if (getBulkMode()) {
     const override = ensureOverride()
     override[name.value] = ''
     void patchMarketNextData({ override: { ...override } })

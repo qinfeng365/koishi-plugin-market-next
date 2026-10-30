@@ -557,9 +557,10 @@ function syncDateDrafts() {
 }
 
 .market-date-filter {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 0.375rem 0.5rem;
   padding: 0.2rem 0.5rem 0;
 }
 
@@ -616,12 +617,9 @@ function syncDateDrafts() {
   font-weight: 700;
 }
 
+// Rows share the parent grid so every label column lines up.
 .market-date-row {
-  display: grid;
-  grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr);
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
+  display: contents;
   color: var(--k-text-normal);
   font-size: 12.5px;
 
@@ -655,6 +653,7 @@ function syncDateDrafts() {
 }
 
 .market-date-clear {
+  grid-column: 1 / -1;
   height: 28px;
   margin-top: 0.1rem;
   padding: 0 0.65rem;
@@ -662,6 +661,8 @@ function syncDateDrafts() {
   border: 1px solid var(--k-color-border);
   color: var(--k-text-normal);
   background: var(--k-card-bg);
+  // Native buttons don't inherit the page font.
+  font: inherit;
   font-size: 12.5px;
   cursor: pointer;
   transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;

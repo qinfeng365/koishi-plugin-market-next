@@ -68,6 +68,7 @@ function createRouter(routes, primary, cacheEntries = {}) {
   const router = new MarketRouter(ctx, {
     endpoint: primary,
     autoRoute: true,
+    fallbackDelaySeconds: 0.5,
     timeout: 1000,
   }, cache, {
     isStale: () => false,
@@ -154,7 +155,8 @@ test('selects a valid fallback after the primary slow threshold and cancels the 
   assert.equal(result.fallbackReason, 'primary-slow')
   assert.equal(state.selected, fallback)
   const scores = Object.fromEntries(state.router.getScores([primary, fallback]).map(item => [item.endpoint, item]))
-  assert.equal(scores[primary].failures ?? 0, 0)
+  // Losing the race after the slow threshold counts toward the bypass.
+  assert.equal(scores[primary].consecutiveFailures, 1)
   assert.equal(scores[fallback].successes, 1)
 })
 

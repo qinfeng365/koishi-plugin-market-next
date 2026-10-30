@@ -6,7 +6,9 @@ import { setupPages } from './pages'
 import { setupActions } from './actions'
 import './icons'
 import './styles/scrollbars.scss'
-import './styles/version-select.scss'
+import './styles/dialog.scss'
+import './styles/buttons.scss'
+import './styles/bundle.scss'
 
 import 'virtual:uno.css'
 

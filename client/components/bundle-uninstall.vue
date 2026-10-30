@@ -1,86 +1,77 @@
 <template>
-  <el-dialog
+  <market-dialog
     v-model="visible"
     append-to-body
-    :class="['bundle-uninstall-dialog', modeClass]"
-    :title="title || t('bundle.actions.uninstall')"
-    width="min(760px, calc(100vw - 24px))"
+    class="bundle-uninstall-dialog"
+    width="720px"
     destroy-on-close
   >
-    <template v-if="packageName">
-      <div class="bundle-uninstall-body">
-        <p>
-          <strong>{{ recordView?.label || packageName }}</strong>
-          {{ t('bundle.messages.isBundle') }}
-        </p>
-
-        <p class="bundle-package-name">{{ packageName }}</p>
-
-        <k-comment v-if="recordView?.fallback" type="warning">
-          <p>{{ t('bundle.messages.fallbackRecord') }}</p>
-        </k-comment>
-
-        <div v-if="loadingRecord" class="bundle-loading">{{ t('bundle.loading') }}</div>
-
-        <template v-else-if="memberRows.length">
-          <!-- Bulk Operations Bar -->
-          <div class="bundle-bulk-row">
-            <span class="bulk-label">{{ t('bundle.bulk.label') }}</span>
-            <button class="bundle-section-action" @click="setAllActions('dependency')">{{ t('bundle.bulk.removeDependency') }}</button>
-            <span class="bundle-section-spacer">|</span>
-            <button class="bundle-section-action" @click="setAllActions('config')">{{ t('bundle.bulk.cleanConfig') }}</button>
-            <span class="bundle-section-spacer">|</span>
-            <button class="bundle-section-action" @click="setAllActions('keep')">{{ t('bundle.bulk.keepAll') }}</button>
-          </div>
-
-          <div class="bundle-member-list">
-            <section v-for="row in memberRows" :key="row.package" class="bundle-member-option">
-              <div class="member-main">
-                <span class="member-title">{{ row.package }}</span>
-                <span class="member-meta">
-                  {{ row.required ? t('bundle.members.required') : t('bundle.members.optional') }} · {{ row.version || t('bundle.members.notDeclared') }}
-                </span>
-              </div>
-              <div class="member-state">
-                <span>{{ row.installed ? t('bundle.members.dependencyInstalled') : t('bundle.members.dependencyNotInstalled') }}</span>
-                <span v-if="row.hasGroupConfig">{{ t('bundle.members.groupConfig') }}</span>
-                <span v-if="row.hasExternalConfig" class="warning">{{ t('bundle.members.externalConfig') }}</span>
-                <span v-if="row.workspace">{{ t('bundle.members.workspace') }}</span>
-              </div>
-              <el-radio-group v-model="memberActions[row.package]" size="small">
-                <el-radio-button value="config" :disabled="!row.hasGroupConfig">{{ t('bundle.members.cleanGroupConfig') }}</el-radio-button>
-                <el-radio-button value="dependency" :disabled="!row.canRemoveDependency">
-                  {{ t('bundle.members.removeDependency') }}
-                </el-radio-button>
-                <el-radio-button value="keep">{{ t('bundle.members.keep') }}</el-radio-button>
-              </el-radio-group>
-              <p v-if="row.hasExternalConfig" class="member-note">
-                {{ t('bundle.conflict.externalNote') }}
-              </p>
-            </section>
-          </div>
-        </template>
-
-        <k-comment v-else>
-          <p>{{ t('bundle.messages.noMembers') }}</p>
-        </k-comment>
-
-        <div class="bundle-summary">
-          <span>{{ t('bundle.summary.remove', { count: dependencyRemovalCount }) }}</span>
-          <span>{{ t('bundle.summary.clean', { count: configCleanupCount }) }}</span>
-          <span>{{ t('bundle.summary.keep', { count: keepCount }) }}</span>
-        </div>
-
-        <p class="bundle-uninstall-note">
-          {{ t('bundle.messages.outsideConfig') }}
-        </p>
+    <template #header="{ titleId, titleClass }">
+      <span :id="titleId" :class="titleClass">{{ title || t('bundle.actions.uninstall') }}</span>
+      <div v-if="packageName" class="bundle-meta">
+        <template v-if="recordView?.label">{{ recordView.label }} · </template>{{ packageName }}
       </div>
     </template>
-    <template v-else>
-      <k-comment type="warning">
-        <p>{{ t('bundle.messages.noDependency') }}</p>
+
+    <template v-if="packageName">
+      <p class="dialog-intro">{{ t('bundle.messages.uninstallIntro') }}</p>
+
+      <k-comment v-if="recordView?.fallback" type="warning">
+        <p>{{ t('bundle.messages.fallbackRecord') }}</p>
       </k-comment>
+
+      <div v-if="loadingRecord" class="bundle-state">{{ t('bundle.loading') }}</div>
+
+      <section v-else-if="memberRows.length" class="dialog-section">
+        <div class="dialog-section-title">
+          <span>{{ t('bundle.members.title') }}</span>
+          <span class="dialog-count">{{ memberRows.length }}</span>
+        </div>
+        <div class="dialog-list" :style="{ '--bundle-columns': columns.length }">
+          <bundle-all-row :columns="columns"></bundle-all-row>
+          <div v-for="row in memberRows" :key="row.package" class="dialog-list-row bundle-member">
+            <div class="member-main">
+              <div class="member-line">
+                <span class="member-name">{{ formatShortname(row.package) }}</span>
+                <span class="member-version">{{ row.version || t('bundle.members.notDeclared') }}</span>
+                <span class="dialog-tag">{{ row.required ? t('bundle.members.requiredTag') : t('bundle.members.optionalTag') }}</span>
+                <span v-if="row.hasGroupConfig" class="dialog-tag">{{ t('bundle.members.groupConfig') }}</span>
+                <span v-if="row.hasExternalConfig" class="dialog-tag warning">{{ t('bundle.members.externalConfig') }}</span>
+                <span v-if="row.workspace" class="dialog-tag">{{ t('bundle.members.workspace') }}</span>
+              </div>
+              <div class="member-sub">
+                {{ row.package }} · {{ row.installed ? t('bundle.members.dependencyInstalled') : t('bundle.members.dependencyNotInstalled') }}
+              </div>
+              <p v-if="row.hasExternalConfig" class="member-note warning">{{ t('bundle.conflict.externalNote') }}</p>
+            </div>
+            <el-checkbox
+              :model-value="cleans(row)"
+              :disabled="!row.hasGroupConfig"
+              :aria-label="`${t('bundle.members.cleanConfig')}: ${row.package}`"
+              @update:model-value="setChoice(row, 'clean', !!$event)"
+            ></el-checkbox>
+            <el-checkbox
+              :model-value="removes(row)"
+              :disabled="!row.canRemoveDependency"
+              :aria-label="`${t('bundle.members.removeDependency')}: ${row.package}`"
+              @update:model-value="setChoice(row, 'remove', !!$event)"
+            ></el-checkbox>
+          </div>
+        </div>
+      </section>
+
+      <k-comment v-else>
+        <p>{{ t('bundle.messages.noMembers') }}</p>
+      </k-comment>
+
+      <template v-if="!loadingRecord">
+        <bundle-diff :rows="diffRows"></bundle-diff>
+        <p class="bundle-outside-note">{{ t('bundle.messages.outsideConfig') }}</p>
+      </template>
     </template>
+    <k-comment v-else type="warning">
+      <p>{{ t('bundle.messages.noDependency') }}</p>
+    </k-comment>
 
     <template #footer>
       <el-button @click="visible = false">{{ t('bundle.actions.cancel') }}</el-button>
@@ -88,7 +79,7 @@
         {{ t('bundle.actions.uninstall') }}
       </el-button>
     </template>
-  </el-dialog>
+  </market-dialog>
 </template>
 
 <script setup lang="ts">
@@ -98,16 +89,18 @@ import { message, router, send, store, useConfig, useContext } from '@koishijs/c
 import { getBundleGroupIdent, type PluginBundleRecord } from '../../src/shared/bundle'
 import {
   fetchBundleRecord,
+  formatShortname,
   getBundleMemberConfigState,
   install,
   pendingBundleUninstalls,
   type BundleRecordView,
   type BundleMemberCleanupTarget,
 } from './utils'
-import { getBulkMode, getFrontendMode, getPendingOverrides, getWritableBundleRecords, patchMarketNextData } from '../utils'
+import { getBulkMode, getPendingOverrides, getWritableBundleRecords, patchMarketNextData } from '../utils'
 import { useMarketNextI18n } from '../i18n'
-
-type MemberAction = 'config' | 'dependency' | 'keep'
+import BundleAllRow from './bundle-all-row.vue'
+import BundleDiff from './bundle-diff.vue'
+import MarketDialog from './market-dialog.vue'
 
 const protectedDeps = new Set(['@koishijs/plugin-console', '@koishijs/plugin-config', '@koishijs/plugin-server'])
 
@@ -126,25 +119,39 @@ const emit = defineEmits<{
 
 const config = useConfig()
 const { t } = useMarketNextI18n()
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
-function setAllActions(action: MemberAction) {
-  for (const row of memberRows.value) {
-    if (action === 'dependency') {
-      memberActions[row.package] = row.canRemoveDependency ? 'dependency' : (row.hasGroupConfig ? 'config' : 'keep')
-    } else if (action === 'config') {
-      memberActions[row.package] = row.hasGroupConfig ? 'config' : 'keep'
-    } else {
-      memberActions[row.package] = 'keep'
-    }
-  }
-}
+// Cleaning the config and uninstalling the dependency are independent: like Koishi's own uninstall,
+// a dependency can go while its config stays in the bundle group for a later reinstall. That is
+// intended, not a leftover. Each column of the "all members" row covers the members that have that
+// option, and a bulk "uninstall" only checks dependencies the bundle installed itself, like the
+// default; ones the user installed before the bundle need their own row checked.
+const columns = computed(() => {
+  const removable = memberRows.value.filter(row => row.canRemoveDependency)
+  return [
+    {
+      label: t('bundle.members.cleanConfig'),
+      members: memberRows.value.filter(row => row.hasGroupConfig),
+      get: cleans,
+      set: (row: MemberRow, value: boolean) => setChoice(row, 'clean', value),
+    },
+    {
+      label: t('bundle.members.removeDependency'),
+      members: removable,
+      targets: removable.filter(row => row.installedByBundle === true),
+      get: removes,
+      set: (row: MemberRow, value: boolean) => setChoice(row, 'remove', value),
+    },
+  ]
+})
 const ctx = useContext()
 const loadingRecord = ref(false)
+let loadSerial = 0
 const uninstalling = ref(false)
 const remoteRecord = ref<BundleRecordView>()
-const memberActions = reactive<Record<string, MemberAction>>({})
+// Only the choices the user changed are stored; anything else falls back to the default, so rows that
+// appear or gain an option need no setup. Keyed by package: a manifest that lists a package twice
+// already gets a validation warning.
+const choices = reactive<Record<string, { clean?: boolean, remove?: boolean }>>({})
 
 const packageName = computed(() => props.packageName || '')
 const visible = computed({
@@ -177,61 +184,61 @@ const memberRows = computed(() => {
   })
 })
 
-const dependencyRemovalMembers = computed(() => memberRows.value
-  .filter(row => memberActions[row.package] === 'dependency' && row.canRemoveDependency))
-const configCleanupMembers = computed(() => memberRows.value
-  .filter(row => memberActions[row.package] === 'dependency' || memberActions[row.package] === 'config')
-  .filter(row => row.hasGroupConfig))
-const dependencyRemovalCount = computed(() => dependencyRemovalMembers.value.length)
-const configCleanupCount = computed(() => configCleanupMembers.value.length)
-const keepCount = computed(() => Math.max(0, memberRows.value.length - new Set([
-  ...dependencyRemovalMembers.value.map(row => row.package),
-  ...configCleanupMembers.value.map(row => row.package),
-]).size))
+type MemberRow = (typeof memberRows.value)[number]
 
-watch(visible, async (value) => {
-  if (!value) return
+// Whether a member's config is cleaned and its dependency removed. Group configs are cleaned by default,
+// and only dependencies the bundle installed itself are removed by default.
+function cleans(row: MemberRow) {
+  return row.hasGroupConfig && (choices[row.package]?.clean ?? true)
+}
+
+function removes(row: MemberRow) {
+  return row.canRemoveDependency && (choices[row.package]?.remove ?? row.installedByBundle === true)
+}
+
+function setChoice(row: MemberRow, key: 'clean' | 'remove', value: boolean) {
+  (choices[row.package] ||= {})[key] = value
+}
+
+const dependencyRemovalMembers = computed(() => memberRows.value.filter(removes))
+const configCleanupMembers = computed(() => memberRows.value.filter(cleans))
+// Kept configs get their own row, so it is clear which ones stay behind in the bundle group.
+const diffRows = computed(() => [
+  { label: t('bundle.diff.uninstall'), items: [packageName.value, ...dependencyRemovalMembers.value.map(row => row.package)].map(name => ({ name: formatShortname(name) })) },
+  { label: t('bundle.diff.clean'), items: configCleanupMembers.value.map(row => ({ name: formatShortname(row.package) })) },
+  { label: t('bundle.diff.keepConfig'), items: memberRows.value.filter(row => row.hasGroupConfig && !cleans(row)).map(row => ({ name: formatShortname(row.package) })) },
+])
+
+// The dialog is modal, so its bundle can't change while it is open; choices reset each time it opens.
+watch(visible, async (value, previous) => {
+  if (!value) {
+    if (!previous) return
+    // Drops a load still running for the dialog that just closed.
+    loadSerial++
+    loadingRecord.value = false
+    return
+  }
   remoteRecord.value = undefined
+  // Reopening starts from the defaults again.
+  Object.keys(choices).forEach(key => delete choices[key])
   await loadRecord()
-  resetActions()
 }, { immediate: true })
 
-watch(memberRows, () => {
-  if (visible.value) resetActions(false)
-})
-
+// The serial drops the result of a load that a newer one replaced, e.g. the dialog was reopened for another bundle.
 async function loadRecord() {
+  const serial = ++loadSerial
   const name = packageName.value
   if (!name || props.record?.members?.length) return
   loadingRecord.value = true
   try {
     const record = await fetchBundleRecord(name)
-    if (record) remoteRecord.value = record
+    if (record && serial === loadSerial) remoteRecord.value = record
   } catch (error) {
     console.warn(error)
-    message.warning(t('bundle.messages.recordFailed'))
+    if (serial === loadSerial) message.warning(t('bundle.messages.recordFailed'))
   } finally {
-    loadingRecord.value = false
+    if (serial === loadSerial) loadingRecord.value = false
   }
-}
-
-function resetActions(force = true) {
-  const seen = new Set<string>()
-  for (const row of memberRows.value) {
-    seen.add(row.package)
-    if (!force && memberActions[row.package]) continue
-    memberActions[row.package] = getDefaultAction(row)
-  }
-  for (const key of Object.keys(memberActions)) {
-    if (!seen.has(key)) delete memberActions[key]
-  }
-}
-
-function getDefaultAction(row: (typeof memberRows.value)[number]): MemberAction {
-  if (row.hasExternalConfig) return row.hasGroupConfig ? 'config' : 'keep'
-  if (row.canRemoveDependency && row.installedByBundle === true) return 'dependency'
-  if (row.hasGroupConfig) return 'config'
-  return 'keep'
 }
 
 function ensureOverride() {
@@ -255,7 +262,7 @@ async function uninstallBundle() {
     ...Object.fromEntries(members.map(name => [name, ''])),
   }
 
-  if (getBulkMode(config.value)) {
+  if (getBulkMode()) {
     const overrides = ensureOverride()
     Object.assign(overrides, override)
     void patchMarketNextData({ override: { ...overrides } })
@@ -280,6 +287,8 @@ async function uninstallBundle() {
           removeEmptyGroup: true,
         })
       }
+      // Configs the user chose to keep stay behind in the bundle group, which then becomes an ordinary
+      // group on the plugin config page, like the configs Koishi keeps when one plugin is uninstalled.
       const records = getWritableBundleRecords(config.value)
       delete records[name]
       const saved = await patchMarketNextData({ bundleRecords: records })
@@ -299,223 +308,24 @@ async function uninstallBundle() {
 
 </script>
 
-<style lang="scss" scoped>
+<style lang="scss">
 
-:global(.bundle-uninstall-dialog) {
-  --bundle-uninstall-primary: var(--k-color-primary, var(--el-color-primary, #8b5cf6));
-  --bundle-uninstall-surface: var(--k-card-bg, var(--el-bg-color-overlay, var(--el-bg-color, #ffffff)));
-  --bundle-uninstall-surface-muted: var(--k-side-bg, var(--el-fill-color-lighter, var(--bundle-uninstall-surface)));
-  --bundle-uninstall-text: var(--fg1, var(--el-text-color-primary, currentColor));
-  --bundle-uninstall-text-muted: var(--fg2, var(--el-text-color-regular, currentColor));
-  --bundle-uninstall-border-base: var(--k-color-border, var(--el-border-color, #dcdfe6));
-  --bundle-uninstall-border: color-mix(in srgb, var(--bundle-uninstall-border-base) 82%, var(--bundle-uninstall-text) 10%);
-  color: var(--bundle-uninstall-text);
-  border: 1px solid var(--bundle-uninstall-border);
-  border-radius: 10px;
-  background: var(--bundle-uninstall-surface);
-  box-shadow: none;
-
-  :deep(.el-dialog__header) {
-    border-bottom: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 68%, transparent);
-    background: color-mix(in srgb, var(--bundle-uninstall-surface-muted) 54%, var(--bundle-uninstall-surface));
+.bundle-uninstall-dialog {
+  // Keeps the title and package name clear of the close button.
+  .el-dialog__header {
+    padding-right: 36px;
   }
 
-  :deep(.el-dialog__body) {
-    max-height: min(68vh, 620px);
-    overflow: auto;
-    background: var(--bundle-uninstall-surface);
+  .member-main .member-note {
+    margin-top: 0.25rem;
   }
 
-  :deep(.el-dialog__footer) {
-    padding-top: 0.25rem;
-    border-top: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 72%, transparent);
-    background: color-mix(in srgb, var(--bundle-uninstall-surface) 86%, var(--bundle-uninstall-surface-muted) 14%);
-  }
-
-  :deep(.el-radio-group) {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-  }
-
-  :deep(.el-radio-button) {
-    min-width: 0;
-  }
-
-  :deep(.el-radio-button__inner) {
-    width: 100%;
-    padding: 0 0.5rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .bundle-uninstall-body {
-    display: grid;
-    gap: 0.75rem;
-    min-width: 0;
-
-    p {
-      margin: 0;
-      color: var(--fg2);
-      line-height: 1.5;
-    }
-  }
-
-  .bundle-package-name {
-    padding: 0.45rem 0.6rem;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--bundle-uninstall-primary) 7%, var(--bundle-uninstall-surface));
-    color: var(--fg1);
-    font-family: var(--font-mono);
-    word-break: break-all;
-  }
-
-  .bundle-member-list {
-    display: grid;
-    gap: 0.55rem;
-    max-height: 46vh;
-    overflow: auto;
-    padding-right: 0.25rem;
-  }
-
-  .bundle-member-option {
-    display: grid;
-    gap: 0.45rem;
-    min-width: 0;
-    padding: 0.58rem 0.65rem;
-    border: 1px solid color-mix(in srgb, var(--bundle-uninstall-border) 72%, transparent);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--bundle-uninstall-surface-muted) 72%, var(--bundle-uninstall-surface));
-  }
-
-  .member-main,
-  .member-state,
-  .bundle-summary {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem 0.6rem;
-  }
-
-  .member-main,
-  .member-state {
-    min-width: 0;
-  }
-
-  .member-title {
-    font-weight: 600;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    word-break: break-all;
-  }
-
-  .member-meta,
-  .member-state {
+  .bundle-outside-note {
+    margin: 1rem 0 0;
     color: var(--fg3);
-    font-size: 0.78rem;
+    font-size: 0.8125rem;
   }
 
-  .member-state span {
-    border-radius: 999px;
-    padding: 0.08rem 0.42rem;
-    background: color-mix(in srgb, var(--fg3) 9%, transparent);
-  }
-
-  .member-state .warning {
-    color: var(--k-color-warning);
-    background: color-mix(in srgb, var(--k-color-warning) 10%, transparent);
-  }
-
-  .member-note {
-    font-size: 0.78rem;
-  }
-
-  .bundle-summary,
-  .bundle-uninstall-note {
-    border-radius: 8px;
-    padding: 0.55rem 0.65rem;
-    background: color-mix(in srgb, var(--bundle-uninstall-primary) 7%, var(--bundle-uninstall-surface));
-  }
-
-  .bundle-loading {
-    color: var(--fg2);
-  }
-
-  .bundle-bulk-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.65rem;
-    background: color-mix(in srgb, var(--bundle-uninstall-primary) 4%, var(--bundle-uninstall-surface-muted));
-    border: 1px solid color-mix(in srgb, var(--bundle-uninstall-primary) 12%, var(--bundle-uninstall-border));
-    border-radius: 8px;
-    font-size: 0.76rem;
-
-    .bulk-label {
-      font-weight: 600;
-      color: var(--fg2);
-      margin-right: 0.4rem;
-    }
-
-    .bundle-section-spacer {
-      color: color-mix(in srgb, var(--fg3) 50%, transparent);
-      margin: 0 0.2rem;
-    }
-
-    .bundle-section-action {
-      border: none;
-      background: none;
-      color: var(--bundle-uninstall-primary);
-      cursor: pointer;
-      font-size: 0.74rem;
-      padding: 2px 6px;
-      border-radius: 6px;
-      transition: background 0.15s;
-      &:hover { background: color-mix(in srgb, var(--bundle-uninstall-primary) 8%, transparent); }
-    }
-  }
-
-  &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 14%, var(--bundle-uninstall-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--bundle-uninstall-primary) 5%, transparent), transparent 42%),
-      var(--bundle-uninstall-surface);
-    box-shadow: 0 18px 42px color-mix(in srgb, var(--bundle-uninstall-text) 12%, transparent);
-
-    .bundle-member-option {
-      border-radius: 12px;
-      background: color-mix(in srgb, var(--bundle-uninstall-surface) 90%, var(--bundle-uninstall-surface-muted) 10%);
-      backdrop-filter: blur(10px);
-      box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-uninstall-surface) 86%, white 14%);
-      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-
-      &:hover {
-        border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 28%, var(--bundle-uninstall-border));
-        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-uninstall-primary) 10%, transparent);
-        transform: translateY(-2px);
-      }
-    }
-  }
-
-  @media (max-width: 640px) {
-    :deep(.el-dialog__footer) {
-      display: flex;
-      gap: 0.5rem;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-    }
-
-    :deep(.el-radio-group) {
-      grid-template-columns: 1fr;
-    }
-
-    :deep(.el-radio-button__inner) {
-      text-align: center;
-    }
-  }
 }
 
 </style>

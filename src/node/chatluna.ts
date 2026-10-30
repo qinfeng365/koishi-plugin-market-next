@@ -45,7 +45,7 @@ export interface ChatLunaToolConfig {
   chatlunaTool?: boolean
   search?: {
     endpoint?: string
-    timeout?: number
+    timeoutSeconds?: number
     proxyAgent?: string
   }
 }
@@ -152,7 +152,7 @@ async function fetchIndex(ctx: Context, config: ChatLunaToolConfig): Promise<Mar
   const endpoint = resolveEndpoint(config)
   const http: HTTP = ctx.http.extend({
     endpoint,
-    timeout: config.search?.timeout ?? Time.second * 30,
+    timeout: (config.search?.timeoutSeconds ?? 30) * Time.second,
     proxyAgent: config.search?.proxyAgent,
   } as HTTP.Config)
   const result = await http.get<SearchResult>('')

@@ -8,6 +8,7 @@ import FileArchive from './file-archive.vue'
 import HeartPulse from './heart-pulse.vue'
 import Insecure from './insecure.vue'
 import Installed from './installed.vue'
+import LayerGroup from './layer-group.vue'
 import Newborn from './newborn.vue'
 import Portable from './portable.vue'
 import Preview from './preview.vue'
@@ -26,6 +27,7 @@ export default {
   'heart-pulse': HeartPulse,
   'insecure': Insecure,
   'installed': Installed,
+  'layer-group': LayerGroup,
   'newborn': Newborn,
   'portable': Portable,
   'preview': Preview,
