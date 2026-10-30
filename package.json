@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-market-next",
   "description": "Next-generation Koishi plugin market and dependency management center",
-  "version": "3.6.3",
+  "version": "3.6.4-alpha.1",
   "homepage": "https://github.com/qinfeng365/koishi-plugin-market-next#readme",
   "repository": {
     "type": "git",
@@ -14,15 +14,15 @@
   "main": "lib/node/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
-    "audit:package": "npm audit --audit-level=high --omit=dev --omit=peer",
-    "audit:high": "npm audit --audit-level=high --omit=peer",
+    "audit:package": "node scripts/audit-package.mjs",
+    "audit:high": "npm audit --audit-level=high",
     "build": "tsc -p tsconfig.json && node build.mjs",
     "build:dts": "tsc -p tsconfig.json",
     "build:js": "node build.mjs",
     "check:i18n": "node scripts/check-i18n.mjs && node scripts/check-i18n-lifecycle.mjs",
     "check:package": "node scripts/check-package.mjs && npm run check:i18n",
     "compare:market-sources": "node scripts/compare-market-sources.mjs",
-    "test:dependency-source": "tsx --test scripts/chatluna-search.test.mjs scripts/config-node.test.mjs scripts/dependency-source.test.mjs scripts/environment-local.test.mjs scripts/installer-refresh.test.mjs scripts/installer-transaction.test.mjs scripts/local-package-upload.test.mjs scripts/market-data.test.mjs scripts/market-internals.test.mjs scripts/market-result.test.mjs scripts/market-router.test.mjs scripts/market-snapshot.test.mjs scripts/market-sync.test.mjs scripts/package-manager.test.mjs scripts/registry-router.test.mjs scripts/route-health.test.mjs",
+    "test:dependency-source": "tsx --test scripts/audit-package.test.mjs scripts/chatluna-search.test.mjs scripts/config-node.test.mjs scripts/dependency-source.test.mjs scripts/environment-local.test.mjs scripts/installer-refresh.test.mjs scripts/installer-transaction.test.mjs scripts/local-package-upload.test.mjs scripts/market-data.test.mjs scripts/market-internals.test.mjs scripts/market-result.test.mjs scripts/market-router.test.mjs scripts/market-snapshot.test.mjs scripts/market-sync.test.mjs scripts/package-manager.test.mjs scripts/registry-router.test.mjs scripts/route-health.test.mjs",
     "deploy:local": "powershell -ExecutionPolicy Bypass -File scripts/deploy-local-koishi.ps1"
   },
   "exports": {
@@ -91,6 +91,7 @@
     "esbuild": "^0.28.1",
     "js-yaml": "^4.3.2",
     "lottie-web": "^5.13.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.2",
     "yml-register": "^1.2.5"
   },
@@ -108,7 +109,7 @@
     "spark-md5": "^3.0.2",
     "tar": "^7.5.22",
     "which-pm-runs": "^1.1.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "overrides": {
     "esbuild": "^0.28.1",

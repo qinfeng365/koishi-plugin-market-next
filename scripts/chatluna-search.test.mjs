@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { tool } from '@langchain/core/tools'
 import {
+  CHATLUNA_TOOL_NAME,
   formatLoadError,
   formatSearchResult,
   normalizeInput,
+  searchSchema,
 } from '../src/node/chatluna-search.ts'
 
 function plugin(overrides = {}) {
@@ -61,4 +64,24 @@ test('formats a load error as a stable empty result payload', () => {
   assert.equal(payload.error, 'network down')
   assert.equal(payload.results.length, 0)
   assert.equal(payload.matched, 0)
+})
+
+test('parses tool inputs with patched Zod and rejects out-of-range limits', () => {
+  const input = searchSchema.parse({ names: 'example, second', status: ['verified'], limit: 5 })
+  assert.deepEqual(input.names, ['example', 'second'])
+  assert.deepEqual(input.status, ['verified'])
+  assert.equal(input.limit, 5)
+  assert.equal(searchSchema.safeParse({ limit: 51 }).success, false)
+})
+
+test('LangChain invokes the market schema with patched Zod without an LLM', async () => {
+  const query = tool(async input => normalizeInput(input), {
+    name: CHATLUNA_TOOL_NAME,
+    description: 'Query the plugin market',
+    schema: searchSchema,
+  })
+  const result = await query.invoke({ query: 'adapter', names: 'example', limit: 3 })
+  assert.equal(result.query, 'adapter')
+  assert.deepEqual(result.names, ['example'])
+  assert.equal(result.limit, 3)
 })

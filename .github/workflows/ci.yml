@@ -29,14 +29,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit package dependency tree
+      - name: Audit runtime dependency paths
         run: npm run audit:package
 
-      - name: Audit high severity full install
+      - name: Report host and development dependency vulnerabilities
+        continue-on-error: true
         run: npm run audit:high
 
       - name: Build
         run: npm run build
+
+      - name: Test dependency and audit behavior
+        run: npm run test:dependency-source
 
       - name: Check package contents
         run: npm run check:package

@@ -23,6 +23,9 @@
 > [!IMPORTANT]
 > Market Next 和官方插件市场提供同名的 `market` / `installer` 服务，**两者只能启用一个**。安装后记得停用官方的 `market` 插件，否则侧边栏入口和页面会互相覆盖。
 
+> [!NOTE]
+> 当前预发布版为 `3.6.4-alpha.1`，通过 npm 的 `alpha` 标签获取，不替换正式版。此次统一了依赖管理、弹窗和配置页界面；精致模式仍保留在插件市场页。旧时间配置会自动换算迁移，完整变化见 [更新日志](./CHANGELOG.md#364-alpha1---2026-10-31)。
+
 ---
 
 ## 📸 界面预览
@@ -471,7 +474,7 @@ npm run test:dependency-source
 
 发布：
 
-- 普通 push 和 PR 由 `CI` 工作流执行审计、构建和包内容检查。
+- 普通 push 和 PR 由 `CI` 工作流执行审计、构建和包内容检查。插件自身运行依赖中的高危或严重漏洞会阻止发布；Koishi 宿主与开发工具链的完整审计单独报告，不把它们当作插件运行依赖。
 - 推送 `v*` tag 会通过 npm Trusted Publishing 发布；带预发布后缀的版本发到对应的 dist-tag，正式版发到 `latest`。
 - 完整的版本变化见 [CHANGELOG.md](./CHANGELOG.md)。
 
