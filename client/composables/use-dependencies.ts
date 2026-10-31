@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } fro
 import { message, router, store, useConfig, useContext } from '@koishijs/client'
 import { useMarketNextI18n } from '../i18n'
 import { getCollapsedGroups, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
-import { addManual, configuredPlugins, findBundleRecord, getConfigWriter, getRegistryStatus, pendingBundleUninstalls, showConfirm } from '../components/utils'
+import { addManual, configuredPlugins, findBundleRecord, getConfigWriter, getRegistryStatus, getVersions, pendingBundleUninstalls, showConfirm } from '../components/utils'
 import { getPluginShortname, PLUGIN_PACKAGE_RE } from '../../src/shared/bundle'
 import { shouldIncludeDiscoveredLocalPlugin } from '../../src/shared/dependency-source'
 import { loadMarketObjects } from '../market/state'
@@ -81,15 +81,19 @@ export function useDependencies() {
   }, { immediate: true })
 
   let dispose: WatchStopHandle
+  const manualRequests = new Set<string>()
   watch(() => store.market?.registry, (registry) => {
     dispose?.()
     if (!registry) return
     dispose = watch(() => getPendingOverrides(), (object) => {
       if (!object) return
-      Object.keys(object).forEach(async (name) => {
-        if (store.dependencies?.[name]) return
-        addManual(name)
-      })
+      for (const name of Object.keys(object)) {
+        if (store.dependencies?.[name] || getVersions(name) || manualRequests.has(name)) continue
+        manualRequests.add(name)
+        void addManual(name)
+          .catch(error => console.error('[market-next] failed to load pending dependency metadata', name, error))
+          .finally(() => manualRequests.delete(name))
+      }
     }, { immediate: true, deep: true })
   }, { immediate: true })
 
