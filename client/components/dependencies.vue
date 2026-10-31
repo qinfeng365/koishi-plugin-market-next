@@ -52,14 +52,14 @@
         </div>
       </div>
       <div
-        v-if="metadataLoading"
+        v-if="dependencyLoading"
         class="deps-loading"
         role="progressbar"
         :aria-label="t('dependencies.toolbar.loading')"
       ></div>
     </div>
 
-    <el-scrollbar class="body-container" :aria-busy="String(metadataLoading)">
+    <el-scrollbar class="body-container" :aria-busy="String(dependencyLoading)">
       <div class="deps-content" :class="{ pending: summary.pending }">
         <template v-if="visibleGroups.length">
           <section v-for="group in visibleGroups" :key="group.key" :class="['deps-group', group.key, { collapsed: group.collapsed }]">
@@ -144,6 +144,7 @@ import PackageView from './package.vue'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import { shouldIncludeDiscoveredLocalPlugin } from '../../src/shared/dependency-source'
 import { loadMarketObjects } from '../market/state'
+import type { MarketStore } from '../registry-state'
 
 type FilterKey = 'all' | 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'local' | 'manual'
 type ItemKind = 'pending' | 'bundle' | 'unconfigured' | 'updatable' | 'ignored' | 'check-disabled' | 'invalid' | 'error' | 'local' | 'manual' | 'installed'
@@ -171,6 +172,8 @@ const { t } = useMarketNextI18n()
 const keyword = ref('')
 const filter = ref<FilterKey>('all')
 const metadataLoading = ref(false)
+const dependencyLoading = computed(() => metadataLoading.value
+  || Object.values((store as MarketStore).registryStatus ?? {}).some(status => status?.loading))
 let metadataLoadToken = 0
 const searchInput = ref<{ focus?: () => void }>()
 const frontendMode = computed(() => getFrontendMode(config.value))
