@@ -25,6 +25,7 @@ export type LayoutMode = 'grid' | 'list'
 export interface MarketNextConfigPatch extends UpdatePolicy {
   uiVariant?: 'standard' | 've'
   depsLayout?: LayoutMode
+  coupleRefresh?: boolean
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]

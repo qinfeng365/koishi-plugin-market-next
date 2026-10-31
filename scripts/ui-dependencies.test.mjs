@@ -199,3 +199,106 @@ for (const listMode of [false, true]) {
     }
   })
 }
+
+function createActions(activity, coupleRefresh, send = () => Promise.resolve()) {
+  const calls = []
+  const messages = []
+  const menus = {}
+  const actions = {}
+  const route = vue.ref({ meta: { activity: { id: activity } } })
+  const dialogs = {
+    activeBundle: vue.ref({}), showConfirm: vue.ref(true), dependencyDialog: { type: 'ignore' },
+    installProgressState: { visible: false },
+  }
+  const mocks = {
+    vue,
+    '@koishijs/client': {
+      router: { currentRoute: route },
+      store: { market: {} },
+      send(event) { calls.push(event); return send(event) },
+      message: {
+        success: key => messages.push(['success', key]),
+        error: key => messages.push(['error', key]),
+      },
+    },
+    './utils': { getMarketNextConfig: () => ({ coupleRefresh }) },
+    './i18n': { translate: key => key },
+    './components/utils': dialogs,
+    './registry-state': { isRegistryRefreshing: () => false },
+  }
+  const module = { exports: {} }
+  vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../client/actions.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, {
+    module, exports: module.exports,
+    console: { error() {} }, setTimeout() {},
+    require(name) {
+      assert.ok(Object.hasOwn(mocks, name), name)
+      return mocks[name]
+    },
+  })
+  module.exports.setupActions({
+    action(name, action) { actions[name] = action },
+    menu(name, items) { menus[name] = items },
+    effect() {},
+  })
+  return { calls, messages, menus, route, dialogs, refresh: actions['market.refresh'].action }
+}
+
+for (const activity of ['market', 'dependencies']) {
+  for (const coupled of [undefined, false, true]) {
+    test(`${activity} refresh ${coupled ? 'also refreshes the other page' : 'stays independent'} with coupling=${coupled}`, async () => {
+      const state = createActions(activity, coupled)
+      await state.refresh()
+      const deps = activity === 'dependencies' || coupled === true
+      assert.deepEqual(state.calls, coupled ? ['market/refresh', 'market/refresh-dependencies']
+        : [deps ? 'market/refresh-dependencies' : 'market/refresh'])
+      assert.equal(state.dialogs.showConfirm.value, !deps)
+      assert.equal(state.dialogs.dependencyDialog.type, deps ? undefined : 'ignore')
+      assert.deepEqual(state.messages, [['success', `common.messages.${coupled ? 'refreshBothStarted' : deps ? 'refreshDependenciesStarted' : 'refreshMarketSubmitted'}`]])
+    })
+  }
+}
+
+test('coupled refresh starts both requests at once and blocks duplicate cross-page refreshes', async () => {
+  const pending = []
+  const state = createActions('market', true, () => new Promise(resolve => pending.push(resolve)))
+  const task = state.refresh()
+  assert.deepEqual(state.calls, ['market/refresh', 'market/refresh-dependencies'])
+  assert.equal(state.menus.market[1].type(), 'spin disabled')
+  assert.equal(state.menus.dependencies.at(-1).type(), 'spin disabled')
+  state.route.value.meta.activity.id = 'dependencies'
+  await state.refresh()
+  assert.equal(state.calls.length, 2)
+  pending[1]()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(state.dialogs.showConfirm.value, false)
+  pending[0]()
+  await task
+  assert.equal(state.menus.market[1].type(), '')
+  assert.equal(state.menus.dependencies.at(-1).type(), '')
+})
+
+for (const event of ['market/refresh', 'market/refresh-dependencies']) {
+  test(`a failed ${event} does not prevent the other refresh and releases both buttons`, async () => {
+    const state = createActions('market', true, name => name === event ? Promise.reject(new Error('failed')) : Promise.resolve())
+    await state.refresh()
+    assert.deepEqual(state.calls, ['market/refresh', 'market/refresh-dependencies'])
+    assert.equal(state.dialogs.showConfirm.value, event !== 'market/refresh')
+    assert.deepEqual(state.messages, [['error', 'common.messages.refreshFailed']])
+    assert.equal(state.menus.market[1].type(), '')
+    assert.equal(state.menus.dependencies.at(-1).type(), '')
+  })
+}
+
+test('coupled refresh never reports success while disconnected or closes an active install', async () => {
+  const disconnected = createActions('market', true, () => undefined)
+  await disconnected.refresh()
+  assert.deepEqual(disconnected.messages, [['error', 'common.messages.refreshFailed']])
+  assert.equal(disconnected.dialogs.showConfirm.value, true)
+  const installing = createActions('market', true)
+  installing.dialogs.installProgressState.visible = true
+  await installing.refresh()
+  assert.equal(installing.dialogs.showConfirm.value, true)
+  assert.equal(installing.dialogs.dependencyDialog.type, 'ignore')
+})

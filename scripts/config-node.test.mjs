@@ -173,3 +173,27 @@ test('changing UI writes Koishi config and reloads the active plugin and entry',
   assert.equal(await updateMarketNextConfig(ctx, {}, { frontendMode: 'polished' }), false)
   assert.deepEqual(calls, [])
 })
+
+test('coupled refresh is off by default and accepts only boolean values', async () => {
+  assert.equal(Config({}).coupleRefresh, false)
+  assert.equal(Config({ coupleRefresh: true }).coupleRefresh, true)
+  assert.throws(() => Config({ coupleRefresh: 'true' }))
+  const node = { coupleRefresh: false }
+  const calls = []
+  const ctx = {
+    loader: {
+      config: { plugins: { 'market-next:main': node } },
+      async writeConfig(silent) { calls.push(['write', silent]) },
+    },
+    get() { return { async refresh(field) { calls.push(['refresh', field]) } } },
+  }
+  assert.equal(await updateMarketNextConfig(ctx, {}, { coupleRefresh: true }), true)
+  assert.equal(node.coupleRefresh, true)
+  assert.deepEqual(calls, [['write', true], ['refresh', 'config']])
+  calls.length = 0
+  assert.equal(await updateMarketNextConfig(ctx, {}, { coupleRefresh: 'true' }), false)
+  assert.equal(node.coupleRefresh, true)
+  assert.deepEqual(calls, [])
+  assert.equal(await updateMarketNextConfig(ctx, {}, { coupleRefresh: false }), true)
+  assert.equal(node.coupleRefresh, false)
+})

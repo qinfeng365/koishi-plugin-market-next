@@ -10,6 +10,7 @@
     $inner:
       - Cards
       - List
+  coupleRefresh: Link market and dependency refreshes. Refreshing either page also refreshes the market index and dependency versions. When off, they refresh separately. This does not change background checks or install or update any plugins.
 
 # This section is a toggle plus options that only show while it is on, so each sub-schema gets its own entry.
 - - $description: Background checks

@@ -11,6 +11,7 @@ export interface Config {
   chatlunaTool?: boolean
   uiVariant?: 'standard' | 've'
   depsLayout?: 'grid' | 'list'
+  coupleRefresh?: boolean
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]
@@ -98,6 +99,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const('grid'),
       Schema.const('list'),
     ]).role('radio').default('grid'),
+    coupleRefresh: Schema.boolean().default(false),
   }),
   Schema.intersect([
     Schema.object({
@@ -155,6 +157,7 @@ const configPatchKeys: Array<keyof Config> = [
   'logLevel',
   'uiVariant',
   'depsLayout',
+  'coupleRefresh',
   'marketSilentStatusRules',
   'marketSilentDateRules',
   'marketSilentRecentRules',
@@ -298,6 +301,7 @@ export async function updateMarketNextConfig(ctx: Context, currentConfig: Config
   for (const key of configPatchKeys) {
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
     if (key === 'uiVariant' && patch[key] !== 'standard' && patch[key] !== 've') continue
+    if (key === 'coupleRefresh' && typeof patch[key] !== 'boolean') continue
     accepted = true
     const value = key === 'marketSilentRules'
       ? normalizeMarketSilentRules(patch[key])

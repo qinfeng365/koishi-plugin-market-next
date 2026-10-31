@@ -20,6 +20,7 @@ messages:
   refreshMarketSuccess: 插件市场刷新成功
   refreshMarketFailed: 插件市场刷新失败，已保留可用数据
   refreshDependenciesStarted: 依赖版本刷新已开始
+  refreshBothStarted: 已开始刷新插件市场和依赖版本
   refreshFailed: 刷新失败，请检查网络或日志
   saveFailed: 保存失败，请检查日志
   timeUnknown: 时间未知

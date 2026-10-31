@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 import { Context, message, router, send, store } from '@koishijs/client'
-import { getPendingOverrides, patchMarketNextData } from './utils'
+import { getMarketNextConfig, getPendingOverrides, patchMarketNextData } from './utils'
 import { translate } from './i18n'
 import { activeBundle, dependencyDialog, installProgressState, showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
 import {
@@ -84,40 +84,53 @@ export function setupActions(ctx: Context) {
     async action() {
       const activity = router.currentRoute.value?.meta?.activity.id
       const dependencies = activity === 'dependencies'
-      const refreshing = dependencies ? refreshingDependencies : refreshingMarket
-      if (refreshing.value) return
-      refreshing.value = true
-      if (!dependencies) pendingMarketRefreshFeedback.value = true
+      const coupled = getMarketNextConfig()?.coupleRefresh === true
+      const market = !dependencies || coupled
+      const deps = dependencies || coupled
+      if (market && refreshingMarket.value || deps && refreshingDependencies.value) return
+      if (market) {
+        refreshingMarket.value = true
+        pendingMarketRefreshFeedback.value = true
+      }
+      if (deps) refreshingDependencies.value = true
       try {
-        // Undefined while disconnected, when nothing was sent.
-        const task = send(dependencies ? 'market/refresh-dependencies' : 'market/refresh')
-        if (!task) throw new Error('disconnected')
-        await task
-        // The refresh may change the versions these dialogs are about. The install dialog opens only
-        // from the market page, whose refresh keeps it; manual add keeps its own versions and may be
-        // in the middle of an upload. The request returns once the reset is done, so a dialog opened
-        // before that is closed too; resets from elsewhere close nothing. While the install progress
-        // dialog is open, the dialog behind it stays: it closes itself when the install succeeds,
-        // and a fallback retry offered after a failure still needs it.
-        if (dependencies && !installProgressState.visible) {
-          activeBundle.value = undefined
-          showConfirm.value = false
-          if (dependencyDialog.type === 'ignore') dependencyDialog.type = undefined
-        }
-        if (dependencies) {
+        const events: Array<'market/refresh' | 'market/refresh-dependencies'> = coupled
+          ? ['market/refresh', 'market/refresh-dependencies']
+          : [dependencies ? 'market/refresh-dependencies' : 'market/refresh']
+        const results = await Promise.allSettled(events.map(async (event) => {
+          // Undefined while disconnected, when nothing was sent.
+          const task = send(event)
+          if (!task) throw new Error('disconnected')
+          await task
+          // Close stale dependency choices after their reset, even if the market request fails.
+          // Keep manual uploads and dialogs behind an active install or fallback retry intact.
+          if (event === 'market/refresh-dependencies' && !installProgressState.visible) {
+            activeBundle.value = undefined
+            showConfirm.value = false
+            if (dependencyDialog.type === 'ignore') dependencyDialog.type = undefined
+          }
+        }))
+        const failed = results.find(result => result.status === 'rejected')
+        if (failed?.status === 'rejected') throw failed.reason
+        if (coupled) {
+          message.success(translate('common.messages.refreshBothStarted'))
+        } else if (dependencies) {
           message.success(translate('common.messages.refreshDependenciesStarted'))
         } else {
           message.success(translate('common.messages.refreshMarketSubmitted'))
+        }
+        if (market) {
           setTimeout(() => {
             if (!store.market?.refreshing) finishMarketRefreshFeedback()
           }, 300)
         }
       } catch (error) {
-        if (!dependencies) pendingMarketRefreshFeedback.value = false
+        if (market) pendingMarketRefreshFeedback.value = false
         console.error(error)
         message.error(translate('common.messages.refreshFailed'))
       } finally {
-        refreshing.value = false
+        if (market) refreshingMarket.value = false
+        if (deps) refreshingDependencies.value = false
       }
     },
   })
