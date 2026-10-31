@@ -9,9 +9,8 @@ import MarketView from '../../components/market.vue'
 <style lang="scss">
 .market-ui-ve {
   .market-package {
-    min-height: 12.5rem;
     padding: 1rem 1.25rem;
-    gap: 0.75rem;
+    gap: 0.625rem;
     border-radius: 8px;
 
     .header {
@@ -40,9 +39,9 @@ import MarketView from '../../components/market.vue'
     }
 
     .desc {
-      flex: 1 1 auto;
-      height: 4.8em;
-      -webkit-line-clamp: 3;
+      flex: 0 0 auto;
+      height: 3.2em;
+      -webkit-line-clamp: 2;
     }
   }
 
@@ -63,7 +62,6 @@ import MarketView from '../../components/market.vue'
 
   @media (max-width: 420px) {
     .market-package {
-      min-height: 11rem;
       padding: 0.82rem 0.9rem;
 
       .header .left {
