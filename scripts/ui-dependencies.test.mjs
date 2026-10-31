@@ -21,7 +21,7 @@ function createState(fetch) {
   const errors = []
   const mocks = {
     vue: { ...vue, onMounted() {}, onBeforeUnmount() {} },
-    '@koishijs/client': { store, useConfig: () => vue.ref({ market: {} }), useContext: () => ({ action() {} }) },
+    '@koishijs/client': { store, useConfig: () => vue.ref({ market: {} }), useContext: () => ({}) },
     '../i18n': { useMarketNextI18n: () => ({ t: key => key }) },
     '../utils': { getPendingOverrides: () => override },
     '../components/utils': {
@@ -209,19 +209,32 @@ function createActions(activity, coupleRefresh, send = () => Promise.resolve()) 
   const dialogs = {
     activeBundle: vue.ref({}), showConfirm: vue.ref(true), dependencyDialog: { type: 'ignore' },
     installProgressState: { visible: false },
+    getConfigWriter: () => undefined,
+    getRegistryStatus: () => undefined,
+    findBundleRecord: () => undefined,
+  }
+  const store = vue.reactive({ market: {}, dependencies: {}, packages: {} })
+  const override = vue.reactive({})
+  const utils = {
+    getMarketNextConfig: () => ({ coupleRefresh }),
+    getMarketNextPolicy: () => ({}),
+    getPendingOverrides: () => override,
+    hasUpdate: () => false,
+    patchMarketNextData: async patch => calls.push(patch),
   }
   const mocks = {
     vue,
     '@koishijs/client': {
       router: { currentRoute: route },
-      store: { market: {} },
+      store,
       send(event) { calls.push(event); return send(event) },
       message: {
         success: key => messages.push(['success', key]),
         error: key => messages.push(['error', key]),
       },
     },
-    './utils': { getMarketNextConfig: () => ({ coupleRefresh }) },
+    './utils': utils,
+    '../src/shared/bundle': { getPluginShortname: name => name.replace('koishi-plugin-', ''), PLUGIN_PACKAGE_RE: /^koishi-plugin-/ },
     './i18n': { translate: key => key },
     './components/utils': dialogs,
     './registry-state': { isRegistryRefreshing: () => false },
@@ -242,7 +255,7 @@ function createActions(activity, coupleRefresh, send = () => Promise.resolve()) 
     menu(name, items) { menus[name] = items },
     effect() {},
   })
-  return { calls, messages, menus, route, dialogs, refresh: actions['market.refresh'].action }
+  return { calls, messages, menus, route, dialogs, store, override, utils, actions, refresh: actions['market.refresh'].action }
 }
 
 for (const activity of ['market', 'dependencies']) {
@@ -301,4 +314,29 @@ test('coupled refresh never reports success while disconnected or closes an acti
   await installing.refresh()
   assert.equal(installing.dialogs.showConfirm.value, true)
   assert.equal(installing.dialogs.dependencyDialog.type, 'ignore')
+})
+
+test('upgrade action is available before mounting a dependency page and preserves exclusions', async () => {
+  const state = createActions('market', false)
+  state.dialogs.getConfigWriter = () => ({})
+  state.dialogs.configuredPlugins = vue.ref(new Set(['example']))
+  state.dialogs.findBundleRecord = name => name === 'bundle'
+  state.dialogs.getRegistryStatus = name => name === 'failed' ? { error: 'failed' } : undefined
+  state.utils.hasUpdate = name => name !== 'ignored'
+  state.utils.getLatestVersion = () => '2.0.0'
+  Object.assign(state.store.dependencies, {
+    'koishi-plugin-example': { resolved: '1.0.0' },
+    'koishi-plugin-unconfigured': { resolved: '1.0.0' },
+    local: { local: true }, workspace: { workspace: true }, invalid: { invalid: true },
+    bundle: {}, pending: {}, failed: {}, ignored: {},
+  })
+  Object.assign(state.store.packages, { 'koishi-plugin-example': {}, 'koishi-plugin-unconfigured': {} })
+  state.override.pending = '1.5.0'
+  const action = state.actions['dependencies.upgrade']
+  assert.equal(action.disabled(), false)
+  await action.action()
+  assert.deepEqual({ ...state.override }, { pending: '1.5.0', 'koishi-plugin-example': '2.0.0' })
+  assert.equal(action.disabled(), true)
+  assert.equal(state.calls.length, 1)
+  assert.deepEqual({ ...state.calls[0].override }, { ...state.override })
 })

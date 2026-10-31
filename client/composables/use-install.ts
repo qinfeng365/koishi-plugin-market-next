@@ -222,23 +222,26 @@ export function useInstall() {
       && !getRegistryStatus(name)?.loading
   }
 
-  watch(() => data.value?.[version.value]?.peers, async (peers) => {
+  watch(() => [active.value, version.value, data.value?.[version.value]?.peers] as const, async ([target, selected, peers], _, onCleanup) => {
+    let cancelled = false
+    onCleanup(() => cancelled = true)
     if (!peers) return
     const names = Object.keys(peers).filter(shouldFetchRegistry)
     let registry: typeof store.registry = {}
     if (names.length) {
       try {
-        registry = await send('market/registry', names)
+        registry = await send('market/registry', names) ?? {}
       } catch (error) {
         console.error(error)
       }
     }
+    if (cancelled || active.value !== target || version.value !== selected) return
     Object.assign(registry, store.registry)
     if (bulkMode.value) return
 
     // rebuild versions
     for (const name of Object.keys(versions)) {
-      if (name === active.value) continue
+      if (name === target) continue
       if (name in peers) continue
       delete versions[name]
     }
@@ -250,17 +253,20 @@ export function useInstall() {
     }
   })
 
-  watch(active, async (name) => {
+  watch(active, async (name, _, onCleanup) => {
+    let cancelled = false
+    onCleanup(() => cancelled = true)
     if (!name) return
 
-    version.value = getPendingOverrides()[active.value]
-      || store.dependencies?.[active.value]?.request
+    const selected = version.value = getPendingOverrides()[name]
+      || store.dependencies?.[name]?.request
       || Object.keys(store.registry?.[name] || {})[0]
 
     if (shouldFetchRegistry(name)) {
       try {
         const registry = await send('market/registry', [name])
-        const versions = registry?.[active.value] || store.registry?.[active.value]
+        if (cancelled || active.value !== name || version.value !== selected) return
+        const versions = registry?.[name] || store.registry?.[name]
         if (versions) version.value = Object.keys(versions)[0]
       } catch (error) {
         console.error(error)

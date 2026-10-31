@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { message, send, store, useContext, useConfig } from '@koishijs/client'
 import { ensureInstalledConfigs, getConfigWriter, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from '../components/utils'
 import { getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
@@ -11,12 +11,16 @@ export function useConfirm() {
   const overrides = computed(() => getPendingOverrides())
 
   const removeConfig = ref(getRemoveConfig(config.value))
+  watch(showConfirm, (visible) => {
+    if (visible) removeConfig.value = getRemoveConfig(config.value)
+  }, { flush: 'sync' })
 
   const hasRemove = computed(() => {
     return Object.values(overrides.value).some(version => !version)
   })
 
   function confirm() {
+    const cleanup = removeConfig.value
     showConfirm.value = false
     const override = { ...overrides.value }
     const selfUpdate = Object.prototype.hasOwnProperty.call(override, MARKET_NEXT_PACKAGE)
@@ -42,7 +46,7 @@ export function useConfirm() {
           removeEmptyGroup: true,
         })
       }
-      if (removeConfig.value) {
+      if (cleanup) {
         for (const name of removed) {
           // Bundle members' configs follow the per-member "clean config" choices made in the bundle
           // uninstall dialog, which win over this global setting.

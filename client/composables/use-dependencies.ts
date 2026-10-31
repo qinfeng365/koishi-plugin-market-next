@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { message, router, store, useConfig, useContext } from '@koishijs/client'
 import { useMarketNextI18n } from '../i18n'
-import { getCollapsedGroups, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { getCollapsedGroups, getDepsLayout, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { addManual, configuredPlugins, findBundleRecord, getConfigWriter, getRegistryStatus, getVersions, pendingBundleUninstalls, showConfirm } from '../components/utils'
 import { getPluginShortname, PLUGIN_PACKAGE_RE } from '../../src/shared/bundle'
 import { shouldIncludeDiscoveredLocalPlugin } from '../../src/shared/dependency-source'
@@ -145,8 +145,6 @@ export function useDependencies() {
     }))
   })
 
-  const updates = computed(() => items.value.filter(item => item.kind === 'updatable').map(item => item.name))
-
   const prereleaseBlocked = computed(() => !!getMarketNextPolicy(config.value).updateIgnorePrerelease)
 
   const summary = computed(() => {
@@ -254,18 +252,6 @@ export function useDependencies() {
       message.error(t('common.messages.saveFailed'))
     }
   }
-
-  ctx.action('dependencies.upgrade', {
-    disabled: () => !updates.value.length,
-    async action() {
-      for (const name of updates.value) {
-        const version = getLatestVersion(name, getMarketNextPolicy(config.value))
-        if (!version) continue
-        getPendingOverrides()[name] = version
-      }
-      void patchMarketNextData({ override: { ...getPendingOverrides() } })
-    },
-  })
 
   return {
     t, keyword, filter, searchInput, depsLayout, prereleaseBlocked, filterOptions, visibleGroups, toggleGroup, summary, clearChanges, setLayout, togglePrereleaseFilter, showConfirm, dependencyLoading,

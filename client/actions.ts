@@ -1,8 +1,9 @@
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Context, message, router, send, store } from '@koishijs/client'
-import { getMarketNextConfig, getPendingOverrides, patchMarketNextData } from './utils'
+import { getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, hasUpdate, patchMarketNextData } from './utils'
 import { translate } from './i18n'
-import { activeBundle, dependencyDialog, installProgressState, showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
+import { activeBundle, configuredPlugins, dependencyDialog, findBundleRecord, getConfigWriter, getRegistryStatus, installProgressState, showConfirm, showEnvironmentVersions, showInstallHistory, showManual } from './components/utils'
+import { getPluginShortname, PLUGIN_PACKAGE_RE } from '../src/shared/bundle'
 import {
   isRegistryRefreshing,
   REGISTRY_STATUS_SWEEP_INTERVAL,
@@ -139,6 +140,33 @@ export function setupActions(ctx: Context) {
     disabled: () => !Object.keys(getPendingOverrides()).length,
     action() {
       showConfirm.value = true
+    },
+  })
+
+  const updates = computed(() => {
+    const policy = getMarketNextPolicy()
+    const pending = new Set(Object.keys(getPendingOverrides()))
+    const writer = getConfigWriter(ctx)
+    return Object.keys(store.dependencies ?? {}).filter((name) => {
+      const dep = store.dependencies[name]
+      if (pending.has(name)
+        || dep.local || dep.workspace || dep.invalid || findBundleRecord(name)
+        || getRegistryStatus(name)?.error) return false
+      if (writer && store.packages?.[name] && PLUGIN_PACKAGE_RE.test(name)
+        && !configuredPlugins.value.has(getPluginShortname(name))) return false
+      return !!hasUpdate(name, policy)
+    })
+  })
+
+  ctx.action('dependencies.upgrade', {
+    disabled: () => !updates.value.length,
+    async action() {
+      const policy = getMarketNextPolicy()
+      for (const name of updates.value) {
+        const version = getLatestVersion(name, policy)
+        if (version) getPendingOverrides()[name] = version
+      }
+      void patchMarketNextData({ override: { ...getPendingOverrides() } })
     },
   })
 
