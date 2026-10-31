@@ -1,10 +1,10 @@
 # 每一项对应配置页上的一个分区，顺序与 src/node/config.ts 中的 Schema.intersect 一致。
 - $description: 显示
-  frontendMode:
-    $description: 插件市场页的显示风格。精致模式会加上背景装饰和动画。
+  uiVariant:
+    $description: 控制台界面版本，两种界面使用相同的数据与功能。切换后请刷新浏览器。
     $inner:
-      - 性能模式
-      - 精致模式
+      - 标准界面
+      - VE 界面
   depsLayout:
     $description: 依赖管理页默认的视图，页面右上角也可以随时切换。
     $inner:

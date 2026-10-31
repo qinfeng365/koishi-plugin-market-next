@@ -1,10 +1,10 @@
 # Each item is one section of the config page, in the same order as Schema.intersect in src/node/config.ts.
 - $description: Display
-  frontendMode:
-    $description: Display style of the plugin market page. Polished mode adds background decoration and animation.
+  uiVariant:
+    $description: Console interface. Both interfaces share the same data and features. Refresh the browser after switching.
     $inner:
-      - Performance
-      - Polished
+      - Standard
+      - VE
   depsLayout:
     $description: Default view of the Dependencies page. You can also switch it in the top-right corner of the page.
     $inner:
