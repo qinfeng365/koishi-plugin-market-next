@@ -28,11 +28,10 @@
       <el-button v-if="showBindLocal" size="small" type="primary" :loading="bindingLocalPackages.has(name)" @click="Object.assign(dependencyDialog, { type: 'local-binding', name })">{{ t('dependencyCard.actions.bindLocal') }}</el-button>
       <el-button v-if="showRestoreUpdate" size="small" @click="restoreUpdate">{{ t('dependencyCard.actions.restorePrompt') }}</el-button>
       <el-button v-if="showManageBundle" size="small" @click="openBundlePanel">{{ t('dependencyCard.actions.manage') }}</el-button>
-      <span v-if="menuItems.length" ref="menuAnchor" class="dep-more-anchor">
-        <el-button size="small" :title="t('dependencyCard.actions.more')" :aria-label="t('dependencyCard.actions.more')" aria-haspopup="menu" :aria-expanded="String(menuOpen)" @click="toggleMenu">
-          <k-icon name="activity:ellipsis"></k-icon>
-        </el-button>
-      </span>
+      <el-button v-if="menuItems.some(item => item.command === 'history')" size="small" @click="onCommand('history')">{{ t('dependencyCard.actions.history') }}</el-button>
+      <el-button v-if="menuItems.some(item => item.command === 'ignore')" size="small" @click="onCommand('ignore')">{{ t('dependencyCard.actions.ignore') }}</el-button>
+      <el-button v-if="menuItems.some(item => item.command === 'remove')" size="small" link type="danger" @click="onCommand('remove')">{{ t('dependencyCard.actions.uninstall') }}</el-button>
+      <el-button v-if="menuItems.some(item => item.command === 'version')" size="small" text @click="onCommand('version')">{{ editing ? t('dependencyCard.actions.hideVersions') : t('dependencyCard.actions.pickVersion') }}</el-button>
     </div>
   </div>
 
@@ -82,11 +81,10 @@
         <el-button v-if="showBindLocal" size="small" type="primary" :loading="bindingLocalPackages.has(name)" @click="Object.assign(dependencyDialog, { type: 'local-binding', name })">{{ t('dependencyCard.actions.bindLocal') }}</el-button>
         <el-button v-if="showRestoreUpdate" size="small" @click="restoreUpdate">{{ t('dependencyCard.actions.restorePrompt') }}</el-button>
         <el-button v-if="showManageBundle" size="small" @click="openBundlePanel">{{ t('dependencyCard.actions.manage') }}</el-button>
-        <span v-if="menuItems.length" ref="menuAnchor" class="dep-more-anchor">
-          <el-button size="small" :title="t('dependencyCard.actions.more')" :aria-label="t('dependencyCard.actions.more')" aria-haspopup="menu" :aria-expanded="String(menuOpen)" @click="toggleMenu">
-            <k-icon name="activity:ellipsis"></k-icon>
-          </el-button>
-        </span>
+        <el-button v-if="menuItems.some(item => item.command === 'history')" size="small" @click="onCommand('history')">{{ t('dependencyCard.actions.history') }}</el-button>
+        <el-button v-if="menuItems.some(item => item.command === 'ignore')" size="small" @click="onCommand('ignore')">{{ t('dependencyCard.actions.ignore') }}</el-button>
+        <el-button v-if="menuItems.some(item => item.command === 'remove')" size="small" link type="danger" @click="onCommand('remove')">{{ t('dependencyCard.actions.uninstall') }}</el-button>
+        <el-button v-if="menuItems.some(item => item.command === 'version')" size="small" text @click="onCommand('version')">{{ editing ? t('dependencyCard.actions.hideVersions') : t('dependencyCard.actions.pickVersion') }}</el-button>
       </div>
     </div>
   </article>
@@ -103,8 +101,6 @@ const {
   removeValue,
   configuring,
   editing,
-  menuAnchor,
-  menuOpen,
   dep,
   displayName,
   npmLink,
@@ -137,7 +133,7 @@ const {
   showBindLocal,
   menuItems,
   showActions,
-  toggleMenu,
+  onCommand,
   openBundlePanel,
   clearOverride,
   restoreUpdate,
@@ -847,3 +843,5 @@ const {
   }
 }
 </style>
+
+

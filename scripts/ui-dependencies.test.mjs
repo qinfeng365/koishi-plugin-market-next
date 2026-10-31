@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 import ts from 'typescript'
 
 const require = createRequire(import.meta.url)
 const vue = require('vue')
+const { compileScript, parse } = require('@vue/compiler-sfc')
 const code = ts.transpileModule(readFileSync(new URL('../client/composables/use-dependencies.ts', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText
@@ -118,5 +120,82 @@ for (const native of [false, true]) {
       view.handleBeforeClose(() => { closed = true })
       assert.equal(closed, true)
     } finally { scope.stop() }
+  })
+}
+
+for (const listMode of [false, true]) {
+  test(`VE ${listMode ? 'list' : 'card'} buttons dispatch the shared dependency commands`, async () => {
+    const file = new URL('../client/variants/ve/package.vue', import.meta.url)
+    const { descriptor } = parse(readFileSync(file, 'utf8'), { filename: fileURLToPath(file) })
+    const module = { exports: {} }
+    const calls = []
+    const errors = []
+    const editing = vue.ref(false)
+    vm.runInNewContext(ts.transpileModule(compileScript(descriptor, {
+      id: 've-package', inlineTemplate: true,
+      fs: { fileExists: ts.sys.fileExists, readFile: ts.sys.readFile },
+    }).content, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, {
+      module, exports: module.exports,
+      require(name) {
+        if (name === 'vue') return vue
+        if (name === '../../composables/use-dependency') return {
+          useDependency: () => ({
+            t: key => key,
+            editing,
+            menuItems: vue.ref(['history', 'ignore', 'remove', 'version'].map(command => ({ command }))),
+            onCommand(command) {
+              calls.push(command)
+              if (command === 'version') editing.value = !editing.value
+            },
+          }),
+        }
+        if (name === '../../market/icons' || name === '../../components/version-picker.vue') {
+          return { default: { render: () => null } }
+        }
+        throw new Error(name)
+      },
+    })
+    const renderer = vue.createRenderer({
+      createElement: tag => ({ tag, children: [], props: {} }),
+      createText: text => ({ text }),
+      createComment: text => ({ text }),
+      insert(node, parent, anchor) {
+        node.parent = parent
+        const index = anchor ? parent.children.indexOf(anchor) : -1
+        parent.children.splice(index < 0 ? parent.children.length : index, 0, node)
+      },
+      remove(node) { node.parent.children.splice(node.parent.children.indexOf(node), 1) },
+      setText(node, text) { node.text = text },
+      setElementText(node, text) { node.text = text },
+      parentNode: node => node.parent,
+      nextSibling: node => node.parent.children[node.parent.children.indexOf(node) + 1],
+      patchProp(node, key, previous, next) { node.props[key] = next },
+    })
+    const root = { children: [] }
+    const app = renderer.createApp(module.exports.default, { name: 'koishi-plugin-example', listMode })
+    app.component('ElButton', {
+      setup: (_, { attrs, slots }) => () => vue.h('button', attrs, slots.default?.()),
+    })
+    app.config.errorHandler = err => errors.push(err)
+    app.config.warnHandler = () => {}
+    try {
+      app.mount(root)
+      const buttons = []
+      function visit(node) {
+        if (node.tag === 'button') buttons.push(node)
+        for (const child of node.children ?? []) visit(child)
+      }
+      visit(root)
+      assert.equal(buttons.length, 4)
+      for (const button of buttons) button.props.onClick()
+      await vue.nextTick()
+      assert.deepEqual(errors, [])
+      assert.deepEqual(calls, ['history', 'ignore', 'remove', 'version'])
+      assert.equal(editing.value, true)
+    } finally {
+      app.unmount()
+    }
   })
 }
