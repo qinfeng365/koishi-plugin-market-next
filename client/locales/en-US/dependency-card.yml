@@ -46,6 +46,7 @@ source:
   url: Remote archive
   local: Local
 actions:
+  current: Current
   history: Version history
   update: Update
   ignore: Ignore this update

@@ -14,6 +14,9 @@ import { createPageBoundary } from './components/page-boundary'
 export interface PageViews {
   Dependencies: Component
   Market: Component
+  Install?: Component
+  Confirm?: Component
+  InstallProgress?: Component
 }
 
 export function setupPages(ctx: Context, views: PageViews) {
@@ -32,7 +35,7 @@ export function setupPages(ctx: Context, views: PageViews) {
 
   ctx.slot({
     type: 'global',
-    component: Install,
+    component: views.Install ?? Install,
   })
 
   ctx.slot({
@@ -42,12 +45,12 @@ export function setupPages(ctx: Context, views: PageViews) {
 
   ctx.slot({
     type: 'global',
-    component: Confirm,
+    component: views.Confirm ?? Confirm,
   })
 
   ctx.slot({
     type: 'global',
-    component: InstallProgress,
+    component: views.InstallProgress ?? InstallProgress,
   })
 
   ctx.slot({

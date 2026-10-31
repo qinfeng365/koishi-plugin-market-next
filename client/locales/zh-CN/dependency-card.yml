@@ -46,6 +46,7 @@ source:
   url: 网络压缩包
   local: 本地
 actions:
+  current: 当前
   history: 版本历史
   update: 更新
   ignore: 忽略此更新

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 
 const require = createRequire(import.meta.url)
@@ -51,3 +52,33 @@ test('standard dependency rows compact before desktop columns exceed the availab
   assert.ok(css.nodes.some(node => node.type === 'atrule' && node.name === 'media'
     && node.params === '(max-width: 900px)' && node.nodes.some(rule => rule.selector === '.is-row')))
 })
+
+// These fingerprints come from 89830e07, before PR #28 changed the dialogs.
+const original = {
+  confirm: ['e1ed73f7dc0e046b87f07f7a86f32b00e23db5e56f4a95e517dbc67429062dd0', 'b9cb64549ad1d88c3fe73ac29f2834e2c2d552c6a8cf80930e92cde44e76ea98'],
+  install: ['1fa08eda5c6f256c61225588a5b6755eab7e83330f23b69e1f5c83a05986573a', 'b486867489348f66c8a6a089babaf066b283654b25dcf4c02a0b016d59c00e4f'],
+  'install-progress': ['895d9d145ade47c600fb49603bb2bb26525de8a5a58fdb48dd77e2fead90a630', 'cc4505714e18831ad7b819efb01d5e765b81e1dc90d1da290b6481345626fcab'],
+}
+
+for (const [name, hashes] of Object.entries(original)) {
+  test(`VE ${name} keeps the original Next template and styles, with only CSS isolation`, () => {
+    const { descriptor } = parse(readFileSync(new URL(`../client/variants/ve/${name}.vue`, import.meta.url), 'utf8'))
+    const hash = source => createHash('sha256').update(source
+      .replaceAll('ve-confirm-panel', 'confirm-panel')
+      .replaceAll('ve-install-panel', 'install-panel')
+      .replaceAll('ve-install-progress-dialog', 'install-progress-dialog')
+      .replaceAll('ve-market-remove-dialog', 'market-remove-dialog')
+      .replaceAll('ve-term-pulse', 'term-pulse')
+      .replaceAll('ve-term-spin', 'term-spin')
+      .replaceAll('.install-panel .theme-color {', '.theme-color {')
+      .replaceAll('.install-panel .dot-hint::before {', '.dot-hint::before {')
+      .replace(/\r\n/g, '\n').trim()).digest('hex')
+    assert.equal(hash(descriptor.template.content), hashes[0])
+    assert.equal(hash(descriptor.styles[0].content), hashes[1])
+    assert.ok(descriptor.scriptSetup.content.includes(`../../composables/use-${name}`))
+    const standard = readFileSync(new URL(`../client/components/${name}.vue`, import.meta.url), 'utf8')
+    assert.ok(standard.includes(`../composables/use-${name}`))
+    assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename: name + '.vue', id: name }).errors, [])
+    sass.compileString(descriptor.styles[0].content)
+  })
+}

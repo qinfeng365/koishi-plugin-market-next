@@ -83,3 +83,37 @@ for (const ui of ['standard', 've']) {
     }
   })
 }
+
+test('VE entry replaces only the selected global dialogs and standard keeps its defaults', () => {
+  const source = readFileSync(resolve(root, 'client/pages.ts'), 'utf8')
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+  for (const ve of [false, true]) {
+    const slots = []
+    const components = {}
+    const ctx = { slot(slot) { slots.push(slot) }, page() {} }
+    const module = { exports: {} }
+    const views = { Market: {}, Dependencies: {} }
+    if (ve) Object.assign(views, { Install: {}, Confirm: {}, InstallProgress: {} })
+    vm.runInNewContext(code, {
+      module, exports: module.exports, console,
+      require(name) {
+        if (name === 'vue') return { defineComponent: fn => fn }
+        if (name === '@koishijs/client') return { global: { static: true } }
+        if (name === './i18n') return {}
+        if (name === './extensions') return { default() {} }
+        if (name === './components/page-boundary') return { createPageBoundary: (_, view) => view }
+        if (name.endsWith('.vue')) return { default: components[name] ||= {} }
+        throw new Error(name)
+      },
+    })
+    module.exports.setupPages(ctx, views)
+    const global = slots.filter(slot => slot.type === 'global')
+    assert.equal(global.length, 6)
+    for (const [index, key, path] of [
+      [0, 'Install', './components/install.vue'],
+      [2, 'Confirm', './components/confirm.vue'],
+      [3, 'InstallProgress', './components/install-progress.vue'],
+    ]) assert.equal(global[index].component, ve ? views[key] : components[path])
+    assert.equal(global[1].component, components['./components/bundle-install.vue'])
+  }
+})
