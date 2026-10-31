@@ -1,5 +1,5 @@
 <template>
-  <market-dialog :model-value="!!active" @update:model-value="closePanel" :class="['install-panel', modeClass]" width="720px" destroy-on-close>
+  <market-dialog :model-value="!!active" @update:model-value="closePanel" class="install-panel" width="720px" destroy-on-close>
     <template v-if="active" #header="{ titleId, titleClass }">
       <span :id="titleId" :class="titleClass">
         {{ active + (localSelection ? ` (${t('dependencyCard.current.local')})` : '') }}
@@ -11,7 +11,6 @@
         :current="current"
         :latest="Object.keys(data).find(item => !item.includes('-'))"
         :disabled="localSelection"
-        :mode-class="modeClass"
       ></version-picker>
     </template>
 
@@ -56,7 +55,6 @@
                 :latest="Object.keys(store.registry[name]).find(item => !item.includes('-'))"
                 :placeholder="t('operations.install.select')"
                 removable
-                :mode-class="modeClass"
                 @update:model-value="setVersion(name, $event)"
               ></version-picker>
               <span v-else class="peer-version" :class="{ workspace: !!getWorkspaceVersion(name), missing: !getPeerResolvedVersion(peer, name) }">
@@ -131,7 +129,7 @@
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, message, send, store, useContext, useConfig } from '@koishijs/client'
 import { analyzeVersions, ensureInstalledConfig, findBundleRecord, getConfigWriter, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
-import { active, getBulkMode, getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { active, getBulkMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import { isLocalDependency } from '../../src/shared/dependency-source'
@@ -144,8 +142,6 @@ import MarketDialog from './market-dialog.vue'
 const ctx = useContext()
 const config = useConfig()
 const { t } = useMarketNextI18n()
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const saveChoice = ref(false)
 const showRemoveDialog = ref(false)
