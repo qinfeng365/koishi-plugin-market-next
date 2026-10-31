@@ -44,3 +44,10 @@ for (const ui of ['standard', 've']) {
     })
   })
 }
+
+test('standard dependency rows compact before desktop columns exceed the available width', () => {
+  const { descriptor } = parse(readFileSync(new URL('../client/components/package.vue', import.meta.url), 'utf8'))
+  const css = postcss.parse(sass.compileString(descriptor.styles[0].content).css)
+  assert.ok(css.nodes.some(node => node.type === 'atrule' && node.name === 'media'
+    && node.params === '(max-width: 900px)' && node.nodes.some(rule => rule.selector === '.is-row')))
+})

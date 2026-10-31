@@ -397,7 +397,7 @@ a.dep-name:hover {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .is-row {
     @include card-layout;
 
