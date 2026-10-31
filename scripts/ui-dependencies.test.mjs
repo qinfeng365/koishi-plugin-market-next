@@ -85,3 +85,38 @@ test('failed pending metadata is caught and can be retried after another edit', 
     state.scope.stop()
   }
 })
+
+for (const native of [false, true]) {
+  test(`installation log auto-scroll uses the ${native ? 'original native viewport' : 'standard scrollbar'}`, async () => {
+    const module = { exports: {} }
+    const state = vue.reactive({ logs: [], status: 'running' })
+    vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../client/composables/use-install-progress.ts', import.meta.url), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS },
+    }).outputText, {
+      module, exports: module.exports,
+      require(name) {
+        if (name === 'vue') return vue
+        if (name === '../i18n') return { useMarketNextI18n: () => ({ t: key => key }) }
+        if (name === '../components/utils') return { installProgressState: state }
+        throw new Error(name)
+      },
+    })
+    const scope = vue.effectScope()
+    const view = scope.run(() => module.exports.useInstallProgress(native))
+    try {
+      let scrolled
+      view.viewport.value = native ? { scrollTop: 0, scrollHeight: 450 }
+        : { wrapRef: { scrollHeight: 450 }, setScrollTop: value => { scrolled = value } }
+      state.logs.push({ line: 'install', type: 'stdout' })
+      await vue.nextTick()
+      await vue.nextTick()
+      assert.equal(native ? view.viewport.value.scrollTop : scrolled, 450)
+      let closed = false
+      view.handleBeforeClose(() => { closed = true })
+      assert.equal(closed, false)
+      state.status = 'success'
+      view.handleBeforeClose(() => { closed = true })
+      assert.equal(closed, true)
+    } finally { scope.stop() }
+  })
+}
