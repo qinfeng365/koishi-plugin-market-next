@@ -1,6 +1,10 @@
 // Dialogs keep Koishi's own el-dialog look. This only adds a scrollable body
 // for long content and a footer that wraps on narrow screens.
 .market-dialog {
+  // Element Plus's dark dialog surface (#141414) is darker than any Koishi surface, which
+  // makes the panel read as a black slab. Use the console card surface instead.
+  --el-dialog-bg-color: var(--k-card-bg);
+
   max-width: calc(100vw - 32px);
 
   // el-dialog pins the 48px close button to the dialog's top edge, which puts the X

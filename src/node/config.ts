@@ -9,8 +9,9 @@ export interface Config {
   registry?: Installer.Config
   search?: MarketProvider.Config
   chatlunaTool?: boolean
-  frontendMode?: 'performance' | 'polished'
+  uiVariant?: 'standard' | 've'
   depsLayout?: 'grid' | 'list'
+  coupleRefresh?: boolean
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]
@@ -90,14 +91,15 @@ const MarketSilentRules = Schema.array(Schema.object({
 // Each object below is one section of the config page; the section titles live in the locale files.
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
-    frontendMode: Schema.union([
-      Schema.const('performance'),
-      Schema.const('polished'),
-    ]).role('radio').default('performance'),
+    uiVariant: Schema.union([
+      Schema.const('standard'),
+      Schema.const('ve'),
+    ]).role('radio').default('standard'),
     depsLayout: Schema.union([
       Schema.const('grid'),
       Schema.const('list'),
     ]).role('radio').default('grid'),
+    coupleRefresh: Schema.boolean().default(false),
   }),
   Schema.intersect([
     Schema.object({
@@ -153,8 +155,9 @@ export const Config: Schema<Config> = Schema.intersect([
 
 const configPatchKeys: Array<keyof Config> = [
   'logLevel',
-  'frontendMode',
+  'uiVariant',
   'depsLayout',
+  'coupleRefresh',
   'marketSilentStatusRules',
   'marketSilentDateRules',
   'marketSilentRecentRules',
@@ -173,6 +176,7 @@ const configPatchKeys: Array<keyof Config> = [
 ]
 
 const configReloadKeys = new Set<keyof Config>([
+  'uiVariant',
   'logLevel',
   'idleProbe',
   'idleProbeDelayMinutes',
@@ -233,10 +237,15 @@ export function ensureMarketNextConfigDefaults(ctx: Context, currentConfig: Conf
   const target = findMarketNextConfigNode(ctx.loader.config?.plugins, currentConfig)
   if (!target) return false
   let changed = false
-  if (target.value.frontendMode !== 'performance' && target.value.frontendMode !== 'polished') {
-    target.value.frontendMode = 'performance'
+  if (Object.prototype.hasOwnProperty.call(target.value, 'frontendMode')) {
+    delete target.value.frontendMode
     changed = true
   }
+  if (target.value.uiVariant !== 'standard' && target.value.uiVariant !== 've') {
+    target.value.uiVariant = 'standard'
+    changed = true
+  }
+  currentConfig.uiVariant = target.value.uiVariant
   if (target.value.depsLayout !== 'grid' && target.value.depsLayout !== 'list') {
     target.value.depsLayout = 'grid'
     changed = true
@@ -291,6 +300,8 @@ export async function updateMarketNextConfig(ctx: Context, currentConfig: Config
   let accepted = false
   for (const key of configPatchKeys) {
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
+    if (key === 'uiVariant' && patch[key] !== 'standard' && patch[key] !== 've') continue
+    if (key === 'coupleRefresh' && typeof patch[key] !== 'boolean') continue
     accepted = true
     const value = key === 'marketSilentRules'
       ? normalizeMarketSilentRules(patch[key])

@@ -20,12 +20,12 @@ export const active = ref('')
 
 export const day = 24 * 60 * 60 * 1000
 
-export type FrontendMode = 'performance' | 'polished'
 export type LayoutMode = 'grid' | 'list'
 
 export interface MarketNextConfigPatch extends UpdatePolicy {
-  frontendMode?: FrontendMode
+  uiVariant?: 'standard' | 've'
   depsLayout?: LayoutMode
+  coupleRefresh?: boolean
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]
@@ -119,16 +119,6 @@ export function getCollapsedGroups() {
   const data = getMarketDataStore()
   data.collapsedGroups ||= {}
   return data.collapsedGroups
-}
-
-export function normalizeFrontendMode(value: unknown): FrontendMode | undefined {
-  return value === 'polished' || value === 'performance' ? value : undefined
-}
-
-export function getFrontendMode(config?: { market?: { frontendMode?: FrontendMode } }): FrontendMode {
-  const pluginConfig = getMarketNextConfig()
-  if (pluginConfig) return normalizeFrontendMode(pluginConfig.frontendMode) ?? 'performance'
-  return 'performance'
 }
 
 export function getDepsLayout(config?: { market?: { depsLayout?: LayoutMode } }): LayoutMode {

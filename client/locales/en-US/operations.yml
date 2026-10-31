@@ -1,4 +1,8 @@
 confirm:
+  dependency: Dependency
+  oldVersion: Current version
+  newVersion: Target version
+  discard: Discard changes
   title: Apply Dependency Changes
   intro: These {count} change(s) will be written to package.json and installed by the package manager. Keep this page open while it runs.
   notInstalled: Not installed

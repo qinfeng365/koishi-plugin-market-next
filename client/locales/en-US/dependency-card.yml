@@ -46,6 +46,7 @@ source:
   url: Remote archive
   local: Local
 actions:
+  current: Current
   history: Version history
   update: Update
   ignore: Ignore this update
@@ -62,6 +63,7 @@ actions:
   uninstallBundle: Uninstall bundle
   bindLocal: Bind local source
 picker:
+  target: Target
   placeholder: Pick a version
   current: Current
   latest: Latest

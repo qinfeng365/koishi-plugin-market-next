@@ -1,4 +1,8 @@
 confirm:
+  dependency: 依赖名称
+  oldVersion: 当前版本
+  newVersion: 目标版本
+  discard: 丢弃更改
   title: 应用依赖更改
   intro: 下面 {count} 项改动会写入 package.json，然后由包管理器安装。安装期间请不要关闭页面。
   notInstalled: 未安装

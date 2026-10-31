@@ -173,9 +173,10 @@ export function apply(ctx: Context, config: Config = {}) {
     ctx.plugin(MarketProvider, config.search ?? {})
     setupIdleProbe(ctx, config)
 
+    const ui = config.uiVariant === 've' ? 've' : 'standard'
     ctx.console.addEntry({
-      dev: resolve(__dirname, '../../client/index.ts'),
-      prod: resolve(__dirname, '../../dist'),
+      dev: resolve(__dirname, ui === 've' ? '../../client/variants/ve/index.ts' : '../../client/index.ts'),
+      prod: resolve(__dirname, '../../dist', ui),
     })
 
     const uiPath = String((ctx.console as any).config?.uiPath ?? '').replace(/\/+$/, '')

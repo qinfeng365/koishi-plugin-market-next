@@ -20,6 +20,7 @@ messages:
   refreshMarketSuccess: The plugin market was refreshed successfully
   refreshMarketFailed: Market refresh failed. The last usable data is still shown
   refreshDependenciesStarted: Dependency version refresh started
+  refreshBothStarted: Market and dependency version refreshes started
   refreshFailed: Refresh failed. Check the network or logs
   saveFailed: Failed to save. Check the logs
   timeUnknown: Unknown time

@@ -1,22 +1,27 @@
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, type Component } from 'vue'
 import { Context, global, router } from '@koishijs/client'
 import { translate } from './i18n'
 import extensions from './extensions'
-import Dependencies from './components/dependencies.vue'
 import Install from './components/install.vue'
 import BundleInstall from './components/bundle-install.vue'
 import Confirm from './components/confirm.vue'
 import InstallProgress from './components/install-progress.vue'
 import InstallHistory from './components/install-history.vue'
 import EnvironmentVersions from './components/environment-versions.vue'
-import Market from './components/market.vue'
 import Progress from './components/progress.vue'
 import { createPageBoundary } from './components/page-boundary'
 
-const GuardedMarket = createPageBoundary('Market', Market)
-const GuardedDependencies = createPageBoundary('Dependencies', Dependencies)
+export interface PageViews {
+  Dependencies: Component
+  Market: Component
+  Install?: Component
+  Confirm?: Component
+  InstallProgress?: Component
+}
 
-export function setupPages(ctx: Context) {
+export function setupPages(ctx: Context, views: PageViews) {
+  const GuardedMarket = createPageBoundary('Market', views.Market)
+  const GuardedDependencies = createPageBoundary('Dependencies', views.Dependencies)
   ctx.slot({
     type: 'welcome-choice',
     component: defineComponent(() => () => h('div', {
@@ -30,7 +35,7 @@ export function setupPages(ctx: Context) {
 
   ctx.slot({
     type: 'global',
-    component: Install,
+    component: views.Install ?? Install,
   })
 
   ctx.slot({
@@ -40,12 +45,12 @@ export function setupPages(ctx: Context) {
 
   ctx.slot({
     type: 'global',
-    component: Confirm,
+    component: views.Confirm ?? Confirm,
   })
 
   ctx.slot({
     type: 'global',
-    component: InstallProgress,
+    component: views.InstallProgress ?? InstallProgress,
   })
 
   ctx.slot({

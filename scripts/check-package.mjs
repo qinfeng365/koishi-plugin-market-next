@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process'
-import { createHash } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
+import { verifyUiVariants } from './check-ui-variants.mjs'
 
 const require = createRequire(import.meta.url)
 const pkg = require('../package.json')
@@ -16,9 +16,7 @@ if (publishedHostFrontendPeers.length) {
 
 const npm = 'npm'
 const requiredFiles = [
-  'dist/index.js',
-  'dist/index.css',
-  'dist/style.css',
+  ...verifyUiVariants(),
   'lib/shared/bundle.d.ts',
   'lib/shared/bundle.js',
   'lib/shared/bundle.mjs',
@@ -28,11 +26,6 @@ for (const file of requiredFiles) {
   if (!existsSync(file)) {
     throw new Error(`Missing build artifact: ${file}`)
   }
-}
-
-const hash = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
-if (hash('dist/index.css') !== hash('dist/style.css')) {
-  throw new Error('dist/index.css and dist/style.css must be identical')
 }
 
 const {

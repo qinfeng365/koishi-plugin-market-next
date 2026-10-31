@@ -86,18 +86,23 @@ comparePair(
   resolve(backendRoot, 'schema.zh-CN.yml'),
   resolve(backendRoot, 'schema.en-US.yml'),
 )
+comparePair(
+  'browser/schema',
+  resolve(root, 'src', 'browser', 'locales', 'schema.zh-CN.yml'),
+  resolve(root, 'src', 'browser', 'locales', 'schema.en-US.yml'),
+)
 
 const frontendKeys = new Set(flatten(domains))
-const sourceFiles = [
-  ...readdirSync(resolve(root, 'client', 'components')).filter(name => /\.(?:ts|vue)$/.test(name)).map(name => resolve(root, 'client', 'components', name)),
-  ...readdirSync(resolve(root, 'client', 'extensions')).filter(name => /\.(?:ts|vue)$/.test(name)).map(name => resolve(root, 'client', 'extensions', name)),
-  ...readdirSync(resolve(root, 'client', 'market', 'components')).filter(name => /\.(?:ts|vue)$/.test(name)).map(name => resolve(root, 'client', 'market', 'components', name)),
-  resolve(root, 'client', 'index.ts'),
-  resolve(root, 'client', 'utils.ts'),
-]
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(item => {
+    const path = resolve(dir, item.name)
+    if (item.isDirectory()) return sourceFiles(path)
+    return /\.(?:ts|vue)$/.test(item.name) ? [path] : []
+  })
+}
 
 const keyPattern = /\b(?:t|translate)\(\s*['"]([^'"]+)['"]/g
-for (const filename of sourceFiles) {
+for (const filename of sourceFiles(resolve(root, 'client'))) {
   const source = readFileSync(filename, 'utf8')
   const marketScoped = source.includes('useMarketI18n')
   for (const match of source.matchAll(keyPattern)) {

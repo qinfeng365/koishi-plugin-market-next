@@ -7,7 +7,7 @@
     :show-arrow="false"
     :offset="4"
     :disabled="disabled"
-    :popper-class="`market-version-picker ${modeClass}`"
+    popper-class="market-version-picker"
     @after-enter="list?.querySelector('.selected')?.scrollIntoView({ block: 'nearest' })"
   >
     <template #reference>
@@ -70,7 +70,6 @@ const props = withDefaults(defineProps<{
   pending?: boolean
   removeValue?: string
   disabled?: boolean
-  modeClass?: string
 }>(), { pending: undefined, removeValue: '' })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
