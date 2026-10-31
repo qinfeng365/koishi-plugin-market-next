@@ -1,10 +1,17 @@
 toolbar:
+  filter: Filter dependencies
+  clearFilters: Clear filters
   blockPreview: Skip pre-release versions
   layout: Layout
   gridView: Card view
   listView: List view
   loading: Fetching version info…
   searchPlaceholder: Search dependencies
+columns:
+  name: Name
+  current: Current version
+  latest: Latest version
+  actions: Actions
 empty: No matching dependencies
 emptyHint: Try another keyword, or set the filter back to “All”.
 apply:

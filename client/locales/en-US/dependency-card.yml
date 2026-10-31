@@ -62,6 +62,7 @@ actions:
   uninstallBundle: Uninstall bundle
   bindLocal: Bind local source
 picker:
+  target: Target
   placeholder: Pick a version
   current: Current
   latest: Latest

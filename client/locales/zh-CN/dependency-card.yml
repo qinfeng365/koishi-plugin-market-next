@@ -62,6 +62,7 @@ actions:
   uninstallBundle: 卸载插件包
   bindLocal: 绑定本地来源
 picker:
+  target: 目标
   placeholder: 选择版本
   current: 当前
   latest: 最新
