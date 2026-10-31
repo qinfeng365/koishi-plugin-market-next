@@ -457,8 +457,6 @@ ctx.action('dependencies.upgrade', {
   --deps-radius: 10px;
   --deps-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   --deps-accent: var(--fg1);
-  --deps-accent-text: color-mix(in srgb, var(--deps-accent) 52%, var(--fg1));
-  --deps-accent-soft: color-mix(in srgb, var(--deps-accent) 11%, transparent);
 }
 
 .page-deps {
@@ -669,6 +667,9 @@ html.dark .deps-apply-bar,
 
 .deps-group {
   --deps-accent: var(--fg1);
+  // Resolve derived colors on the group so its status accent takes effect.
+  --deps-accent-text: color-mix(in srgb, var(--deps-accent) 52%, var(--fg1));
+  --deps-accent-soft: color-mix(in srgb, var(--deps-accent) 11%, transparent);
 
   &.pending,
   &.manual {
