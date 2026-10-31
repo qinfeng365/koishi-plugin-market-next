@@ -10,7 +10,7 @@
 
 - 单包 Koishi 插件：`koishi-plugin-market-next`，TypeScript，用来替代 `@koishijs/plugin-market`（提供同名的 `market` / `installer` 能力）。
 - 默认分支是 `master`，diff 以 `master` 或 `origin/master` 为准。
-- 后端源码在 `src/`，构建到 `lib/`；Console 前端在 `client/`，构建到 `dist/`。
+- 后端源码在 `src/`，构建到 `lib/`；Console 前端在 `client/`，两套界面分别构建到 `dist/standard/`、`dist/ve/`。
 - `lib/`、`dist/` 虽然在版本库里，但发布时由 CI 重新构建。功能提交不要夹带构建产物，也不要手动改它们。
 - 包含源自 [Koishi WebUI](https://github.com/koishijs/webui) 的代码，许可证为 AGPL-3.0，来源声明见 `NOTICE`。
 
@@ -18,7 +18,7 @@
 
 - Node.js >= 18（CI 使用 24），使用 npm（仓库带 `package-lock.json`）。
 - 安装依赖：`npm ci`
-- 构建：`npm run build`（`tsc` 生成声明 → esbuild 打包 `src/` → `@koishijs/client` 用 Vite 打包 `client/`）
+- 构建：`npm run build`（`tsc` 生成声明 → esbuild 打包 `src/` → 使用 Console 的 Vite 工具链构建两个前端入口）
 - 测试：`npm run test:dependency-source`（Node 内置测试运行器 + tsx，用例在 `scripts/*.test.mjs`）
 - 包内容与 i18n 检查：`npm run check:package`（会顺带执行 `check:i18n`）
 - 提交前至少跑一遍 `npm run build`、`npm run check:package`；动了 `src/` 还要跑测试。
@@ -45,7 +45,9 @@ src/
     locales/            后端与配置页文案
   shared/               前后端共用的纯函数（插件包、依赖来源、更新策略）
 client/
-  index.ts / pages.ts / actions.ts   注册页面、全局弹窗、顶栏按钮
+  index.ts / setup.ts / pages.ts / actions.ts   注册页面、全局弹窗、顶栏按钮
+  variants/ve/          VE 展示组件和入口，不复制后端或业务状态
+  composables/          两套界面共用的依赖管理业务逻辑
   utils.ts              配置与运行数据的读写、更新策略
   i18n.ts / i18n-runtime.ts           前端多语言
   components/           依赖管理页与各个弹窗
