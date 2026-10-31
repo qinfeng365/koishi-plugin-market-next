@@ -82,3 +82,14 @@ for (const [name, hashes] of Object.entries(original)) {
     sass.compileString(descriptor.styles[0].content)
   })
 }
+
+test('VE dialog polish stays local and keeps opaque Koishi theme surfaces', () => {
+  const source = readFileSync(new URL('../client/variants/ve/dialogs.scss', import.meta.url), 'utf8')
+  const css = postcss.parse(sass.compileString(source).css)
+  css.walkRules(rule => {
+    for (const selector of rule.selectors) assert.match(selector, /\.ve-(confirm-panel|install-panel|market-remove-dialog|install-progress-dialog)/)
+  })
+  assert.ok(source.includes('background: var(--k-card-bg)'))
+  assert.ok(source.includes('font-variant-numeric: tabular-nums'))
+  assert.ok(!/backdrop-filter|box-shadow|gradient|#[0-9a-f]{3,8}\b/i.test(source))
+})

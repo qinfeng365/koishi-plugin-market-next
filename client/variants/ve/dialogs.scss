@@ -1,0 +1,154 @@
+// Keep the recovered templates intact; these small adjustments only affect VE.
+.el-overlay-dialog :is(.ve-confirm-panel, .ve-install-panel, .ve-market-remove-dialog, .ve-install-progress-dialog) {
+  --confirm-border: var(--k-color-border);
+  --confirm-border-soft: var(--k-color-divider);
+  --confirm-row-hover: var(--k-hover-bg);
+  --progress-border: var(--k-color-border);
+  --progress-border-soft: var(--k-color-divider);
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: 18px 20px;
+  border: 1px solid var(--k-color-border);
+  border-radius: 8px;
+  color: var(--fg1);
+  background: var(--k-card-bg);
+  font-size: 14px;
+  letter-spacing: 0;
+
+  .el-dialog__header {
+    flex: 0 0 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0 32px 12px 0;
+    border-bottom: 1px solid var(--k-color-divider);
+    background: transparent;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 24px;
+  }
+
+  .el-dialog__title {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  .el-dialog__headerbtn {
+    top: 14px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .el-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 14px 0;
+    overflow: auto;
+    background: transparent;
+    line-height: 1.6;
+  }
+
+  .el-dialog__footer {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--k-color-divider);
+    background: transparent;
+
+    .right {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .left { text-align: left; }
+    .el-button + .el-button { margin-left: 0; }
+  }
+
+  .el-button {
+    min-height: 32px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+
+  .el-checkbox__label { color: var(--fg2); }
+}
+
+.ve-confirm-panel .confirm-change-list {
+  margin: 0;
+
+  table {
+    min-width: 32rem;
+    font-variant-numeric: tabular-nums;
+
+    th, td {
+      border-right: 0;
+      text-align: left;
+    }
+
+    th {
+      color: var(--fg2);
+      font-weight: 500;
+    }
+  }
+}
+
+.ve-confirm-panel .el-button--danger {
+  --el-button-text-color: var(--danger);
+  --el-button-bg-color: transparent;
+  --el-button-border-color: color-mix(in srgb, var(--danger) 30%, var(--k-color-border));
+  --el-button-hover-text-color: var(--danger);
+  --el-button-hover-bg-color: color-mix(in srgb, var(--danger) 8%, var(--k-card-bg));
+  --el-button-hover-border-color: var(--danger);
+}
+
+.ve-install-panel table {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+
+  th, td { border-right: 0; }
+  th { font-weight: 500; }
+}
+
+.ve-install-panel .el-dialog__header {
+  flex-wrap: wrap;
+  gap: 8px;
+
+  .el-dialog__title {
+    flex: 1 1 auto;
+    max-width: 100%;
+  }
+}
+
+.ve-install-progress-dialog {
+  .status-banner {
+    --status-bg: color-mix(in srgb, var(--status-color) 10%, var(--progress-surface));
+    --status-border: color-mix(in srgb, var(--status-color) 24%, var(--progress-border));
+  }
+
+  .terminal-container { height: min(360px, 42vh); }
+  .term-title { letter-spacing: 0; }
+  .dialog-footer { width: 100%; }
+}
+
+@media (max-width: 600px) {
+  .el-overlay-dialog :is(.ve-confirm-panel, .ve-install-panel, .ve-market-remove-dialog, .ve-install-progress-dialog) {
+    padding: 16px;
+
+    .el-dialog__footer {
+      align-items: stretch;
+      .left { width: 100%; }
+      .right { width: 100%; }
+    }
+
+    .el-button { min-height: 36px; }
+  }
+}

@@ -6,5 +6,6 @@ import Install from './install.vue'
 import Confirm from './confirm.vue'
 import InstallProgress from './install-progress.vue'
 import './version-select.scss'
+import './dialogs.scss'
 
 export default (ctx: Context) => setupClient(ctx, { Dependencies, Market, Install, Confirm, InstallProgress })

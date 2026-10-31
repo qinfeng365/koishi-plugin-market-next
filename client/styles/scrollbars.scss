@@ -1,4 +1,4 @@
-:where(.page-market, .page-deps, .market-dialog) {
+:where(.page-market, .page-deps, .market-dialog, .ve-confirm-panel, .ve-install-panel, .ve-market-remove-dialog, .ve-install-progress-dialog) {
   // Scroll areas use el-scrollbar. What is left native (textareas) mimics it with a 6px thumb
   // 2px from the edge, always visible because Chrome doesn't repaint scrollbars on :hover.
   // Chrome ignores ::-webkit-scrollbar once scrollbar-color is set, so the standard properties
