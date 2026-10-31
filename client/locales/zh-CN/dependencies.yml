@@ -4,6 +4,7 @@ toolbar:
   listView: 列表视图
   searchPlaceholder: 搜索依赖名称
   loading: 获取中
+  clearFilters: 清除筛选条件
 empty: 没有匹配的依赖。
 apply:
   count: 待应用 {count} 项

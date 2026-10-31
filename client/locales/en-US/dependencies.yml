@@ -4,6 +4,7 @@ toolbar:
   listView: List view
   searchPlaceholder: Search dependencies
   loading: Loading
+  clearFilters: Clear filters
 empty: No matching dependencies.
 apply:
   count: '{count} pending change(s)'

@@ -42,7 +42,7 @@
       </el-select>
       <el-button v-if="pending" size="small" @click="clearOverride">{{ t('dependencyCard.actions.undo') }}</el-button>
       <el-button v-if="showRemoveDependency" class="dep-remove-button" size="small" @click="removeDependency">{{ removeButtonText }}</el-button>
-      <el-button v-if="canExpandCard && !pending" size="small" @click.stop="toggleEdit">
+      <el-button v-if="canExpandCard && !pending" size="small" :aria-expanded="String(editing)" @click.stop="toggleEdit">
         {{ editToggleText }}
       </el-button>
     </div>
@@ -51,14 +51,14 @@
   <!-- Card mode (default) -->
   <article
     v-else
-    :class="['dep-package-card', modeClass, statusClass, { expandable: canExpandCard, expanded: editing }]"
+    :class="['dep-package-card', modeClass, statusClass, { expandable: cardInteractive, expanded: editing }]"
     :style="cardStyle"
     @click="toggleCardActions"
   >
-    <div class="dep-status-mark" aria-hidden="true">
-      <market-icon :name="markIcon"></market-icon>
-    </div>
     <div class="dep-card-header">
+      <div class="dep-status-mark" aria-hidden="true">
+        <market-icon :name="markIcon"></market-icon>
+      </div>
       <div class="dep-title">
         <div class="dep-title-line">
           <h3 :title="name">{{ displayName }}</h3>
@@ -86,7 +86,7 @@
         >
           {{ t('dependencyCard.actions.ignore') }}
         </el-button>
-        <el-button v-if="showEditToggle" size="small" @click.stop="toggleEdit">
+        <el-button v-if="showEditToggle" size="small" :aria-expanded="String(editing)" @click.stop="toggleEdit">
           {{ editToggleText }}
         </el-button>
       </div>
@@ -648,8 +648,12 @@ const floatingActions = computed(() => {
   return editing.value && statusClass.value === 'installed'
 })
 
+const cardInteractive = computed(() => {
+  return canExpandCard.value && !updatable.value
+})
+
 function toggleCardActions() {
-  if (!canExpandCard.value) return
+  if (!cardInteractive.value) return
   if (bundlePackage.value) {
     openBundlePanel()
     return
@@ -1092,103 +1096,115 @@ async function configure() {
 </style>
 
 <style lang="scss" scoped>
+// 依赖条目：卡片与列表行共用一套中性表面与状态色规则。
+
+@mixin dep-tokens {
+  --dep-accent: var(--deps-accent, var(--fg3));
+  --dep-accent-text: color-mix(in srgb, var(--dep-accent) 52%, var(--deps-text, var(--fg1)));
+  --dep-accent-soft: color-mix(in srgb, var(--dep-accent) 11%, transparent);
+  --dep-line: var(--deps-line, color-mix(in srgb, var(--fg1) 10%, transparent));
+  --dep-line-soft: var(--deps-line-soft, color-mix(in srgb, var(--fg1) 6%, transparent));
+  --dep-line-strong: var(--deps-line-strong, color-mix(in srgb, var(--fg1) 20%, transparent));
+  --dep-surface: var(--deps-surface, var(--k-card-bg));
+  --dep-hover: var(--deps-hover, color-mix(in srgb, var(--fg1) 4%, transparent));
+  --dep-text: var(--deps-text, var(--fg1));
+  --dep-text-2: var(--deps-text-2, var(--fg2));
+  --dep-text-3: var(--deps-text-3, var(--fg3));
+  --dep-ease: var(--deps-ease, cubic-bezier(0.2, 0.7, 0.3, 1));
+}
+
+// ---------------------------------------------------------------------------
+// 卡片
 
 .dep-package-card {
-  --dep-accent: var(--fg3);
-  --dep-accent-soft: color-mix(in srgb, var(--dep-accent) 8%, transparent);
-  --dep-accent-border: color-mix(in srgb, var(--dep-accent) 30%, var(--k-color-border));
+  @include dep-tokens;
+
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 5.35rem;
-  border: 1px solid color-mix(in srgb, var(--k-color-border) 80%, transparent);
-  border-radius: 10px;
-  padding: 0.58rem 0.72rem 0.62rem 3.32rem;
-  background: var(--k-card-bg);
-  overflow: hidden;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  border: 1px solid var(--dep-line);
+  border-radius: var(--deps-radius, 10px);
+  padding: 0.7rem 0.8rem 0.75rem;
+  background: var(--dep-surface);
+  transition: border-color 120ms var(--dep-ease), box-shadow 120ms var(--dep-ease);
 
   &:hover {
-    border-color: var(--dep-accent-border);
-    box-shadow: none;
-    transform: none;
+    border-color: var(--dep-line-strong);
   }
 
-  &.expandable { cursor: pointer; }
+  &.expandable {
+    cursor: pointer;
+  }
 
   &.expanded {
-    z-index: 8;
-    border-color: var(--dep-accent-border);
-    box-shadow: none;
-    overflow: visible;
+    border-color: var(--dep-line-strong);
 
-    .dep-card-buttons {
-      justify-content: flex-end;
-      flex-wrap: wrap;
+    .dep-full-name {
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
+      word-break: break-all;
     }
   }
 
-  // left accent bar
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 3px;
-    border-radius: 10px 0 0 10px;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--dep-accent) 82%, transparent), color-mix(in srgb, var(--dep-accent) 24%, transparent));
+  &.pending,
+  &.manual {
+    --dep-accent: var(--k-color-primary);
   }
 
-  // status-specific accents
-  &.pending   { --dep-accent: var(--k-color-primary); }
-  &.updatable { --dep-accent: var(--k-color-success); }
-  &.error     { --dep-accent: var(--danger); border-color: var(--dep-accent-border); }
-  &.invalid   { --dep-accent: var(--warning); border-color: var(--dep-accent-border); }
-  &.bundle    { --dep-accent: #9b74df; }
-  &.unconfigured, &.local, &.workspace { --dep-accent: var(--warning); }
-  &.manual    { --dep-accent: var(--k-color-primary); }
-  &.ignored, &.check-disabled { --dep-accent: var(--fg3); }
-
-  &.installed {
-    &::before { background: color-mix(in srgb, var(--dep-accent) 45%, transparent); }
+  &.updatable {
+    --dep-accent: var(--k-color-success);
   }
 
-  // Polished mode adds richer state glow from the page-level stylesheet.
-  &:not(.installed)::after {
-    display: none;
+  &.error {
+    --dep-accent: var(--danger);
+  }
+
+  &.invalid,
+  &.unconfigured,
+  &.local,
+  &.workspace {
+    --dep-accent: var(--warning);
+  }
+
+  &.bundle {
+    --dep-accent: #9b74df;
+  }
+
+  &.ignored,
+  &.check-disabled {
+    --dep-accent: var(--fg1);
+  }
+
+  .el-button {
+    border-radius: 6px;
+  }
+
+  .el-button + .el-button {
+    margin-left: 0;
   }
 }
 
 .dep-status-mark {
-  position: absolute;
-  left: 0.68rem;
-  top: 0.62rem;
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 1.78rem;
-  height: 1.78rem;
-  border: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
-  border-radius: 10px;
-  color: var(--dep-accent);
-  background: color-mix(in srgb, var(--dep-accent) 14%, var(--k-side-bg));
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 8px;
+  color: var(--dep-accent-text);
+  background: var(--dep-accent-soft);
 
   .market-icon {
-    width: 0.96rem;
-    height: 0.96rem;
+    width: 0.92rem;
+    height: 0.92rem;
   }
 }
 
 .dep-card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-
-.dep-header-actions {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.38rem;
+  gap: 0.55rem;
 }
 
 .dep-title {
@@ -1197,9 +1213,10 @@ async function configure() {
 
   h3 {
     margin: 0;
-    font-size: 0.92rem;
-    line-height: 1.3;
+    color: var(--dep-text);
+    font-size: 0.88rem;
     font-weight: 600;
+    line-height: 1.35;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1209,26 +1226,49 @@ async function configure() {
 .dep-title-line {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   min-width: 0;
 }
 
 .dep-full-name {
   display: block;
-  margin-top: 0.12rem;
-  color: var(--fg3);
-  font-size: 0.73rem;
-  line-height: 1.25;
+  margin-top: 0.08rem;
+  color: var(--dep-text-3);
+  font-size: 0.69rem;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.dep-header-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+
+  .el-button {
+    height: 1.6rem;
+    padding: 0 0.42rem;
+    border-color: transparent;
+    background: transparent;
+    color: var(--dep-text-2);
+    font-size: 0.74rem;
+
+    &:hover,
+    &:focus-visible {
+      border-color: transparent;
+      background: var(--dep-hover);
+      color: var(--dep-text);
+    }
+  }
+}
+
 .dep-summary-text {
-  margin: 0.26rem 0 0;
-  color: var(--fg2);
-  font-size: 0.76rem;
-  line-height: 1.35;
+  margin: 0.35rem 0 0;
+  color: var(--dep-text-2);
+  font-size: 0.74rem;
+  line-height: 1.45;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1238,48 +1278,20 @@ async function configure() {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.22rem;
   height: 1.15rem;
-  border-radius: 6px;
-  padding: 0 0.36rem;
-  font-size: 0.7rem;
-  color: var(--fg2);
-  background: var(--k-side-bg);
+  padding: 0 0.38rem;
+  border-radius: 5px;
+  color: var(--dep-accent-text);
+  background: var(--dep-accent-soft);
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1;
 
   .market-icon {
-    width: 0.78rem;
-    height: 0.78rem;
+    width: 0.72rem;
+    height: 0.72rem;
     flex: 0 0 auto;
-  }
-
-  &.pending {
-    color: var(--k-color-primary);
-    background: color-mix(in srgb, var(--k-color-primary) 10%, transparent);
-  }
-
-  &.updatable {
-    color: var(--k-color-success);
-    background: color-mix(in srgb, var(--k-color-success) 10%, transparent);
-  }
-
-  &.error {
-    color: var(--danger);
-    background: color-mix(in srgb, var(--danger) 9%, transparent);
-  }
-
-  &.local,
-  &.workspace {
-    color: var(--warning);
-  }
-
-  &.unconfigured {
-    color: var(--warning);
-    background: color-mix(in srgb, var(--warning) 10%, transparent);
-  }
-
-  &.ignored {
-    color: var(--fg2);
-    background: color-mix(in srgb, var(--fg3) 10%, transparent);
   }
 }
 
@@ -1287,128 +1299,102 @@ async function configure() {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 0.24rem;
-  height: 1.16rem;
-  border: 1px solid color-mix(in srgb, var(--dep-accent) 22%, var(--k-color-border));
-  border-radius: 6px;
-  padding: 0 0.42rem 0 0.26rem;
-  color: var(--dep-accent);
-  background: color-mix(in srgb, var(--dep-accent) 9%, transparent);
-  font-size: 0.7rem;
+  gap: 0.2rem;
+  height: 1.15rem;
+  padding: 0 0.38rem 0 0.24rem;
+  border-radius: 5px;
+  color: var(--dep-text-2);
+  background: var(--dep-hover);
+  font-size: 0.68rem;
   font-weight: 500;
+  line-height: 1;
   white-space: nowrap;
 
   .dep-kind-icon {
     display: inline-grid;
     place-items: center;
-    width: 0.86rem;
-    height: 0.86rem;
+    width: 0.8rem;
+    height: 0.8rem;
     flex: 0 0 auto;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--dep-accent) 14%, transparent);
   }
 
   .market-icon {
-    width: 0.66rem;
-    height: 0.66rem;
     display: block;
+    width: 0.68rem;
+    height: 0.68rem;
   }
 }
 
 .dep-meta-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.28rem 0.36rem;
-  margin-top: 0.34rem;
+  gap: 0.18rem 0.85rem;
+  margin-top: 0.45rem;
 }
 
 .dep-meta-item {
-  min-width: 0;
   display: inline-flex;
   align-items: baseline;
-  gap: 0.25rem;
-  border: 1px solid color-mix(in srgb, var(--k-color-border) 72%, transparent);
-  border-radius: 6px;
-  padding: 0.12rem 0.36rem;
-  background: color-mix(in srgb, var(--k-side-bg) 88%, transparent);
-  font-size: 0.76rem;
-  line-height: 1.35;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.74rem;
+  line-height: 1.5;
 
   span {
     flex: 0 0 auto;
-    color: var(--fg3);
+    color: var(--dep-text-3);
   }
 
   strong {
     min-width: 0;
-    color: var(--fg1);
+    color: var(--dep-text);
     font-weight: 500;
+    font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
 
     &.danger {
-      color: var(--danger);
+      color: color-mix(in srgb, var(--danger) 68%, var(--dep-text));
     }
 
     &.warning {
-      color: var(--warning);
+      color: color-mix(in srgb, var(--warning) 72%, var(--dep-text));
     }
   }
 }
 
 .dep-status-text {
-  margin: 0.32rem 0 0;
-  color: var(--fg2);
-  font-size: 0.78rem;
-  line-height: 1.35;
+  margin: 0.4rem 0 0;
+  color: var(--dep-text-2);
+  font-size: 0.74rem;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 
   &.danger {
-    color: var(--danger);
+    color: color-mix(in srgb, var(--danger) 68%, var(--dep-text));
   }
 }
 
 .dep-card-actions {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
   justify-content: space-between;
-  margin-top: 0.44rem;
-  border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 76%, transparent);
-  padding-top: 0.42rem;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--dep-line-soft);
   cursor: default;
-  animation: dep-actions-in 0.18s ease;
 
   .el-select {
-    flex: 1 1 auto;
+    flex: 1 1 8rem;
     min-width: 0;
+    max-width: 12rem;
   }
 
   &.floating {
-    position: absolute;
-    left: 0.62rem;
-    right: 0.62rem;
-    top: calc(100% - 0.22rem);
-    z-index: 12;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    margin-top: 0;
-    border: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
-    border-radius: 8px;
-    padding: 0.54rem;
-    background: var(--k-card-bg);
-    box-shadow: none;
+    border-top-color: var(--dep-line);
 
-    &::before {
-      content: '';
-      position: absolute;
-      left: 1.25rem;
-      top: -5px;
-      width: 9px;
-      height: 9px;
-      border-top: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
-      border-left: 1px solid color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
-      background: var(--k-card-bg);
-      transform: rotate(45deg);
+    .el-select {
+      max-width: none;
     }
 
     .dep-card-buttons {
@@ -1417,130 +1403,126 @@ async function configure() {
   }
 }
 
-@keyframes dep-actions-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
 .dep-card-buttons {
   display: flex;
   flex: 0 0 auto;
-  gap: 0.38rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
 }
 
 .dep-remove-button {
-  --remove-color: color-mix(in srgb, var(--danger) 72%, #ff9a9a);
-  --remove-border: color-mix(in srgb, var(--danger) 42%, var(--k-color-border));
-  --remove-bg: color-mix(in srgb, var(--danger) 10%, transparent);
-  --remove-bg-hover: color-mix(in srgb, var(--danger) 16%, transparent);
-  border-color: var(--remove-border);
-  color: var(--remove-color);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--danger) 8%, transparent), transparent),
-    var(--remove-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--dep-line));
+  color: color-mix(in srgb, var(--danger) 68%, var(--dep-text));
+  background: transparent;
 
-  &:hover, &:focus {
-    border-color: color-mix(in srgb, var(--danger) 56%, var(--k-color-border));
-    color: color-mix(in srgb, var(--danger) 84%, #ffc0c0);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--danger) 12%, transparent), transparent),
-      var(--remove-bg-hover);
+  &:hover,
+  &:focus {
+    border-color: color-mix(in srgb, var(--danger) 52%, var(--dep-line));
+    color: color-mix(in srgb, var(--danger) 80%, var(--dep-text));
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
   }
 
   &:active {
-    background: color-mix(in srgb, var(--danger) 20%, transparent);
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
   }
 }
 
 .dep-muted {
   min-width: 0;
-  color: var(--fg2);
-  font-size: 0.8rem;
-  line-height: 1.3;
+  color: var(--dep-text-3);
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
-@media (max-width: 420px) {
-  .dep-package-card {
-    padding-left: 0.76rem;
-  }
+// ---------------------------------------------------------------------------
+// 列表行
 
-  .dep-status-mark {
-    display: none;
-  }
-
-  .dep-card-header, .dep-card-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .dep-header-actions {
-    justify-content: flex-end;
-  }
-
-  .dep-card-buttons {
-    justify-content: flex-end;
-  }
-}
-
-@media (max-width: 768px) {
-  .dep-card-actions.floating {
-    position: static;
-    display: flex;
-    margin-top: 0.56rem;
-    border-top: 1px dashed color-mix(in srgb, var(--k-color-border) 76%, transparent);
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 0;
-    padding: 0.52rem 0 0;
-    background: transparent;
-    box-shadow: none;
-
-    &::before {
-      display: none;
-    }
-  }
-}
-
-// List row layout
 .dep-list-row {
-  --dep-accent: var(--fg3);
+  @include dep-tokens;
+
   display: grid;
-  grid-template-columns: var(--deps-list-columns, 2rem minmax(14rem, 1fr) 8rem 9rem 24rem);
-  column-gap: 0.5rem;
+  grid-template-columns: var(--deps-list-columns, 1.8rem minmax(11rem, 1fr) 7rem 8rem 24rem);
+  column-gap: 0.6rem;
   align-items: center;
   width: 100%;
   box-sizing: border-box;
-  padding: 0.32rem 0.75rem 0.32rem 0.62rem;
-  background: var(--k-card-bg);
-  border-bottom: 1px solid color-mix(in srgb, var(--k-color-border) 50%, transparent);
-  transition: background 0.12s;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  transition: background 120ms var(--dep-ease);
 
-  &:last-child { border-bottom: none; }
-  &:hover { background: color-mix(in srgb, var(--k-side-bg) 60%, transparent); }
+  & + .dep-list-row {
+    border-top: 1px solid var(--dep-line);
+  }
+
+  &:hover {
+    background: var(--dep-hover);
+  }
+
+  &.pending,
+  &.manual {
+    --dep-accent: var(--k-color-primary);
+  }
+
+  &.updatable {
+    --dep-accent: var(--k-color-success);
+  }
+
+  &.error,
+  &.invalid {
+    --dep-accent: var(--danger);
+  }
+
+  &.unconfigured,
+  &.local,
+  &.workspace {
+    --dep-accent: var(--warning);
+  }
+
+  &.bundle {
+    --dep-accent: #9b74df;
+  }
+
+  &.ignored,
+  &.check-disabled {
+    --dep-accent: var(--fg1);
+  }
 
   .dep-status-mark {
-    position: static;
+    justify-self: center;
     width: 1.5rem;
     height: 1.5rem;
+    border-radius: 7px;
+
+    .market-icon {
+      width: 0.85rem;
+      height: 0.85rem;
+    }
+  }
+
+  .el-button {
     border-radius: 6px;
-    margin: 0;
-    justify-self: center;
+  }
+
+  .el-button + .el-button {
+    margin-left: 0;
   }
 
   .col-name {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.1rem;
+    gap: 0.06rem;
 
     .name-display {
       display: inline-flex;
       align-items: center;
       gap: 0.35rem;
-      font-size: 0.875rem;
+      min-width: 0;
+      color: var(--dep-text);
+      font-size: 0.85rem;
       font-weight: 600;
+      line-height: 1.4;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1552,94 +1534,128 @@ async function configure() {
       }
     }
 
+    .name-full {
+      color: var(--dep-text-3);
+      font-size: 0.68rem;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .dep-list-kind-pill {
       display: inline-flex;
       align-items: center;
-      gap: 0.24rem;
+      gap: 0.2rem;
       height: 1.05rem;
-      padding: 0 0.34rem;
-      border-radius: 999px;
-      border: 1px solid color-mix(in srgb, #9b74df 28%, var(--k-color-border));
-      color: #9b74df;
-      background: color-mix(in srgb, #9b74df 9%, transparent);
-      font-size: 0.68rem;
+      padding: 0 0.32rem;
+      border-radius: 5px;
+      color: var(--dep-text-2);
+      background: var(--dep-hover);
+      font-size: 0.66rem;
       font-weight: 500;
       line-height: 1;
       white-space: nowrap;
 
       .market-icon {
-        width: 0.68rem;
-        height: 0.68rem;
+        width: 0.64rem;
+        height: 0.64rem;
         flex: 0 0 auto;
       }
     }
-
-    .name-full {
-      font-size: 0.7rem;
-      color: var(--fg3);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
   }
 
-  .col-version, .col-latest {
+  .col-version,
+  .col-latest {
     min-width: 0;
-    font-size: 0.8rem;
-    color: var(--fg2);
+    padding: 0 0.25rem;
+    color: var(--dep-text-2);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 0 0.25rem;
 
-    &.has-update { color: var(--k-color-success); font-weight: 600; }
-    &.pending-val { color: var(--k-color-primary); font-weight: 600; }
+    &.has-update {
+      color: var(--dep-accent-text);
+      font-weight: 500;
+    }
+
+    &.pending-val {
+      color: color-mix(in srgb, var(--k-color-primary) 62%, var(--dep-text));
+      font-weight: 500;
+    }
   }
 
   .col-actions {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 0.3rem;
     justify-content: flex-end;
     flex-wrap: wrap;
+    gap: 0.28rem;
+
+    .el-button {
+      height: 1.65rem;
+      padding: 0 0.5rem;
+      border-color: var(--dep-line-strong);
+      background: transparent;
+      color: var(--dep-text-2);
+      font-size: 0.74rem;
+
+      &:hover,
+      &:focus-visible {
+        border-color: var(--dep-line-strong);
+        background: var(--dep-hover);
+        color: var(--dep-text);
+      }
+    }
+
+    .el-button--primary {
+      border-color: transparent;
+      background: var(--k-color-primary);
+      color: #fff;
+
+      &:hover,
+      &:focus-visible {
+        border-color: transparent;
+        background: color-mix(in srgb, var(--k-color-primary) 86%, #fff);
+        color: #fff;
+      }
+    }
   }
 
   .dep-list-select {
-    width: 8rem;
     flex: 0 0 8rem;
-  }
-
-  &.pending   { --dep-accent: var(--k-color-primary); background: color-mix(in srgb, var(--k-color-primary) 4%, var(--k-card-bg)); }
-  &.bundle    { --dep-accent: #9b74df; background: color-mix(in srgb, #9b74df 4%, var(--k-card-bg)); }
-  &.updatable { --dep-accent: var(--k-color-success); }
-  &.error, &.invalid { --dep-accent: var(--danger); background: color-mix(in srgb, var(--danger) 4%, var(--k-card-bg)); }
-  &.unconfigured, &.local { --dep-accent: var(--warning); background: color-mix(in srgb, var(--warning) 3%, var(--k-card-bg)); }
-
-  .dep-status-mark {
-    color: var(--dep-accent);
-    border-color: color-mix(in srgb, var(--dep-accent) 28%, var(--k-color-border));
-    background: color-mix(in srgb, var(--dep-accent) 12%, var(--k-side-bg));
+    width: 8rem;
   }
 }
 
-@media (max-width: 768px) {
+// ---------------------------------------------------------------------------
+// 响应式
+
+@media (max-width: 620px) {
   .dep-list-row {
     grid-template-columns: 1.8rem minmax(0, 1fr) auto;
     grid-template-areas:
-      "icon name actions"
-      "icon current actions"
-      "icon latest actions";
-    row-gap: 0.18rem;
-    column-gap: 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--k-color-border) 64%, transparent);
-    border-radius: 8px;
-    padding: 0.55rem 0.62rem;
+      'icon name name'
+      'icon current latest'
+      'actions actions actions';
+    row-gap: 0.16rem;
+    border: 1px solid var(--dep-line);
+    border-radius: var(--deps-radius, 10px);
+    background: var(--dep-surface);
+    padding: 0.55rem 0.65rem;
+
+    & + .dep-list-row {
+      margin-top: 0.5rem;
+      border-top: 1px solid var(--dep-line);
+    }
 
     .dep-status-mark {
       grid-area: icon;
       align-self: start;
-      margin-top: 0.08rem;
+      margin-top: 0.06rem;
     }
 
     .col-name {
@@ -1652,8 +1668,8 @@ async function configure() {
 
       &::before {
         content: attr(data-label) ' ';
-        color: var(--fg3);
-        font-weight: 500;
+        color: var(--dep-text-3);
+        font-weight: 400;
       }
     }
 
@@ -1663,18 +1679,21 @@ async function configure() {
 
       &::before {
         content: attr(data-label) ' ';
-        color: var(--fg3);
-        font-weight: 500;
+        color: var(--dep-text-3);
+        font-weight: 400;
       }
     }
 
     .col-actions {
       grid-area: actions;
-      align-self: center;
-      flex-direction: column;
-      align-items: stretch;
-      justify-content: center;
-      max-width: 8.5rem;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      max-width: none;
+      margin-top: 0.4rem;
+      padding-top: 0.4rem;
+      border-top: 1px solid var(--dep-line-soft);
 
       .el-button {
         margin-left: 0;
@@ -1683,19 +1702,49 @@ async function configure() {
 
     .dep-list-select {
       width: 8.5rem;
-      flex-basis: 8.5rem;
+      flex: 0 0 8.5rem;
     }
+  }
+
+  .dep-card-actions .el-button,
+  .dep-header-actions .el-button,
+  .col-actions .el-button {
+    height: 2rem;
+    min-height: 2rem;
+    padding: 0 0.6rem;
+  }
+
+  .dep-card-buttons {
+    gap: 0.4rem;
   }
 }
 
 @media (max-width: 420px) {
+  .dep-package-card .dep-status-mark {
+    display: none;
+  }
+
+  .dep-card-actions {
+    flex-direction: column;
+    align-items: stretch;
+
+    .el-select {
+      flex: 1 1 auto;
+      max-width: none;
+    }
+
+    .dep-card-buttons {
+      justify-content: flex-end;
+    }
+  }
+
   .dep-list-row {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "name"
-      "current"
-      "latest"
-      "actions";
+      'name'
+      'current'
+      'latest'
+      'actions';
 
     .dep-status-mark {
       display: none;
@@ -1703,20 +1752,19 @@ async function configure() {
 
     .col-actions {
       max-width: none;
-      margin-top: 0.32rem;
+      margin-top: 0.35rem;
       flex-direction: row;
       flex-wrap: wrap;
 
       .el-button {
-        flex: 1 1 auto;
+        flex: 0 0 auto;
       }
     }
 
     .dep-list-select {
-      width: 100%;
-      flex: 1 1 100%;
+      width: auto;
+      flex: 1 1 8rem;
     }
   }
 }
-
 </style>
