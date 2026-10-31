@@ -809,7 +809,7 @@ html.dark .deps-apply-bar,
 // 列表模式
 
 .deps-layout-list .deps-grid {
-  --deps-list-columns: 1.8rem minmax(11rem, 1fr) 7rem 8rem 24rem;
+  --deps-list-columns: 1.8rem minmax(0, 1fr) 7rem 8rem 24rem;
 
   display: flex;
   flex-direction: column;
@@ -977,9 +977,9 @@ html.dark .deps-apply-bar,
   }
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1100px) {
   .deps-layout-list .deps-grid {
-    --deps-list-columns: 1.8rem minmax(7rem, 1fr) 5.5rem 6rem 11rem;
+    --deps-list-columns: 1.8rem minmax(0, 1fr) 5.5rem 6rem 11rem;
   }
 }
 
@@ -999,7 +999,7 @@ html.dark .deps-apply-bar,
   }
 }
 
-@media (max-width: 620px) {
+@media (max-width: 768px) {
   .deps-layout-list .deps-grid {
     border: 0;
     border-radius: 0;

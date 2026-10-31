@@ -1442,7 +1442,7 @@ async function configure() {
   @include dep-tokens;
 
   display: grid;
-  grid-template-columns: var(--deps-list-columns, 1.8rem minmax(11rem, 1fr) 7rem 8rem 24rem);
+  grid-template-columns: var(--deps-list-columns, 1.8rem minmax(0, 1fr) 7rem 8rem 24rem);
   column-gap: 0.6rem;
   align-items: center;
   width: 100%;
@@ -1634,7 +1634,7 @@ async function configure() {
 // ---------------------------------------------------------------------------
 // 响应式
 
-@media (max-width: 620px) {
+@media (max-width: 768px) {
   .dep-list-row {
     grid-template-columns: 1.8rem minmax(0, 1fr) auto;
     grid-template-areas:
