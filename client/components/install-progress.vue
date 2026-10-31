@@ -4,7 +4,7 @@
     append-to-body
     :show-close="installProgressState.status !== 'running'"
     :before-close="handleBeforeClose"
-    :class="['install-progress-dialog', modeClass]"
+    class="install-progress-dialog"
     :title="installProgressState.title"
     width="min(800px, calc(100vw - 24px))"
   >
@@ -75,16 +75,11 @@
 
 <script lang="ts" setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { useConfig } from '@koishijs/client'
-import { getFrontendMode } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 import { installProgressState } from './utils'
 import MarketIcon from '../market/icons'
 
-const config = useConfig()
 const { t } = useMarketNextI18n()
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const viewport = ref<HTMLElement>()
 
@@ -346,60 +341,7 @@ function retryFallback() {
     animation: term-spin 0.7s linear infinite;
   }
 
-  // Styles specific to Polished Mode
-  &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--progress-border) 82%, var(--primary-color) 18%);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 5%, transparent), transparent 44%),
-      var(--progress-surface);
-    box-shadow:
-      0 24px 54px color-mix(in srgb, var(--progress-text) 22%, transparent),
-      0 8px 18px color-mix(in srgb, var(--primary-color) 8%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--primary-color) 10%, transparent) inset;
-    backdrop-filter: blur(12px);
-
-    .el-dialog__header {
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 68%),
-        color-mix(in srgb, var(--progress-surface-muted) 72%, var(--progress-surface));
-    }
-
-    .el-dialog__body {
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 2%, transparent), transparent),
-        var(--progress-surface);
-    }
-
-    .terminal-header {
-      background:
-        linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 7%, transparent), transparent 64%),
-        color-mix(in srgb, var(--progress-text) 5%, var(--progress-surface-muted));
-    }
-
-    .terminal-container {
-      border-color: color-mix(in srgb, var(--primary-color) 22%, var(--progress-border));
-      box-shadow:
-        inset 0 1px 0 color-mix(in srgb, var(--progress-text) 7%, transparent),
-        0 10px 26px color-mix(in srgb, var(--primary-color) 7%, transparent);
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .status-banner {
-      backdrop-filter: blur(6px);
-    }
   }
-
-  // Styles specific to Performance Mode
-  &.market-mode-performance {
-    border-radius: 8px;
-    box-shadow: none;
-    
-    .terminal-container {
-      box-shadow: none;
-    }
-  }
-}
 
 @keyframes term-pulse {
   0%, 100% { transform: scale(0.8); opacity: 0.5; }

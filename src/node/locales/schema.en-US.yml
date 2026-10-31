@@ -33,11 +33,6 @@ updateIgnoreVersions: How many consecutive newer versions should be ignored afte
 updateIgnorePrerelease: When enabled, alpha / beta / rc and other prerelease versions are not treated as update targets.
 chatlunaTool: Enable the ChatLuna plugin market query tool. ChatLuna must be installed and enabled separately; when available, this registers the read-only koishi_plugin_market_search tool. Other market features work without ChatLuna.
 
-frontendMode:
-  $description: Frontend display mode. Performance mode keeps low-motion dense UI; polished mode enables richer visual effects.
-  $inner:
-    - Performance mode
-    - Polished mode
 depsLayout:
   $description: Dependencies page layout. Grid shows compact cards; list shows a denser single-column view.
   $inner:

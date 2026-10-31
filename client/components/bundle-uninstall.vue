@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     append-to-body
-    :class="['bundle-uninstall-dialog', modeClass]"
+    class="bundle-uninstall-dialog"
     :title="title || t('bundle.actions.uninstall')"
     width="min(760px, calc(100vw - 24px))"
     destroy-on-close
@@ -104,7 +104,7 @@ import {
   type BundleRecordView,
   type BundleMemberCleanupTarget,
 } from './utils'
-import { getBulkMode, getFrontendMode, getPendingOverrides, getWritableBundleRecords, patchMarketNextData } from '../utils'
+import { getBulkMode, getPendingOverrides, getWritableBundleRecords, patchMarketNextData } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 
 type MemberAction = 'config' | 'dependency' | 'keep'
@@ -126,8 +126,6 @@ const emit = defineEmits<{
 
 const config = useConfig()
 const { t } = useMarketNextI18n()
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 function setAllActions(action: MemberAction) {
   for (const row of memberRows.value) {
@@ -477,30 +475,7 @@ async function uninstallBundle() {
     }
   }
 
-  &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 14%, var(--bundle-uninstall-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--bundle-uninstall-primary) 5%, transparent), transparent 42%),
-      var(--bundle-uninstall-surface);
-    box-shadow: 0 18px 42px color-mix(in srgb, var(--bundle-uninstall-text) 12%, transparent);
-
-    .bundle-member-option {
-      border-radius: 12px;
-      background: color-mix(in srgb, var(--bundle-uninstall-surface) 90%, var(--bundle-uninstall-surface-muted) 10%);
-      backdrop-filter: blur(10px);
-      box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bundle-uninstall-surface) 86%, white 14%);
-      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-
-      &:hover {
-        border-color: color-mix(in srgb, var(--bundle-uninstall-primary) 28%, var(--bundle-uninstall-border));
-        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-uninstall-primary) 10%, transparent);
-        transform: translateY(-2px);
-      }
-    }
-  }
-
-  @media (max-width: 640px) {
+    @media (max-width: 640px) {
     :deep(.el-dialog__footer) {
       display: flex;
       gap: 0.5rem;

@@ -1,5 +1,5 @@
 <template>
-  <el-dialog :model-value="!!active" @update:model-value="closePanel" :class="['install-panel', modeClass]" destroy-on-close>
+  <el-dialog :model-value="!!active" @update:model-value="closePanel" class="install-panel" destroy-on-close>
     <template v-if="active" #header="{ titleId, titleClass }">
       <span :id="titleId" :class="titleClass">
         {{ active + (localSelection ? ` (${t('dependencyCard.current.local')})` : '') }}
@@ -9,7 +9,7 @@
         v-model="selectVersion"
         class="market-version-select"
         :disabled="localSelection"
-        :popper-class="versionPopperClass"
+        popper-class="market-version-popper"
       >
         <el-option v-for="({ result }, version) in data" :key="version" :value="version">
           {{ version }}
@@ -56,7 +56,7 @@
                 <el-select
                   class="frameless market-version-select"
                   :model-value="getVersion(name)"
-                  :popper-class="versionPopperClass"
+                  popper-class="market-version-popper"
                   @update:model-value="setVersion(name, $event)"
                 >
                     <el-option value="">{{ t('dependencyCard.actions.remove') }}</el-option>
@@ -138,7 +138,7 @@
 import { computed, ref, watch, reactive } from 'vue'
 import { Dict, global, message, send, store, useContext, useConfig } from '@koishijs/client'
 import { analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, getConfigWriter, getRegistryStatus, getRegistryStatusText, install, PeerInfo, ResultType } from './utils'
-import { active, getBulkMode, getBundleRecords, getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { active, getBulkMode, getBundleRecords, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { parse } from 'semver'
 import { isBundlePackageName } from '../../src/shared/bundle'
 import { isLocalDependency } from '../../src/shared/dependency-source'
@@ -149,9 +149,6 @@ import { getMarketObject } from '../market/state'
 const ctx = useContext()
 const config = useConfig()
 const { t } = useMarketNextI18n()
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
-const versionPopperClass = computed(() => `market-version-popper ${modeClass.value}`)
 
 const saveChoice = ref(false)
 const showRemoveDialog = ref(false)
@@ -657,32 +654,7 @@ function getResultText(peer: PeerInfo, name: string) {
     background: color-mix(in srgb, var(--k-side-bg) 50%, var(--k-card-bg));
   }
 
-  &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--k-color-primary) 18%, var(--k-color-border));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 4%, transparent), transparent 44%),
-      var(--k-card-bg);
-    box-shadow:
-      0 28px 80px rgb(0 0 0 / 32%),
-      0 0 0 1px color-mix(in srgb, var(--fg1) 8%, transparent) inset;
-
-    .el-dialog__header {
-      border-bottom-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
-        color-mix(in srgb, var(--k-side-bg) 72%, var(--k-card-bg));
-    }
-
-    .peer-table-scroll {
-      box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
-    }
-
-    .el-dialog__footer {
-      border-top-color: color-mix(in srgb, var(--k-color-primary) 12%, var(--k-color-border));
-    }
-  }
-
-  .wrapper {
+    .wrapper {
     position: relative;
     display: inline-flex;
     min-width: 7.8rem;

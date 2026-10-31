@@ -4,7 +4,7 @@
     append-to-body
     align-center
     destroy-on-close
-    :class="['package-history-dialog', modeClass]"
+    class="package-history-dialog"
     :title="t('operations.timeline.title', { name: packageName })"
     width="min(560px, calc(100vw - 24px))"
   >
@@ -68,9 +68,8 @@
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
-import { message, send, useConfig } from '@koishijs/client'
+import { message, send } from '@koishijs/client'
 import type { InstallPackageHistory, InstallPackageHistoryEntry } from 'koishi-plugin-market-next'
-import { getFrontendMode } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 import MarketIcon from '../market/icons'
 
@@ -85,9 +84,7 @@ const emit = defineEmits<{
   'select-version': [version: string]
 }>()
 
-const config = useConfig()
 const { t, locale } = useMarketNextI18n()
-const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 const open = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value),
@@ -179,14 +176,7 @@ function formatDate(value: number) {
     border-top: 1px solid color-mix(in srgb, var(--k-color-border, #dcdfe6) 70%, transparent);
   }
 
-  &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--k-color-primary) 24%, var(--k-color-border, #dcdfe6));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 5%, transparent), transparent 46%),
-      color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 90%, var(--k-side-bg, var(--el-bg-color)));
-    box-shadow: 0 20px 58px color-mix(in srgb, var(--fg1, currentColor) 18%, transparent);
   }
-}
 
 .package-history-summary {
   display: flex;

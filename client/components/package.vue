@@ -1,6 +1,6 @@
 <template>
   <!-- List row mode -->
-  <div v-if="props.listMode" :class="['dep-list-row', modeClass, statusClass]" :style="cardStyle">
+  <div v-if="props.listMode" :class="['dep-list-row', statusClass]" :style="cardStyle">
     <div class="dep-status-mark" aria-hidden="true">
       <market-icon :name="markIcon"></market-icon>
     </div>
@@ -31,7 +31,7 @@
         size="small"
         class="dep-list-select market-version-select"
         :class="{ pending }"
-        :popper-class="versionPopperClass"
+        popper-class="market-version-popper"
       >
         <el-option v-if="dep" :value="removeValue">{{ t('dependencyCard.actions.remove') }}</el-option>
         <el-option v-for="({ result }, itemVersion) in data" :key="itemVersion" :value="itemVersion">
@@ -51,7 +51,7 @@
   <!-- Card mode (default) -->
   <article
     v-else
-    :class="['dep-package-card', modeClass, statusClass, { expandable: cardInteractive, expanded: editing }]"
+    :class="['dep-package-card', statusClass, { expandable: cardInteractive, expanded: editing }]"
     :style="cardStyle"
     @click="toggleCardActions"
   >
@@ -138,7 +138,7 @@
         size="small"
         class="market-version-select"
         :class="{ pending }"
-        :popper-class="versionPopperClass"
+        popper-class="market-version-popper"
       >
         <el-option v-if="dep" :value="removeValue">{{ t('dependencyCard.actions.remove') }}</el-option>
         <el-option v-for="({ result }, itemVersion) in data" :key="itemVersion" :value="itemVersion">
@@ -196,7 +196,7 @@
     </div>
   </article>
 
-  <el-dialog v-model="showIgnoreDialog" :class="['dep-ignore-dialog', modeClass]" append-to-body destroy-on-close>
+  <el-dialog v-model="showIgnoreDialog" class="dep-ignore-dialog" append-to-body destroy-on-close>
     <template #header>{{ t('dependencyCard.ignore.title') }}</template>
     <div class="dep-ignore-body">
       <p>
@@ -245,7 +245,7 @@
     v-model="showLocalBindingDialog"
     append-to-body
     align-center
-    :class="['market-dialog', 'market-dialog--small', 'dep-local-binding-dialog', modeClass]"
+    class="market-dialog market-dialog--small dep-local-binding-dialog"
     destroy-on-close
   >
     <template #header>{{ t('dependencyCard.localBinding.title') }}</template>
@@ -280,7 +280,7 @@ import { message, send, store, useConfig, useContext } from '@koishijs/client'
 import type { SearchObject } from '@koishijs/registry'
 import { isBundlePackageName, type PluginBundleRecord } from '../../src/shared/bundle'
 import { isLocalDependency } from '../../src/shared/dependency-source'
-import { createUpdateIgnoreRule, getBundleRecords, getFrontendMode, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { createUpdateIgnoreRule, getBundleRecords, getIgnoredUpdateVersion, getLatestVersion, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, getUpdateIgnoreText, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { activeBundle, analyzeVersions, createLocalBundleRecord, ensureInstalledConfig, expandedDependency, getConfigWriter, getRegistryStatus, getRegistryStatusText, pendingBundleUninstalls } from './utils'
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
@@ -302,9 +302,6 @@ const day = 24 * 60 * 60 * 1000
 const config = useConfig()
 const ctx = useContext()
 const { t, locale } = useMarketNextI18n()
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
-const versionPopperClass = computed(() => `market-version-popper ${modeClass.value}`)
 const configuring = ref(false)
 const editing = computed({
   get: () => expandedDependency.value === props.name,
@@ -1058,27 +1055,7 @@ async function configure() {
     color: var(--k-color-primary, var(--el-color-primary));
   }
 
-  &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--k-color-primary) 14%, var(--k-color-border, #dcdfe6));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--k-color-primary) 5%, transparent), transparent 46%),
-      color-mix(in srgb, var(--k-card-bg, var(--el-bg-color)) 88%, var(--k-side-bg, var(--el-bg-color)));
-    box-shadow:
-      0 24px 68px rgb(0 0 0 / 32%),
-      0 0 0 1px color-mix(in srgb, var(--fg1, currentColor) 7%, transparent) inset;
-
-    .el-dialog__header {
-      border-bottom-color: color-mix(in srgb, var(--k-color-primary) 10%, var(--k-color-border, #dcdfe6));
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--k-color-primary) 8%, transparent), transparent 70%),
-        color-mix(in srgb, var(--k-side-bg, var(--el-bg-color)) 70%, var(--k-card-bg, var(--el-bg-color)));
-    }
-
-    .dep-ignore-note {
-      background: color-mix(in srgb, var(--k-color-primary, var(--el-color-primary)) 5%, var(--k-side-bg, var(--el-bg-color)));
-    }
   }
-}
 
 @media (max-width: 560px) {
   .dep-ignore-dialog,
@@ -1130,6 +1107,7 @@ async function configure() {
 
   &:hover {
     border-color: var(--dep-line-strong);
+    box-shadow: 0 10px 26px -22px rgb(0 0 0 / 60%);
   }
 
   &.expandable {
@@ -1138,6 +1116,7 @@ async function configure() {
 
   &.expanded {
     border-color: var(--dep-line-strong);
+    box-shadow: 0 14px 34px -26px rgb(0 0 0 / 65%);
 
     .dep-full-name {
       overflow: visible;

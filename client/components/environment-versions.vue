@@ -3,7 +3,7 @@
     v-model="showEnvironmentVersions"
     append-to-body
     destroy-on-close
-    :class="['environment-versions-dialog', modeClass]"
+    class="environment-versions-dialog"
     :title="t('environment.title')"
     width="min(1080px, calc(100vw - 24px))"
   >
@@ -97,7 +97,7 @@
   <el-dialog
     v-model="confirmVisible"
     append-to-body
-    :class="['environment-confirm-dialog', modeClass]"
+    class="environment-confirm-dialog"
     :title="t('environment.confirmTitle')"
     width="min(520px, calc(100vw - 24px))"
   >
@@ -115,7 +115,7 @@
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
-import { send, useConfig } from '@koishijs/client'
+import { send } from '@koishijs/client'
 import type {
   EnvironmentChangeStatus,
   EnvironmentSnapshotChange,
@@ -123,14 +123,11 @@ import type {
   EnvironmentSnapshotSource,
   EnvironmentSnapshotSummary,
 } from 'koishi-plugin-market-next'
-import { getFrontendMode } from '../utils'
 import { applyEnvironmentSnapshot, showEnvironmentVersions } from './utils'
 import { useMarketNextI18n } from '../i18n'
 import MarketIcon from '../market/icons'
 
-const config = useConfig()
 const { t, locale } = useMarketNextI18n()
-const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 const snapshots = ref<EnvironmentSnapshotSummary[]>([])
 const selectedId = ref('')
 const preview = ref<EnvironmentSnapshotPreview>()
@@ -531,14 +528,7 @@ function reasonText(reason: NonNullable<EnvironmentSnapshotChange['reason']>) {
     &.error { color: var(--environment-danger); }
   }
 
-  &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--environment-primary) 16%, var(--environment-border));
-    box-shadow: 0 18px 46px color-mix(in srgb, var(--environment-text) 16%, transparent);
-
-    .environment-layout { border-color: color-mix(in srgb, var(--environment-primary) 12%, var(--environment-border)); }
-    .snapshot-row.active { background: color-mix(in srgb, var(--environment-primary) 13%, var(--environment-surface)); }
   }
-}
 
 .environment-confirm-dialog {
   p { margin-top: 0; color: var(--environment-text); line-height: 1.6; }

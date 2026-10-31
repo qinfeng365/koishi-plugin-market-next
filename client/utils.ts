@@ -17,11 +17,9 @@ export type { IgnoredUpdates, UpdateIgnoreRule } from '../src/shared/update'
 
 export const active = ref('')
 
-export type FrontendMode = 'performance' | 'polished'
 export type LayoutMode = 'grid' | 'list'
 
 export interface MarketNextConfigPatch extends UpdatePolicy {
-  frontendMode?: FrontendMode
   depsLayout?: LayoutMode
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
@@ -116,16 +114,6 @@ export function getCollapsedGroups() {
   const data = getMarketDataStore()
   data.collapsedGroups ||= {}
   return data.collapsedGroups
-}
-
-export function normalizeFrontendMode(value: unknown): FrontendMode | undefined {
-  return value === 'polished' || value === 'performance' ? value : undefined
-}
-
-export function getFrontendMode(config?: { market?: { frontendMode?: FrontendMode } }): FrontendMode {
-  const pluginConfig = getMarketNextConfig()
-  if (pluginConfig) return normalizeFrontendMode(pluginConfig.frontendMode) ?? 'performance'
-  return 'performance'
 }
 
 export function getDepsLayout(config?: { market?: { depsLayout?: LayoutMode } }): LayoutMode {

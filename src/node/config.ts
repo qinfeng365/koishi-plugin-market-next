@@ -9,7 +9,6 @@ export interface Config {
   registry?: Installer.Config
   search?: MarketProvider.Config
   chatlunaTool?: boolean
-  frontendMode?: 'performance' | 'polished'
   depsLayout?: 'grid' | 'list'
   marketSilentStatusRules?: MarketSilentStatusRule[]
   marketSilentDateRules?: MarketSilentDateRule[]
@@ -90,10 +89,6 @@ const MarketSilentRules = Schema.array(Schema.object({
 })).role('table').default([]).description('插件市场永久静默过滤。添加规则后，命中的插件会直接从市场页隐藏，不会显示在搜索框中。状态类不需要填写值；日期类填写 YYYY-MM-DD；最近 N 天填写数字。')
 
 export const Config: Schema<Config> = Schema.object({
-  frontendMode: Schema.union([
-    Schema.const('performance').description('性能模式'),
-    Schema.const('polished').description('精致模式'),
-  ]).role('radio').default('performance').description('Frontend display mode.'),
   depsLayout: Schema.union([
     Schema.const('grid').description('网格'),
     Schema.const('list').description('列表'),
@@ -130,7 +125,6 @@ export const Config: Schema<Config> = Schema.object({
 
 const configPatchKeys: Array<keyof Config> = [
   'logLevel',
-  'frontendMode',
   'depsLayout',
   'marketSilentStatusRules',
   'marketSilentDateRules',
@@ -183,8 +177,8 @@ export function ensureMarketNextConfigDefaults(ctx: Context, currentConfig: Conf
   const target = findMarketNextConfigNode(ctx.loader.config?.plugins, currentConfig)
   if (!target) return false
   let changed = false
-  if (target.value.frontendMode !== 'performance' && target.value.frontendMode !== 'polished') {
-    target.value.frontendMode = 'performance'
+  if (Object.prototype.hasOwnProperty.call(target.value, 'frontendMode')) {
+    delete target.value.frontendMode
     changed = true
   }
   if (target.value.depsLayout !== 'grid' && target.value.depsLayout !== 'list') {

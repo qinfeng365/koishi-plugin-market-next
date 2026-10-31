@@ -3,7 +3,7 @@
     v-model="showInstallHistory"
     append-to-body
     destroy-on-close
-    :class="['install-history-dialog', modeClass]"
+    class="install-history-dialog"
     :title="t('operations.history.title')"
     width="min(1040px, calc(100vw - 24px))"
   >
@@ -104,15 +104,12 @@
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
-import { message, send, useConfig } from '@koishijs/client'
+import { message, send } from '@koishijs/client'
 import type { InstallHistoryChange, InstallHistoryEntry, InstallLogDetail } from 'koishi-plugin-market-next'
-import { getFrontendMode } from '../utils'
 import { showInstallHistory } from './utils'
 import { useMarketNextI18n } from '../i18n'
 
-const config = useConfig()
 const { t, locale } = useMarketNextI18n()
-const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 const entries = ref<InstallHistoryEntry[]>([])
 const selectedId = ref('')
 const detail = ref<InstallLogDetail>()
@@ -650,19 +647,7 @@ function formatSize(value: number) {
     &.error { color: var(--history-danger); }
   }
 
-  &.market-mode-polished {
-    border-color: color-mix(in srgb, var(--history-primary) 16%, var(--history-border));
-    box-shadow: 0 18px 46px color-mix(in srgb, var(--history-text) 16%, transparent);
-
-    .history-layout {
-      border-color: color-mix(in srgb, var(--history-primary) 12%, var(--history-border));
-    }
-
-    .history-row.active {
-      background: color-mix(in srgb, var(--history-primary) 13%, var(--history-surface));
-    }
   }
-}
 
 @media (max-width: 720px) {
   .install-history-dialog {

@@ -3,7 +3,7 @@
     :model-value="!!activeBundle"
     append-to-body
     align-center
-    :class="['bundle-install-panel', modeClass]"
+    class="bundle-install-panel"
     width="min(880px, calc(100vw - 24px))"
     destroy-on-close
     @update:model-value="close"
@@ -330,7 +330,7 @@
 <script setup lang="ts">
 
 import { computed, reactive, ref, watch } from 'vue'
-import { message, send, socket, store, useConfig, useContext } from '@koishijs/client'
+import { message, send, socket, store, useContext } from '@koishijs/client'
 import type { Registry } from '@koishijs/registry'
 import {
   BundleInstallMember,
@@ -353,7 +353,6 @@ import {
 import { resolveCategory } from '../market/utils'
 import MarketIcon from '../market/icons'
 import { satisfies } from 'semver'
-import { getFrontendMode } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 import { getMarketObject, loadMarketObjects } from '../market/state'
 
@@ -365,11 +364,7 @@ const bundle = ref<PluginBundleManifest>()
 const resolvedBundleVersion = ref('')
 const members = reactive<BundleInstallMember[]>([])
 const ctx = useContext()
-const config = useConfig()
 const { t, locale } = useMarketNextI18n()
-
-const frontendMode = computed(() => getFrontendMode(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 
 const title = computed(() => activeBundle.value?.shortname || activeBundle.value?.package.name || t('bundle.label'))
 const bundleVersion = computed(() => resolvedBundleVersion.value || activeBundle.value?.package.version || '')
@@ -1338,41 +1333,7 @@ function formatInstallError(error: unknown) {
     animation: bundle-spin 0.7s linear infinite;
   }
 
-  &.market-mode-polished {
-    border-radius: 16px;
-    border-color: color-mix(in srgb, var(--bundle-color) 14%, var(--bundle-border));
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 5%, transparent), transparent 42%),
-      var(--bundle-surface);
-    box-shadow: 0 18px 42px color-mix(in srgb, var(--bundle-text) 12%, transparent);
-
-    .bundle-member {
-      border-radius: 12px;
-      background: color-mix(in srgb, var(--bundle-surface) 90%, var(--bundle-surface-muted) 10%);
-      backdrop-filter: blur(10px);
-
-      &.optional:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px color-mix(in srgb, var(--bundle-color) 10%, transparent);
-      }
-
-      &.selected {
-        box-shadow: inset 4px 0 0 var(--bundle-color), 0 6px 16px color-mix(in srgb, var(--bundle-color) 6%, transparent);
-      }
-
-      &.required {
-        box-shadow: inset 4px 0 0 var(--k-color-success), 0 6px 16px color-mix(in srgb, var(--k-color-success) 4%, transparent);
-      }
-    }
-
-    .bundle-diff {
-      background: linear-gradient(135deg, color-mix(in srgb, var(--bundle-color) 12%, transparent), transparent 60%), color-mix(in srgb, var(--bundle-surface-muted) 72%, var(--bundle-surface));
-      backdrop-filter: blur(12px);
-      box-shadow: 0 10px 24px color-mix(in srgb, var(--bundle-text) 6%, transparent);
-    }
-  }
-
-  @keyframes bundle-spin {
+    @keyframes bundle-spin {
     to { transform: rotate(360deg); }
   }
 

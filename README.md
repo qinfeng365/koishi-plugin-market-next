@@ -37,7 +37,7 @@ Market Next 是面向 Koishi Console 的插件市场与依赖管理中心。它�
 - 支持关键词、分类、状态、作者邮箱和创建 / 更新时间筛选。
 - 提供综合、推荐、下载量、创建时间和更新时间排序。
 - 使用虚拟窗口控制大列表的实际渲染数量。
-- 提供性能模式与精致模式，兼容浅色、深色和纯黑主题。
+- 统一界面样式，兼容浅色、深色和纯黑主题。
 - 维护者头像通过后端代理与本地缓存加载，并限制私网目标和响应大小。
 
 ### 依赖管理
@@ -95,8 +95,7 @@ pnpm add koishi-plugin-market-next
 
 ```yaml
 plugins:
-  market-next:
-    frontendMode: performance
+  market-next: {}
 ```
 
 ## 基本使用
@@ -176,7 +175,6 @@ npm pack
 ```yaml
 plugins:
   market-next:
-    frontendMode: performance
     depsLayout: grid
 
     search:
@@ -203,7 +201,6 @@ plugins:
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `frontendMode` | `performance` | `performance` 为低动效模式，`polished` 为精致模式。 |
 | `depsLayout` | `grid` | 依赖页使用 `grid` 或 `list` 布局。 |
 | `idleProbe` | `true` | Console 无客户端时是否后台探测市场和依赖元数据。 |
 | `idleProbeDelay` | `5m` | Console 无人在线多久后允许探测。 |

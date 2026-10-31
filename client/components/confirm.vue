@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-if="store.market?.registry" v-model="showConfirm" :class="['confirm-panel', modeClass]" destroy-on-close>
+  <el-dialog v-if="store.market?.registry" v-model="showConfirm" class="confirm-panel" destroy-on-close>
     <template #header>{{ t('operations.confirm.title') }}</template>
     <div class="confirm-change-list">
       <table>
@@ -46,14 +46,13 @@
 import { computed, ref } from 'vue'
 import { message, send, store, useContext, useConfig } from '@koishijs/client'
 import { ensureInstalledConfigs, getConfigWriter, showConfirm, install, pendingBundleUninstalls, MARKET_NEXT_PACKAGE } from './utils'
-import { getFrontendMode, getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
+import { getPendingOverrides, getRemoveConfig, getWritableBundleRecords, patchMarketNextData } from '../utils'
 import { useMarketNextI18n } from '../i18n'
 
 const ctx = useContext()
 const config = useConfig()
 const { t } = useMarketNextI18n()
 const overrides = computed(() => getPendingOverrides())
-const modeClass = computed(() => `market-mode-${getFrontendMode(config.value)}`)
 
 const removeConfig = ref(getRemoveConfig(config.value))
 
@@ -276,44 +275,7 @@ function confirm() {
     }
   }
 
-  &.market-mode-polished {
-    --confirm-row-hover: color-mix(in srgb, var(--confirm-primary) 7%, var(--confirm-row-bg));
-
-    border-color: color-mix(in srgb, var(--confirm-border) 84%, var(--confirm-primary) 16%);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--confirm-primary) 5%, transparent), transparent 44%),
-      var(--confirm-surface);
-    box-shadow:
-      0 18px 48px color-mix(in srgb, var(--confirm-text) 18%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--confirm-primary) 10%, transparent) inset;
-
-    .el-dialog__header {
-      background:
-        linear-gradient(135deg, color-mix(in srgb, var(--confirm-primary) 6%, transparent), transparent 68%),
-        color-mix(in srgb, var(--confirm-surface-muted) 72%, var(--confirm-surface));
     }
-
-    .el-dialog__body {
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--confirm-primary) 2%, transparent), transparent),
-        var(--confirm-surface);
-    }
-
-    table th {
-      background:
-        linear-gradient(90deg, color-mix(in srgb, var(--confirm-primary) 6%, transparent), transparent 68%),
-        color-mix(in srgb, var(--confirm-text) 5%, var(--confirm-surface-muted));
-    }
-
-    td.arrow {
-      color: var(--confirm-primary);
-    }
-  }
-
-  &.market-mode-performance {
-    box-shadow: none;
-  }
-}
 
 @media (max-width: 600px) {
   .confirm-panel {

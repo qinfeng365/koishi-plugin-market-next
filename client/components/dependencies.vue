@@ -1,5 +1,5 @@
 <template>
-  <k-layout main="page-deps" :class="[modeClass, layoutClass]" menu="dependencies">
+  <k-layout main="page-deps" :class="layoutClass" menu="dependencies">
     <div class="deps-toolbar">
       <div class="deps-toolbar-row">
         <el-select v-model="filter" size="small" class="deps-filter-select" :title="filterLabel">
@@ -118,7 +118,7 @@
     </el-scrollbar>
   </k-layout>
 
-  <div v-if="summary.pending" :class="['deps-apply-bar', modeClass]">
+  <div v-if="summary.pending" class="deps-apply-bar">
     <div role="status">
       <strong>{{ t('dependencies.apply.count', { count: summary.pending }) }}</strong>
       <span>{{ t('dependencies.apply.description') }}</span>
@@ -137,7 +137,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, WatchStopHandle } from 'vue'
 import { message, router, store, useConfig, useContext } from '@koishijs/client'
 import { useMarketNextI18n } from '../i18n'
-import { getBundleRecords, getCollapsedGroups, getFrontendMode, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
+import { getBundleRecords, getCollapsedGroups, getDepsLayout, getLatestVersion, getMarketNextConfig, getMarketNextPolicy, getPendingOverrides, getWritableMarketNextPolicy, hasUpdate, isUpdateCheckDisabled, isUpdateIgnored, patchMarketNextConfig, patchMarketNextData } from '../utils'
 import { addManual, createLocalBundleRecord, getConfigWriter, getRegistryStatus, showConfirm, showEnvironmentVersions, type ClientConfigWriter } from './utils'
 import ManualInstall from './manual.vue'
 import PackageView from './package.vue'
@@ -176,9 +176,7 @@ const dependencyLoading = computed(() => metadataLoading.value
   || Object.values((store as MarketStore).registryStatus ?? {}).some(status => status?.loading))
 let metadataLoadToken = 0
 const searchInput = ref<{ focus?: () => void }>()
-const frontendMode = computed(() => getFrontendMode(config.value))
 const depsLayout = computed(() => getDepsLayout(config.value))
-const modeClass = computed(() => `market-mode-${frontendMode.value}`)
 const layoutClass = computed(() => `deps-layout-${depsLayout.value}`)
 
 function getOverride() {
@@ -882,6 +880,7 @@ html.dark .deps-apply-bar,
   padding: 0.65rem var(--card-margin);
   border-top: 1px solid var(--deps-line);
   background: var(--deps-surface);
+  box-shadow: 0 -10px 26px -24px rgb(0 0 0 / 55%);
   color: var(--deps-text);
 
   strong {
@@ -913,50 +912,7 @@ html.dark .deps-apply-bar,
 }
 
 // ---------------------------------------------------------------------------
-// 动效：仅在“精致”模式保留很轻的入场与浮层阴影。
-
-.page-deps.market-mode-polished,
-.market-mode-polished .page-deps {
-  .deps-group {
-    animation: deps-group-in 200ms var(--deps-ease) both;
-  }
-
-  .deps-group:nth-child(2) {
-    animation-delay: 25ms;
-  }
-
-  .deps-group:nth-child(3) {
-    animation-delay: 50ms;
-  }
-
-  .deps-group:nth-child(n + 4) {
-    animation-delay: 75ms;
-  }
-
-  .dep-package-card:hover {
-    box-shadow: 0 10px 26px -22px rgb(0 0 0 / 60%);
-  }
-
-  .dep-package-card.expanded {
-    box-shadow: 0 14px 34px -26px rgb(0 0 0 / 65%);
-  }
-}
-
-.deps-apply-bar.market-mode-polished {
-  box-shadow: 0 -10px 26px -24px rgb(0 0 0 / 55%);
-}
-
-@keyframes deps-group-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
+// 加载动效。
 
 @keyframes deps-loading {
   from {
