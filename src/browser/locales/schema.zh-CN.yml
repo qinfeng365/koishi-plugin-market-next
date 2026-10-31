@@ -1,0 +1,5 @@
+uiVariant:
+  $description: 控制台界面版本。切换后请刷新浏览器。
+  $inner:
+    - 标准界面
+    - VE 界面

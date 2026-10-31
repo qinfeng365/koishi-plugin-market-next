@@ -1,11 +1,12 @@
 import { build } from 'esbuild'
 import { createRequire } from 'module'
-import { existsSync, readFileSync, copyFileSync } from 'fs'
+import { readFileSync, rmSync } from 'fs'
+import { fileURLToPath } from 'url'
 import yaml from 'js-yaml'
+import { buildClient } from './scripts/build-client.mjs'
 
 const require = createRequire(import.meta.url)
 const pkg = require('./package.json')
-const { build: buildClient } = require('@koishijs/client/lib')
 
 const yamlPlugin = {
   name: 'yaml',
@@ -49,19 +50,5 @@ await Promise.all([
   build({ ...common, entryPoints: ['src/browser/index.ts'], outfile: 'lib/browser/index.mjs', format: 'esm' }),
 ])
 
-await buildClient(process.cwd(), {
-  build: {
-    target: 'esnext',
-  },
-  esbuild: {
-    target: 'esnext',
-  },
-})
-
-// Koishi Console directory entries still auto-load style.css only, while
-// newer client builds may emit index.css for explicit static entries.
-if (existsSync('dist/index.css')) {
-  copyFileSync('dist/index.css', 'dist/style.css')
-} else if (existsSync('dist/style.css')) {
-  copyFileSync('dist/style.css', 'dist/index.css')
-}
+rmSync(fileURLToPath(new URL('./dist', import.meta.url)), { recursive: true, force: true })
+for (const ui of ['standard', 've']) await buildClient(process.cwd(), ui)

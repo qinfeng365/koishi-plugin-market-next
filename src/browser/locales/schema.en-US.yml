@@ -1,0 +1,5 @@
+uiVariant:
+  $description: Console UI variant. Refresh your browser after switching.
+  $inner:
+    - Standard UI
+    - VE UI

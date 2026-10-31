@@ -1,22 +1,24 @@
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, type Component } from 'vue'
 import { Context, global, router } from '@koishijs/client'
 import { translate } from './i18n'
 import extensions from './extensions'
-import Dependencies from './components/dependencies.vue'
 import Install from './components/install.vue'
 import BundleInstall from './components/bundle-install.vue'
 import Confirm from './components/confirm.vue'
 import InstallProgress from './components/install-progress.vue'
 import InstallHistory from './components/install-history.vue'
 import EnvironmentVersions from './components/environment-versions.vue'
-import Market from './components/market.vue'
 import Progress from './components/progress.vue'
 import { createPageBoundary } from './components/page-boundary'
 
-const GuardedMarket = createPageBoundary('Market', Market)
-const GuardedDependencies = createPageBoundary('Dependencies', Dependencies)
+export interface PageViews {
+  Dependencies: Component
+  Market: Component
+}
 
-export function setupPages(ctx: Context) {
+export function setupPages(ctx: Context, views: PageViews) {
+  const GuardedMarket = createPageBoundary('Market', views.Market)
+  const GuardedDependencies = createPageBoundary('Dependencies', views.Dependencies)
   ctx.slot({
     type: 'welcome-choice',
     component: defineComponent(() => () => h('div', {

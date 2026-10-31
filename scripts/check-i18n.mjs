@@ -86,6 +86,11 @@ comparePair(
   resolve(backendRoot, 'schema.zh-CN.yml'),
   resolve(backendRoot, 'schema.en-US.yml'),
 )
+comparePair(
+  'browser/schema',
+  resolve(root, 'src', 'browser', 'locales', 'schema.zh-CN.yml'),
+  resolve(root, 'src', 'browser', 'locales', 'schema.en-US.yml'),
+)
 
 const frontendKeys = new Set(flatten(domains))
 function sourceFiles(dir) {
