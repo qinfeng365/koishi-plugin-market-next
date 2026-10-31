@@ -5,6 +5,7 @@ import ts from 'typescript'
 
 const root = resolve(import.meta.dirname, '..')
 const host = new Set(['vue', 'vue-router', '@vueuse/core', '@koishijs/client'])
+export const uiFiles = []
 for (const ui of ['standard', 've']) {
   const dir = resolve(root, 'dist', ui)
   const seen = new Set()
@@ -35,5 +36,6 @@ for (const ui of ['standard', 've']) {
   }
   const css = resolve(dir, 'style.css')
   assert.ok(statSync(css).size > 0, `Missing ${ui} CSS`)
+  uiFiles.push(...[...seen, css].map(file => relative(root, file).replaceAll('\\', '/')))
   console.log(`UI artifact check passed: ${ui}, ${seen.size} JS chunks, ${statSync(resolve(dir, 'index.js')).size + statSync(css).size} entry bytes`)
 }

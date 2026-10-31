@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
-import './check-ui-variants.mjs'
+import { uiFiles } from './check-ui-variants.mjs'
 
 const require = createRequire(import.meta.url)
 const pkg = require('../package.json')
@@ -16,10 +16,7 @@ if (publishedHostFrontendPeers.length) {
 
 const npm = 'npm'
 const requiredFiles = [
-  'dist/standard/index.js',
-  'dist/standard/style.css',
-  'dist/ve/index.js',
-  'dist/ve/style.css',
+  ...uiFiles,
   'lib/shared/bundle.d.ts',
   'lib/shared/bundle.js',
   'lib/shared/bundle.mjs',
