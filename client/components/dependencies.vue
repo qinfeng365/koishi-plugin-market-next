@@ -1,5 +1,5 @@
 <template>
-  <k-layout main="page-deps" :class="['page-dependencies', `deps-layout-${depsLayout}`]" menu="dependencies">
+  <k-layout main="page-deps" :class="['page-dependencies', 'deps-ui-standard', `deps-layout-${depsLayout}`]" menu="dependencies">
     <div class="deps-toolbar">
       <el-input
         ref="searchInput"
@@ -10,7 +10,7 @@
       >
         <template #prefix><k-icon name="search"></k-icon></template>
       </el-input>
-      <el-select v-model="filter" class="deps-filter-select">
+      <el-select v-model="filter" class="deps-filter-select" popper-class="deps-ui-standard">
         <el-option
           v-for="option in filterOptions"
           :key="option.value"
@@ -112,271 +112,273 @@ const { t, keyword, filter, searchInput, depsLayout, prereleaseBlocked, filterOp
 
 <style lang="scss">
 
-.page-deps {
-  display: flex;
-  flex-flow: column;
-  min-height: 0;
-
-  .body-container {
-    flex: 1 1 auto;
+.deps-ui-standard {
+  .page-deps {
+    display: flex;
+    flex-flow: column;
     min-height: 0;
-  }
-}
 
-.deps-toolbar {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem var(--card-margin);
-  border-bottom: 1px solid var(--k-color-divider);
-
-  .el-checkbox {
-    margin-right: 0;
-  }
-}
-
-.deps-search {
-  flex: 1 1 16rem;
-  min-width: 0;
-  max-width: 28rem;
-}
-
-.deps-filter-select {
-  flex: 0 0 10rem;
-}
-
-.deps-filter-option {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-
-  .market-icon,
-  .k-icon {
-    width: 0.875rem;
-    height: 0.875rem;
-    color: var(--fg3);
-  }
-}
-
-.deps-filter-count {
-  margin-left: auto;
-  padding-left: 1rem;
-  color: var(--fg3);
-  font-size: 0.8125rem;
-}
-
-.deps-empty {
-  margin-top: 3rem;
-}
-
-.deps-loading {
-  color: var(--fg3);
-  font-size: 0.875rem;
-}
-
-.deps-layout-switch {
-  display: inline-flex;
-  margin-left: auto;
-  border: 1px solid var(--k-color-border);
-  border-radius: 4px;
-  overflow: hidden;
-
-  button {
-    display: grid;
-    place-items: center;
-    width: 2rem;
-    height: 1.875rem;
-    border: 0;
-    padding: 0;
-    color: var(--fg3);
-    background: transparent;
-    cursor: pointer;
-
-    & + button {
-      border-left: 1px solid var(--k-color-border);
-    }
-
-    &:hover {
-      color: var(--fg1);
-    }
-
-    &.active {
-      color: var(--k-color-primary);
-      background: var(--k-hover-bg);
+    .body-container {
+      flex: 1 1 auto;
+      min-height: 0;
     }
   }
 
-  svg {
-    width: 1rem;
-    height: 1rem;
-  }
-}
+  .deps-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    padding: 0.75rem var(--card-margin);
+    border-bottom: 1px solid var(--k-color-divider);
 
-.deps-content {
-  padding: 1rem var(--card-margin) var(--card-margin);
-}
-
-.deps-group + .deps-group {
-  margin-top: 1.5rem;
-}
-
-.deps-group-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.5rem;
-  margin-bottom: 0.75rem;
-  user-select: none;
-
-  &.collapsible {
-    cursor: pointer;
+    .el-checkbox {
+      margin-right: 0;
+    }
   }
 
-  &:focus-visible {
-    outline: 2px solid var(--k-color-primary);
-    outline-offset: 2px;
-    border-radius: 4px;
-  }
-
-  h2 {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.5;
-  }
-
-  p {
-    flex: 1 1 16rem;
-    margin: 0;
-    color: var(--fg3);
-    font-size: 0.8125rem;
-    line-height: 1.5;
-  }
-}
-
-.deps-group-count {
-  min-width: 1.25rem;
-  border-radius: 10px;
-  padding: 0 0.375rem;
-  color: var(--fg2);
-  background: var(--k-side-bg);
-  font-size: 0.75rem;
-  line-height: 1.25rem;
-  text-align: center;
-}
-
-.is-pending .deps-group-count {
-  color: var(--k-color-primary);
-  background: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
-}
-
-.is-updatable .deps-group-count {
-  color: var(--k-color-success);
-  background: color-mix(in srgb, var(--k-color-success) 12%, transparent);
-}
-
-.is-error .deps-group-count {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-}
-
-.deps-group-chevron {
-  width: 0.75rem;
-  height: 0.75rem;
-  color: var(--fg3);
-  transition: transform 0.2s ease;
-
-  &.expanded {
-    transform: rotate(90deg);
-  }
-}
-
-.deps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
-  align-items: start;
-  gap: 0.75rem;
-}
-
-// Rows draw their own top divider; the shifted first row hides its divider
-// under the container border.
-.deps-list {
-  border: 1px solid var(--k-color-border);
-  border-radius: 8px;
-  overflow: hidden;
-
-  > .dep-item {
-    margin-top: -1px;
-    border-top: 1px solid var(--k-color-divider);
-  }
-}
-
-.deps-apply-bar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1rem;
-  padding: 0.75rem var(--card-margin);
-  border-top: 1px solid var(--k-color-divider);
-  background: var(--k-card-bg);
-
-  .deps-apply-text {
-    min-width: 0;
-  }
-
-  strong {
-    margin-right: 0.5rem;
-  }
-
-  span {
-    color: var(--fg2);
-    font-size: 0.875rem;
-  }
-}
-
-.deps-apply-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 0.5rem;
-
-  .el-button + .el-button {
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 768px) {
   .deps-search {
-    flex-basis: 100%;
-    max-width: none;
+    flex: 1 1 16rem;
+    min-width: 0;
+    max-width: 28rem;
   }
 
   .deps-filter-select {
-    flex: 1 1 8rem;
+    flex: 0 0 10rem;
   }
 
-  .deps-layout-switch {
-    display: none;
-  }
+  .deps-filter-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 
-  .deps-group-header p {
-    flex-basis: 100%;
-  }
-
-  .deps-apply-bar {
-    flex-direction: column;
-    align-items: stretch;
-
-    strong {
-      display: block;
+    .market-icon,
+    .k-icon {
+      width: 0.875rem;
+      height: 0.875rem;
+      color: var(--fg3);
     }
   }
 
-  .deps-apply-actions .el-button {
-    flex: 1 1 0;
+  .deps-filter-count {
+    margin-left: auto;
+    padding-left: 1rem;
+    color: var(--fg3);
+    font-size: 0.8125rem;
   }
-}
 
+  .deps-empty {
+    margin-top: 3rem;
+  }
+
+  .deps-loading {
+    color: var(--fg3);
+    font-size: 0.875rem;
+  }
+
+  .deps-layout-switch {
+    display: inline-flex;
+    margin-left: auto;
+    border: 1px solid var(--k-color-border);
+    border-radius: 4px;
+    overflow: hidden;
+
+    button {
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 1.875rem;
+      border: 0;
+      padding: 0;
+      color: var(--fg3);
+      background: transparent;
+      cursor: pointer;
+
+      & + button {
+        border-left: 1px solid var(--k-color-border);
+      }
+
+      &:hover {
+        color: var(--fg1);
+      }
+
+      &.active {
+        color: var(--k-color-primary);
+        background: var(--k-hover-bg);
+      }
+    }
+
+    svg {
+      width: 1rem;
+      height: 1rem;
+    }
+  }
+
+  .deps-content {
+    padding: 1rem var(--card-margin) var(--card-margin);
+  }
+
+  .deps-group + .deps-group {
+    margin-top: 1.5rem;
+  }
+
+  .deps-group-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-bottom: 0.75rem;
+    user-select: none;
+
+    &.collapsible {
+      cursor: pointer;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--k-color-primary);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    p {
+      flex: 1 1 16rem;
+      margin: 0;
+      color: var(--fg3);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+  }
+
+  .deps-group-count {
+    min-width: 1.25rem;
+    border-radius: 10px;
+    padding: 0 0.375rem;
+    color: var(--fg2);
+    background: var(--k-side-bg);
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+    text-align: center;
+  }
+
+  .is-pending .deps-group-count {
+    color: var(--k-color-primary);
+    background: color-mix(in srgb, var(--k-color-primary) 12%, transparent);
+  }
+
+  .is-updatable .deps-group-count {
+    color: var(--k-color-success);
+    background: color-mix(in srgb, var(--k-color-success) 12%, transparent);
+  }
+
+  .is-error .deps-group-count {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+  }
+
+  .deps-group-chevron {
+    width: 0.75rem;
+    height: 0.75rem;
+    color: var(--fg3);
+    transition: transform 0.2s ease;
+
+    &.expanded {
+      transform: rotate(90deg);
+    }
+  }
+
+  .deps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+    align-items: start;
+    gap: 0.75rem;
+  }
+
+  // Rows draw their own top divider; the shifted first row hides its divider
+  // under the container border.
+  .deps-list {
+    border: 1px solid var(--k-color-border);
+    border-radius: 8px;
+    overflow: hidden;
+
+    > .dep-item {
+      margin-top: -1px;
+      border-top: 1px solid var(--k-color-divider);
+    }
+  }
+
+  .deps-apply-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    padding: 0.75rem var(--card-margin);
+    border-top: 1px solid var(--k-color-divider);
+    background: var(--k-card-bg);
+
+    .deps-apply-text {
+      min-width: 0;
+    }
+
+    strong {
+      margin-right: 0.5rem;
+    }
+
+    span {
+      color: var(--fg2);
+      font-size: 0.875rem;
+    }
+  }
+
+  .deps-apply-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.5rem;
+
+    .el-button + .el-button {
+      margin-left: 0;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .deps-search {
+      flex-basis: 100%;
+      max-width: none;
+    }
+
+    .deps-filter-select {
+      flex: 1 1 8rem;
+    }
+
+    .deps-layout-switch {
+      display: none;
+    }
+
+    .deps-group-header p {
+      flex-basis: 100%;
+    }
+
+    .deps-apply-bar {
+      flex-direction: column;
+      align-items: stretch;
+
+      strong {
+        display: block;
+      }
+    }
+
+    .deps-apply-actions .el-button {
+      flex: 1 1 0;
+    }
+  }
+
+}
 </style>
