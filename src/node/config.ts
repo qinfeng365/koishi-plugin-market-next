@@ -245,7 +245,8 @@ export function ensureMarketNextConfigDefaults(ctx: Context, currentConfig: Conf
     target.value.uiVariant = 'standard'
     changed = true
   }
-  currentConfig.uiVariant = target.value.uiVariant
+  // ConfigWriter starts the new plugin before replacing the raw config node.
+  currentConfig.uiVariant ??= target.value.uiVariant
   if (target.value.depsLayout !== 'grid' && target.value.depsLayout !== 'list') {
     target.value.depsLayout = 'grid'
     changed = true

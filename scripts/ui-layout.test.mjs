@@ -53,6 +53,16 @@ test('standard dependency rows compact before desktop columns exceed the availab
     && node.params === '(max-width: 900px)' && node.nodes.some(rule => rule.selector === '.is-row')))
 })
 
+test('VE market overrides stay inside the market variant scope', () => {
+  const file = 'client/variants/ve/market.vue'
+  const { descriptor } = parse(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
+  const css = postcss.parse(sass.compileString(descriptor.styles[0].content, { style: 'expanded' }).css)
+  css.walkRules(rule => {
+    if (rule.parent.type === 'atrule' && /keyframes$/.test(rule.parent.name)) return
+    for (const selector of rule.selectors) assert.ok(selector.includes('.market-ui-ve'), selector)
+  })
+})
+
 test('VE reuses the shared Koishi dialogs instead of carrying its own panels', () => {
   const entry = readFileSync(new URL('../client/variants/ve/index.ts', import.meta.url), 'utf8')
   for (const name of ['confirm', 'install', 'install-progress']) {

@@ -44,7 +44,7 @@
             <a v-if="titleLink" :href="titleLink" :title="titleLink" target="_blank" rel="noopener noreferrer">{{ displayName }}</a>
             <template v-else>{{ displayName }}</template>
           </h3>
-          <span v-if="showTag" :class="['dep-badge', statusClass]">{{ statusLabel }}</span>
+          <span v-if="showTag || (statusLabel && statusClass !== 'installed')" :class="['dep-badge', statusClass]" :title="statusLabel">{{ statusLabel }}</span>
         </div>
         <a v-if="npmLink" class="dep-full-name" :href="npmLink" :title="npmLink" target="_blank" rel="noopener noreferrer">{{ name }}</a>
         <span v-else class="dep-full-name" :title="name">{{ name }}</span>
@@ -56,6 +56,9 @@
         <span>{{ t('dependencyCard.picker.current') }}</span>
         <strong>{{ currentText }}</strong>
       </div>
+      <svg v-if="showTarget" class="dep-meta-arrow" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
       <div v-if="showTarget" class="dep-meta-item">
         <span>{{ pending ? t('dependencyCard.picker.target') : t('dependencyCard.picker.latest') }}</span>
         <strong :class="{ danger: pendingRemove }">{{ targetText }}</strong>
@@ -141,6 +144,8 @@ const {
   bindingLocalPackages,
   dependencyDialog,
 } = useDependency(props)
+
+// 依赖页用分组表达主要状态，这里只补一个与分组同色的轻量标签，方便单卡快速识别。
 </script>
 
 <style lang="scss" scoped>
@@ -175,10 +180,11 @@ const {
   border-radius: var(--deps-radius, 8px);
   padding: 0.7rem 0.8rem 0.75rem;
   background: var(--dep-surface);
-  transition: border-color 120ms var(--dep-ease), box-shadow 120ms var(--dep-ease);
+  transition: border-color 120ms var(--dep-ease), background 120ms var(--dep-ease), box-shadow 120ms var(--dep-ease);
 
   &:hover {
     border-color: var(--dep-line-strong);
+    background: color-mix(in srgb, var(--dep-surface) 97%, var(--fg1) 3%);
     box-shadow: 0 10px 26px -22px rgb(0 0 0 / 60%);
   }
 
@@ -251,15 +257,15 @@ const {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  border-radius: 8px;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9px;
   color: var(--dep-accent-text);
   background: var(--dep-accent-soft);
 
   .market-icon {
-    width: 0.92rem;
-    height: 0.92rem;
+    width: 1.05rem;
+    height: 1.05rem;
   }
 }
 
@@ -276,7 +282,7 @@ const {
   h3 {
     margin: 0;
     color: var(--dep-text);
-    font-size: 0.88rem;
+    font-size: 0.92rem;
     font-weight: 600;
     line-height: 1.35;
     overflow: hidden;
@@ -290,13 +296,17 @@ const {
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
+
+  .dep-badge {
+    margin-left: auto;
+  }
 }
 
 .dep-full-name {
   display: block;
   margin-top: 0.08rem;
   color: var(--dep-text-3);
-  font-size: 0.69rem;
+  font-size: 0.72rem;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -331,9 +341,13 @@ const {
   color: var(--dep-text-2);
   font-size: 0.74rem;
   line-height: 1.45;
+  height: 2.9em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .dep-badge {
@@ -389,9 +403,18 @@ const {
 
 .dep-meta-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.18rem 0.85rem;
-  margin-top: 0.45rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+  min-width: 0;
+}
+
+.dep-meta-arrow {
+  flex: 0 0 auto;
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--dep-text-3);
 }
 
 .dep-meta-item {
@@ -413,6 +436,9 @@ const {
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 
     &.danger {
       color: color-mix(in srgb, var(--k-color-danger) 68%, var(--dep-text));
@@ -522,6 +548,7 @@ const {
   align-items: center;
   width: 100%;
   box-sizing: border-box;
+  min-height: 3.2rem;
   padding: 0.5rem 0.75rem;
   background: transparent;
   transition: background 120ms var(--dep-ease);

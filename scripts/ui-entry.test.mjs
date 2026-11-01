@@ -1,3 +1,4 @@
+import 'yml-register'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -6,6 +7,7 @@ import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 import vm from 'node:vm'
 import ts from 'typescript'
+import { Config, ensureMarketNextConfigDefaults } from '../src/node/config.ts'
 
 const require = createRequire(import.meta.url)
 const root = resolve(import.meta.dirname, '..')
@@ -33,7 +35,7 @@ function loadEntry(kind, base, tree = 'lib') {
     './console-listeners': { setupConsoleListeners: noop },
     './plugin-config': { ensureInstalledPluginConfigs: noop },
     './avatar': { startAvatarCacheMaintenance: noop },
-    './config': { Config: {}, ensureMarketNextConfigDefaults: () => false, removeMigratedConfigKeys: noop },
+    './config': { Config: {}, ensureMarketNextConfigDefaults, removeMigratedConfigKeys: noop },
     './market-snapshot': { MarketSnapshotTransport: Stub },
     '../shared': {},
   }
@@ -81,6 +83,34 @@ for (const ui of ['standard', 've']) {
       loadEntry('browser', undefined, tree).apply(ctx, { uiVariant: ui })
       assert.deepEqual(entries, [[pathToFileURL(resolve(root, 'client', ui === 've' ? 'variants/ve/index.ts' : 'index.ts')).href]])
     }
+  })
+}
+
+for (const old of ['standard', 've']) {
+  test(`config-page reload from ${old} uses the new UI before the config tree is replaced`, () => {
+    const entries = []
+    const next = old === 'standard' ? 've' : 'standard'
+    const plugins = { 'market-next:main': { uiVariant: old, depsLayout: 'list' } }
+    const cfg = Config({ uiVariant: next, depsLayout: 'list' })
+    const ctx = {
+      loader: { writable: true, config: { plugins } },
+      plugin() {},
+      inject(_, callback) { callback(ctx) },
+      effect(callback) { callback() },
+      on() {},
+      server: { get() {} },
+      console: { addEntry(entry) { entries.push(entry) } },
+    }
+    // ConfigWriter.reload starts the plugin before replacing the raw config node.
+    loadEntry('node').apply(ctx, cfg)
+    assert.equal(cfg.uiVariant, next)
+    assert.equal(plugins['market-next:main'].uiVariant, old)
+    assert.equal(entries[0].prod, resolve(root, 'dist', next))
+    assert.equal(entries[0].dev, resolve(root, 'client', next === 've' ? 'variants/ve/index.ts' : 'index.ts'))
+    plugins['market-next:main'] = { uiVariant: next, depsLayout: 'list' }
+    entries.length = 0
+    loadEntry('node').apply(ctx, Config(plugins['market-next:main']))
+    assert.equal(entries[0].prod, resolve(root, 'dist', next))
   })
 }
 

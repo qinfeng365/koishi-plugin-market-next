@@ -11,7 +11,7 @@ import MarketView from '../../components/market.vue'
   .market-package {
     padding: 1rem 1.25rem;
     gap: 0.625rem;
-    border-radius: 8px;
+    border-radius: 10px;
 
     .header {
       .main {
@@ -35,6 +35,18 @@ import MarketView from '../../components/market.vue'
 
       h2 {
         font-size: 1rem;
+        align-items: flex-start;
+        min-height: 2.6rem;
+
+        .title.truncate {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          white-space: normal;
+          overflow: hidden;
+          overflow-wrap: anywhere;
+          line-height: 1.3rem;
+        }
       }
     }
 

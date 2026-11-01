@@ -167,7 +167,7 @@ function clearFilters() {
   --deps-text: var(--fg1);
   --deps-text-2: color-mix(in srgb, var(--fg1) 76%, var(--k-main-bg));
   --deps-text-3: color-mix(in srgb, var(--fg1) 68%, var(--k-main-bg));
-  --deps-radius: 8px;
+  --deps-radius: 10px;
   --deps-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   --deps-accent: var(--fg1);
 }
@@ -527,7 +527,7 @@ function clearFilters() {
   // 列表模式
 
   &.deps-layout-list .deps-grid {
-    --deps-list-columns: 1.8rem minmax(0, 1fr) 7rem 8rem 24rem;
+    --deps-list-columns: 1.8rem minmax(0, 1fr) 6.5rem 6.5rem 21rem;
 
     display: flex;
     flex-direction: column;
@@ -651,7 +651,7 @@ function clearFilters() {
 
   @media (max-width: 1100px) {
     &.deps-layout-list .deps-grid {
-      --deps-list-columns: 1.8rem minmax(0, 1fr) 5.5rem 6rem 11rem;
+      --deps-list-columns: 1.8rem minmax(0, 1fr) 5.5rem 6rem 19rem;
     }
   }
 
@@ -733,10 +733,33 @@ function clearFilters() {
     }
   }
 
+  @media (max-width: 620px) {
+    .dep-card-actions {
+      align-items: stretch;
+    }
+
+    .dep-card-actions .version-trigger {
+      flex: 1 1 100%;
+      max-width: none;
+    }
+
+    .dep-card-buttons {
+      justify-content: flex-end;
+    }
+
+    .dep-card-buttons .el-button {
+      min-height: 2rem;
+    }
+  }
+
   @media (max-width: 420px) {
     .deps-grid {
       grid-template-columns: minmax(0, 1fr);
     }
+  }
+
+  .deps-group:not(.collapsed) > .deps-grid {
+    animation: ve-group-in 140ms var(--deps-ease);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -753,6 +776,18 @@ function clearFilters() {
       animation: none !important;
       transform: none;
     }
+  }
+}
+
+@keyframes ve-group-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 </style>
