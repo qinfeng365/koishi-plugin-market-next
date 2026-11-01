@@ -12,6 +12,11 @@ import MarketView from '../../components/market.vue'
     padding: 1rem 1.25rem;
     gap: 0.625rem;
     border-radius: 10px;
+    transition: border-color 120ms var(--k-transition, ease), transform 120ms var(--k-transition, ease);
+
+    &:hover {
+      transform: translateY(-1px);
+    }
 
     .header {
       .main {
@@ -70,6 +75,16 @@ import MarketView from '../../components/market.vue'
     align-items: center;
     gap: 0.45rem;
     min-width: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .market-package {
+      transition: none;
+    }
+
+    .market-package:hover {
+      transform: none;
+    }
   }
 
   @media (max-width: 420px) {

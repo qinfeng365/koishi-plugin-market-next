@@ -44,7 +44,7 @@
             <a v-if="titleLink" :href="titleLink" :title="titleLink" target="_blank" rel="noopener noreferrer">{{ displayName }}</a>
             <template v-else>{{ displayName }}</template>
           </h3>
-          <span v-if="showTag || (statusLabel && statusClass !== 'installed')" :class="['dep-badge', statusClass]" :title="statusLabel">{{ statusLabel }}</span>
+          <span v-if="showTag || (statusLabel && statusClass !== 'installed')" :key="statusLabel" :class="['dep-badge', 'dep-swap', statusClass]" :title="statusLabel">{{ statusLabel }}</span>
         </div>
         <a v-if="npmLink" class="dep-full-name" :href="npmLink" :title="npmLink" target="_blank" rel="noopener noreferrer">{{ name }}</a>
         <span v-else class="dep-full-name" :title="name">{{ name }}</span>
@@ -61,7 +61,7 @@
       </svg>
       <div v-if="showTarget" class="dep-meta-item">
         <span>{{ pending ? t('dependencyCard.picker.target') : t('dependencyCard.picker.latest') }}</span>
-        <strong :class="{ danger: pendingRemove }">{{ targetText }}</strong>
+        <strong :key="targetText" :class="{ danger: pendingRemove, 'dep-swap': true }">{{ targetText }}</strong>
       </div>
     </div>
     <p v-if="showDetailText" :class="['dep-status-text', { danger: statusClass === 'error' }]">{{ detailText }}</p>
@@ -180,12 +180,13 @@ const {
   border-radius: var(--deps-radius, 8px);
   padding: 0.7rem 0.8rem 0.75rem;
   background: var(--dep-surface);
-  transition: border-color 120ms var(--dep-ease), background 120ms var(--dep-ease), box-shadow 120ms var(--dep-ease);
+  transition: border-color 120ms var(--dep-ease), background 120ms var(--dep-ease), box-shadow 120ms var(--dep-ease), transform 120ms var(--dep-ease);
 
   &:hover {
     border-color: var(--dep-line-strong);
     background: color-mix(in srgb, var(--dep-surface) 97%, var(--fg1) 3%);
     box-shadow: 0 10px 26px -22px rgb(0 0 0 / 60%);
+    transform: translateY(-1px);
   }
 
   &.expandable {
@@ -869,6 +870,44 @@ const {
     }
   }
 }
+.dep-swap {
+  animation: dep-swap-in 120ms var(--dep-ease);
+}
+
+@keyframes dep-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(1px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.el-button--primary {
+  transition: transform 80ms var(--dep-ease);
+}
+
+.el-button--primary:active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dep-package-card,
+  .dep-list-row,
+  .el-button--primary,
+  .dep-swap {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .dep-package-card:hover {
+    transform: none;
+  }
+}
+
 </style>
 
 

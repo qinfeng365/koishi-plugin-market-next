@@ -61,7 +61,7 @@
     </div>
 
     <el-scrollbar class="body-container" :aria-busy="String(dependencyLoading)">
-      <div class="deps-content">
+      <div class="deps-content" :key="filter + '|' + depsLayout">
         <template v-if="visibleGroups.length">
           <section v-for="group in visibleGroups" :key="group.key" :class="['deps-group', group.key, { collapsed: group.collapsed }]">
             <header
@@ -86,28 +86,34 @@
                   <k-icon v-if="group.icon.startsWith('market-next:')" :name="group.icon"></k-icon>
                   <market-icon v-else :name="group.icon"></market-icon>
                   <span>{{ group.label }}</span>
-                  <span class="deps-group-count">{{ group.items.length }}</span>
+                  <span class="deps-group-count" :key="group.items.length">{{ group.items.length }}</span>
                 </h2>
                 <p>{{ group.description }}</p>
               </div>
             </header>
-            <div v-if="!group.collapsed" class="deps-grid">
-              <template v-if="depsLayout === 'list'">
-                <div class="deps-list-header">
-                  <span class="col-icon"></span>
-                  <span class="col-name">{{ t('dependencies.columns.name') }}</span>
-                  <span class="col-version">{{ t('dependencies.columns.current') }}</span>
-                  <span class="col-latest">{{ t('dependencies.columns.latest') }}</span>
-                  <span class="col-actions">{{ t('dependencies.columns.actions') }}</span>
-                </div>
-              </template>
-              <package-view
-                v-for="item in group.items"
-                :key="item.name"
-                :name="item.name"
-                :kind="item.kind"
-                :list-mode="depsLayout === 'list'"
-              ></package-view>
+            <div
+              :class="['deps-group-body', { collapsed: group.collapsed }]"
+              :inert="group.collapsed ? '' : undefined"
+              :aria-hidden="group.collapsed ? 'true' : undefined"
+            >
+              <div class="deps-grid">
+                <template v-if="depsLayout === 'list'">
+                  <div class="deps-list-header">
+                    <span class="col-icon"></span>
+                    <span class="col-name">{{ t('dependencies.columns.name') }}</span>
+                    <span class="col-version">{{ t('dependencies.columns.current') }}</span>
+                    <span class="col-latest">{{ t('dependencies.columns.latest') }}</span>
+                    <span class="col-actions">{{ t('dependencies.columns.actions') }}</span>
+                  </div>
+                </template>
+                <package-view
+                  v-for="item in group.items"
+                  :key="item.name"
+                  :name="item.name"
+                  :kind="item.kind"
+                  :list-mode="depsLayout === 'list'"
+                ></package-view>
+              </div>
             </div>
           </section>
         </template>
@@ -119,16 +125,18 @@
       </div>
     </el-scrollbar>
 
-    <div v-if="summary.pending" class="deps-apply-bar">
-      <div role="status">
-        <strong>{{ t('dependencies.apply.count', { count: summary.pending }) }}</strong>
-        <span>{{ t('dependencies.apply.description') }}</span>
+    <Transition name="deps-bar" appear>
+      <div v-if="summary.pending" class="deps-apply-bar">
+        <div role="status">
+          <strong>{{ t('dependencies.apply.count', { count: summary.pending }) }}</strong>
+          <span>{{ t('dependencies.apply.description') }}</span>
+        </div>
+        <div class="deps-apply-actions">
+          <el-button @click="clearChanges">{{ t('dependencies.apply.discard') }}</el-button>
+          <el-button type="primary" @click="showConfirm = true">{{ t('dependencies.apply.apply') }}</el-button>
+        </div>
       </div>
-      <div class="deps-apply-actions">
-        <el-button @click="clearChanges">{{ t('dependencies.apply.discard') }}</el-button>
-        <el-button type="primary" @click="showConfirm = true">{{ t('dependencies.apply.apply') }}</el-button>
-      </div>
-    </div>
+    </Transition>
   </k-layout>
 
   <manual-install/>
@@ -371,6 +379,11 @@ function clearFilters() {
 
   .deps-content {
     padding: 1rem var(--card-margin) var(--card-margin);
+    animation: deps-switch-in 160ms var(--deps-ease);
+  }
+
+  .market-empty {
+    animation: deps-switch-in 160ms var(--deps-ease);
   }
 
   .deps-group {
@@ -495,6 +508,7 @@ function clearFilters() {
       font-size: 0.7rem;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
+      animation: deps-count-in 140ms var(--deps-ease);
       line-height: 1;
     }
 
@@ -535,10 +549,10 @@ function clearFilters() {
     gap: 0;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--deps-line);
     border-radius: var(--deps-radius);
     background: var(--deps-surface);
-    overflow: hidden;
+    box-shadow: inset 0 0 0 1px var(--deps-line);
+    clip-path: inset(0 round var(--deps-radius));
   }
 
   .deps-list-header {
@@ -595,6 +609,14 @@ function clearFilters() {
     box-shadow: 0 -10px 26px -24px rgb(0 0 0 / 55%);
     color: var(--deps-text);
 
+    .el-button--primary {
+      transition: transform 80ms var(--deps-ease);
+    }
+
+    .el-button--primary:active {
+      transform: scale(0.98);
+    }
+
     strong {
       display: block;
       font-size: 0.85rem;
@@ -609,6 +631,17 @@ function clearFilters() {
       color: var(--deps-text-3);
       font-size: 0.76rem;
       line-height: 1.4;
+    }
+
+    &.deps-bar-enter-active,
+    &.deps-bar-leave-active {
+      transition: opacity 140ms var(--deps-ease), transform 140ms var(--deps-ease);
+    }
+
+    &.deps-bar-enter-from,
+    &.deps-bar-leave-to {
+      opacity: 0;
+      transform: translateY(10px);
     }
   }
 
@@ -758,12 +791,29 @@ function clearFilters() {
     }
   }
 
-  .deps-group:not(.collapsed) > .deps-grid {
-    animation: ve-group-in 140ms var(--deps-ease);
+  .deps-group-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    clip-path: inset(0);
+    transition: grid-template-rows 160ms var(--deps-ease);
+
+    > .deps-grid {
+      min-height: 0;
+      transition: opacity 120ms var(--deps-ease);
+    }
+
+    &.collapsed {
+      grid-template-rows: 0fr;
+
+      > .deps-grid {
+        opacity: 0;
+      }
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .page-deps *,
+    .deps-apply-bar,
     .deps-apply-bar * {
       animation-duration: 0s !important;
       animation-iteration-count: 1 !important;
@@ -779,10 +829,22 @@ function clearFilters() {
   }
 }
 
-@keyframes ve-group-in {
+@keyframes deps-switch-in {
   from {
     opacity: 0;
-    transform: translateY(2px);
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes deps-count-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.88);
   }
 
   to {
