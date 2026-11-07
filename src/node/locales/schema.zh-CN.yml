@@ -64,6 +64,12 @@
     note: 备注
     enabled: 启用
 
+- $description: 屏蔽发布者
+  blockedPublishers: 每项填写一个 npm 用户 ID。发布者匹配该 ID 的插件会从市场中隐藏。
+
+- $description: 屏蔽维护者
+  blockedMaintainers: 每项填写一个 npm 用户 ID。任一维护者匹配该 ID 的插件会从市场中隐藏。
+
 - $description: 其他
   chatlunaTool: 为 ChatLuna 提供一个只读的插件市场查询工具（koishi_plugin_market_search），需要先安装 ChatLuna。
   logLevel: 日志的详细程度。silent 不输出，debug 输出全部调试信息。
