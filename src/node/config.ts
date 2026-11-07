@@ -16,6 +16,8 @@ export interface Config {
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]
   marketSilentCustomRules?: MarketSilentCustomRule[]
+  blockedPublishers?: string[]
+  blockedMaintainers?: string[]
   marketSilentRules?: MarketSilentRule[]
   marketSilentFilters?: string
   idleProbe?: boolean
@@ -126,6 +128,12 @@ export const Config: Schema<Config> = Schema.intersect([
     marketSilentRules: MarketSilentRules,
   }),
   Schema.object({
+    blockedPublishers: Schema.array(Schema.string()).default([]).collapse(),
+  }).collapse(),
+  Schema.object({
+    blockedMaintainers: Schema.array(Schema.string()).default([]).collapse(),
+  }).collapse(),
+  Schema.object({
     chatlunaTool: Schema.boolean().default(false),
     logLevel: Schema.union(logLevels.map(level => Schema.const(level))).default('warn'),
   }),
@@ -162,6 +170,8 @@ const configPatchKeys: Array<keyof Config> = [
   'marketSilentDateRules',
   'marketSilentRecentRules',
   'marketSilentCustomRules',
+  'blockedPublishers',
+  'blockedMaintainers',
   'marketSilentRules',
   'marketSilentFilters',
   'idleProbe',
