@@ -193,6 +193,8 @@ const data = computed(() => Object.values(getMarketSnapshotData()))
 const secretArchiveMarketCount = computed(() => store.market?.total || data.value.length)
 
 const silentData = computed(() => getSilentFiltered(data.value, silentFilters.value, {
+  blockedPublishers: getMarketNextConfig()?.blockedPublishers,
+  blockedMaintainers: getMarketNextConfig()?.blockedMaintainers,
   installed: global.static ? undefined : installed,
 }))
 

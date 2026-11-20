@@ -318,6 +318,8 @@ export const categories = [
 ]
 
 export interface MarketConfig {
+  blockedPublishers?: string[]
+  blockedMaintainers?: string[]
   installed?(data: SearchObject): boolean
   portable?: boolean
 }
@@ -412,8 +414,14 @@ export function getFiltered(market: SearchObject[], words: string[], config?: Ma
 
 export function getSilentFiltered(market: SearchObject[], words: string[], config?: MarketConfig) {
   const filters = normalizeFilterWords(words)
-  if (!filters.length) return market
+  const publishers = new Set((config?.blockedPublishers ?? []).map(id => id.trim().toLowerCase()).filter(Boolean))
+  const maintainers = new Set((config?.blockedMaintainers ?? []).map(id => id.trim().toLowerCase()).filter(Boolean))
+  if (!filters.length && !publishers.size && !maintainers.size) return market
   return market.filter((data) => {
+    const publisher = data.package.publisher
+    if (publishers.has((publisher?.username || publisher?.name || '').toLowerCase())) return false
+    if (data.package.maintainers.some(user => maintainers.has((user.username || user.name || '').toLowerCase()))) return false
+    if (!filters.length) return true
     const index = getSearchIndex(data)
     return !filters.some((word) => {
       return validate(data, word, { ...config, index, users: index.users })

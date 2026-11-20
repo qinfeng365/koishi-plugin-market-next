@@ -64,6 +64,12 @@
     note: Note
     enabled: Enabled
 
+- $description: Blocked publishers
+  blockedPublishers: Add one npm user ID per item. Plugins with a matching publisher are hidden from the market.
+
+- $description: Blocked maintainers
+  blockedMaintainers: Add one npm user ID per item. Plugins with any matching maintainer are hidden from the market.
+
 - $description: Other
   chatlunaTool: Provide a read-only plugin market query tool (koishi_plugin_market_search) for ChatLuna. Requires ChatLuna.
   logLevel: How detailed the logs are. silent prints nothing; debug prints everything.

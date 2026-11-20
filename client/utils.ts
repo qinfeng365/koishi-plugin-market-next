@@ -30,6 +30,8 @@ export interface MarketNextConfigPatch extends UpdatePolicy {
   marketSilentDateRules?: MarketSilentDateRule[]
   marketSilentRecentRules?: MarketSilentRecentRule[]
   marketSilentCustomRules?: MarketSilentCustomRule[]
+  blockedPublishers?: string[]
+  blockedMaintainers?: string[]
   marketSilentRules?: MarketSilentRule[]
   marketSilentFilters?: string
   idleProbe?: boolean
